@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useGraphData } from "@/hooks/useGraphData";
 import { GraphTooltip } from "./GraphTooltip";
-import type { GraphNode } from "@/types/graph";
+import type { GraphNode, GraphData } from "@/types/graph";
 
 // Dynamically import ForceGraph2D to avoid SSR issues (uses Canvas/WebGL)
 const ForceGraph2D = dynamic(
@@ -19,12 +19,24 @@ const ForceGraph2D = dynamic(
   { ssr: false }
 );
 
+export interface GraphRefHandle {
+  zoom: (k: number, duration?: number) => void;
+  centerAt: (x: number, y: number, duration?: number) => void;
+  zoomToFit: (duration?: number, padding?: number) => void;
+}
+
 interface GraphViewProps {
   pageId?: string;
   depth?: number;
   width?: number;
   height?: number;
   highlightCenter?: boolean;
+  /** Override graph data (e.g. from external filtering) */
+  overrideData?: GraphData;
+  /** Whether to show node labels (default true) */
+  showLabels?: boolean;
+  /** Callback to expose the graph ref for external zoom controls */
+  onGraphRef?: (ref: GraphRefHandle | null) => void;
 }
 
 interface ForceGraphNode extends GraphNode {
@@ -52,14 +64,19 @@ export function GraphView({
   width,
   height,
   highlightCenter = false,
+  overrideData,
+  showLabels = true,
+  onGraphRef,
 }: GraphViewProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
-  const graphRef = useRef<{
-    zoom: (k: number, duration?: number) => void;
-    centerAt: (x: number, y: number, duration?: number) => void;
-    zoomToFit: (duration?: number, padding?: number) => void;
-  } | null>(null);
+  const graphRef = useRef<GraphRefHandle | null>(null);
+
+  // Expose graph ref to parent via callback
+  useEffect(() => {
+    onGraphRef?.(graphRef.current);
+    return () => onGraphRef?.(null);
+  }, [onGraphRef]);
 
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [tooltip, setTooltip] = useState<{
@@ -76,18 +93,23 @@ export function GraphView({
     visible: false,
   });
 
-  const { data, isLoading } = useGraphData({ pageId, depth });
+  const { data, isLoading } = useGraphData({
+    pageId,
+    depth,
+    enabled: !overrideData,
+  });
 
   const graphData = useMemo(() => {
-    if (!data?.data) return { nodes: [], links: [] };
+    const source = overrideData ?? data?.data;
+    if (!source) return { nodes: [], links: [] };
     return {
-      nodes: data.data.nodes,
-      links: data.data.edges.map((e) => ({
+      nodes: source.nodes,
+      links: source.edges.map((e) => ({
         source: e.source,
         target: e.target,
       })),
     };
-  }, [data]);
+  }, [data, overrideData]);
 
   // Responsive sizing
   useEffect(() => {
@@ -158,8 +180,8 @@ export function GraphView({
       ctx.fillStyle = color;
       ctx.fill();
 
-      // Draw label (only if zoomed in enough)
-      if (globalScale > 0.8) {
+      // Draw label (only if enabled and zoomed in enough)
+      if (showLabels && globalScale > 0.8) {
         ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
@@ -178,7 +200,7 @@ export function GraphView({
         );
       }
     },
-    [highlightCenter, pageId]
+    [highlightCenter, pageId, showLabels]
   );
 
   // Pin center node when engine stops (for local graph)
@@ -263,10 +285,12 @@ export function GraphView({
         visible={tooltip.visible}
       />
 
-      {/* Stats footer */}
-      <div className="absolute bottom-4 left-4 rounded-md bg-[var(--color-bg-primary)]/80 px-3 py-1.5 text-xs text-[var(--color-text-secondary)] backdrop-blur-sm">
-        {data?.meta.nodeCount} pages, {data?.meta.edgeCount} connections
-      </div>
+      {/* Stats footer (hidden when parent manages controls) */}
+      {!overrideData && (
+        <div className="absolute bottom-4 left-4 rounded-md bg-[var(--color-bg-primary)]/80 px-3 py-1.5 text-xs text-[var(--color-text-secondary)] backdrop-blur-sm">
+          {data?.meta.nodeCount} pages, {data?.meta.edgeCount} connections
+        </div>
+      )}
     </div>
   );
 }
