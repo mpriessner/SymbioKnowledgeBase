@@ -48,6 +48,9 @@ export function getBaseExtensions(
         keepMarks: true,
         keepAttributes: false,
       },
+      undoRedo: {
+        depth: 100,
+      },
     }),
     Link.configure({
       openOnClick: false,
@@ -73,9 +76,6 @@ export function getBaseExtensions(
       },
       showOnlyWhenEditable: true,
       showOnlyCurrent: true,
-      history: {
-        depth: 100,
-      },
     }),
     SlashCommand,
     LinkShortcut,

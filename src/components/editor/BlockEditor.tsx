@@ -16,8 +16,21 @@ interface BlockEditorProps {
   editable?: boolean;
 }
 
+interface MenuState {
+  isOpen: boolean;
+  blockPos: number;
+  x: number;
+  y: number;
+}
+
 export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [menuState, setMenuState] = useState<MenuState>({
+    isOpen: false,
+    blockPos: 0,
+    x: 0,
+    y: 0,
+  });
 
   // Fetch existing blocks for this page
   const { data: blocks, isLoading, isError } = usePageBlocks(pageId);
@@ -27,9 +40,28 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
     ?.find((b) => b.type === "DOCUMENT")
     ?.content as JSONContent | undefined;
 
+  // Handle drag handle click to open block action menu
+  const handleDragHandleClick = useCallback(
+    (pos: number, event: MouseEvent) => {
+      setMenuState({
+        isOpen: true,
+        blockPos: pos,
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    []
+  );
+
+  const handleMenuClose = useCallback(() => {
+    setMenuState((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
   // Initialize TipTap editor
   const editor = useEditor({
-    extensions: getBaseExtensions(),
+    extensions: getBaseExtensions({
+      onDragHandleClick: handleDragHandleClick,
+    }),
     editable,
     editorProps: {
       attributes: {
