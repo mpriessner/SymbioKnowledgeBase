@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import Image from "next/image";
 import { useUpdatePage } from "@/hooks/usePages";
+import { EmojiPicker } from "@/components/workspace/EmojiPicker";
+import { CoverImageManager } from "@/components/workspace/CoverImageManager";
 import type { Page } from "@/types/page";
 
 interface PageHeaderProps {
@@ -12,6 +13,8 @@ interface PageHeaderProps {
 export function PageHeader({ page }: PageHeaderProps) {
   const [title, setTitle] = useState(page.title);
   const [lastSyncedTitle, setLastSyncedTitle] = useState(page.title);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showCoverInput, setShowCoverInput] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const updatePage = useUpdatePage();
 
@@ -38,56 +41,122 @@ export function PageHeader({ page }: PageHeaderProps) {
     []
   );
 
+  const handleIconSelect = useCallback(
+    (emoji: string) => {
+      updatePage.mutate({ id: page.id, icon: emoji });
+    },
+    [page.id, updatePage]
+  );
+
+  const handleIconRemove = useCallback(() => {
+    updatePage.mutate({ id: page.id, icon: null });
+  }, [page.id, updatePage]);
+
+  const handleCoverSave = useCallback(
+    (url: string) => {
+      updatePage.mutate({ id: page.id, coverUrl: url });
+      setShowCoverInput(false);
+    },
+    [page.id, updatePage]
+  );
+
+  const handleCoverRemove = useCallback(() => {
+    updatePage.mutate({ id: page.id, coverUrl: null });
+  }, [page.id, updatePage]);
+
   return (
     <div className="w-full">
       {/* Cover Image Area */}
-      {page.coverUrl && (
-        <div className="relative w-full h-48 overflow-hidden rounded-b-lg">
-          <Image
-            src={page.coverUrl}
-            alt="Page cover"
-            fill
-            className="object-cover"
-            unoptimized
-          />
-        </div>
+      {(page.coverUrl || showCoverInput) && (
+        <CoverImageManager
+          coverUrl={page.coverUrl}
+          onSave={handleCoverSave}
+          onRemove={handleCoverRemove}
+        />
       )}
 
       {/* Icon and Title */}
       <div className="px-16 pt-8 pb-4 max-w-4xl mx-auto">
-        {/* Icon */}
+        {/* Icon with emoji picker */}
         {page.icon && (
-          <div className="mb-2">
+          <div className="mb-2 relative">
             <button
+              onClick={() => setShowEmojiPicker((prev) => !prev)}
               className="text-5xl hover:bg-gray-100 rounded-lg p-2 transition-colors"
               aria-label="Change page icon"
             >
               {page.icon}
             </button>
+            {showEmojiPicker && (
+              <EmojiPicker
+                onSelect={handleIconSelect}
+                onRemove={handleIconRemove}
+                onClose={() => setShowEmojiPicker(false)}
+              />
+            )}
           </div>
         )}
 
         {/* Add Icon / Add Cover buttons (when not set) */}
-        {(!page.icon || !page.coverUrl) && (
-          <div className="flex gap-2 mb-2 opacity-0 hover:opacity-100 transition-opacity">
-            {!page.icon && (
+        <div
+          className={`
+            flex gap-2 mb-2 transition-opacity
+            ${!page.icon || !page.coverUrl ? "opacity-0 hover:opacity-100" : "hidden"}
+          `}
+        >
+          {!page.icon && (
+            <div className="relative">
               <button
-                className="text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded px-2 py-1 transition-colors"
+                onClick={() => setShowEmojiPicker((prev) => !prev)}
+                className="text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded px-2 py-1 transition-colors flex items-center gap-1"
                 aria-label="Add icon"
               >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z"
+                  />
+                </svg>
                 Add icon
               </button>
-            )}
-            {!page.coverUrl && (
-              <button
-                className="text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded px-2 py-1 transition-colors"
-                aria-label="Add cover"
+              {showEmojiPicker && (
+                <EmojiPicker
+                  onSelect={handleIconSelect}
+                  onClose={() => setShowEmojiPicker(false)}
+                />
+              )}
+            </div>
+          )}
+          {!page.coverUrl && (
+            <button
+              onClick={() => setShowCoverInput(true)}
+              className="text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded px-2 py-1 transition-colors flex items-center gap-1"
+              aria-label="Add cover"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
               >
-                Add cover
-              </button>
-            )}
-          </div>
-        )}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"
+                />
+              </svg>
+              Add cover
+            </button>
+          )}
+        </div>
 
         {/* Editable Title */}
         <h1
