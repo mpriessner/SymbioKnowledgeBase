@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/workspace/Sidebar";
 import { BreadcrumbsWrapper } from "@/components/workspace/BreadcrumbsWrapper";
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { QuickSwitcher } from "@/components/search/QuickSwitcher";
 
 export default function WorkspaceLayout({
   children,
@@ -15,6 +16,8 @@ export default function WorkspaceLayout({
           <BreadcrumbsWrapper />
           {children}
         </main>
+        {/* Quick Switcher (global Cmd/Ctrl+K overlay) */}
+        <QuickSwitcher />
       </div>
     </QueryProvider>
   );

@@ -1,7 +1,8 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect } from "react";
 import { usePage } from "@/hooks/usePages";
+import { useRecentPages } from "@/hooks/useRecentPages";
 import { PageHeader } from "@/components/workspace/PageHeader";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { BacklinksPanel } from "@/components/page/BacklinksPanel";
@@ -14,6 +15,19 @@ interface PageViewProps {
 export default function PageView({ params }: PageViewProps) {
   const { id } = use(params);
   const { data, isLoading, error } = usePage(id);
+  const { addRecentPage } = useRecentPages();
+
+  // Record page visit for recent pages list
+  const pageData = data?.data;
+  useEffect(() => {
+    if (pageData) {
+      addRecentPage({
+        id: pageData.id,
+        title: pageData.title,
+        icon: pageData.icon ?? null,
+      });
+    }
+  }, [pageData?.id, addRecentPage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
     return (
