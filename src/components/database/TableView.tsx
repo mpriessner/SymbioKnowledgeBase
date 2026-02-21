@@ -1,20 +1,34 @@
 "use client";
 
-import { useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useDatabaseRows } from "@/hooks/useDatabaseRows";
 import { PropertyCell } from "./PropertyCell";
-import type { DatabaseSchema, RowProperties } from "@/types/database";
+import { PropertyEditor } from "./PropertyEditor";
+import type {
+  Column,
+  DatabaseSchema,
+  PropertyValue,
+  RowProperties,
+} from "@/types/database";
 
 interface TableViewProps {
   databaseId: string;
   schema: DatabaseSchema;
 }
 
+interface EditingCell {
+  rowId: string;
+  columnId: string;
+}
+
 export function TableView({ databaseId, schema }: TableViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow } = useDatabaseRows(databaseId);
+  const { data, isLoading, createRow, updateRow } =
+    useDatabaseRows(databaseId);
   const rows = data?.data ?? [];
+
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
 
   // Order columns: TITLE first, then the rest
   const orderedColumns = [...schema.columns].sort((a, b) => {
@@ -31,6 +45,52 @@ export function TableView({ databaseId, schema }: TableViewProps) {
     },
     [router]
   );
+
+  const handleCellClick = useCallback(
+    (e: React.MouseEvent, rowId: string, column: Column) => {
+      e.stopPropagation();
+      // Checkbox toggles immediately, no edit mode needed
+      if (column.type === "CHECKBOX") return;
+      setEditingCell({ rowId, columnId: column.id });
+    },
+    []
+  );
+
+  const handleSave = useCallback(
+    (rowId: string, columnId: string, newValue: PropertyValue) => {
+      const row = rows.find((r) => r.id === rowId);
+      if (!row) return;
+
+      const updatedProperties: RowProperties = {
+        ...(row.properties as RowProperties),
+        [columnId]: newValue,
+      };
+
+      updateRow.mutate({ rowId, properties: updatedProperties });
+      setEditingCell(null);
+    },
+    [rows, updateRow]
+  );
+
+  const handleCheckboxToggle = useCallback(
+    (rowId: string, columnId: string, currentValue: PropertyValue | undefined) => {
+      const checked = currentValue?.type === "CHECKBOX" ? currentValue.value : false;
+      const row = rows.find((r) => r.id === rowId);
+      if (!row) return;
+
+      const updatedProperties: RowProperties = {
+        ...(row.properties as RowProperties),
+        [columnId]: { type: "CHECKBOX" as const, value: !checked },
+      };
+
+      updateRow.mutate({ rowId, properties: updatedProperties });
+    },
+    [rows, updateRow]
+  );
+
+  const handleCancel = useCallback(() => {
+    setEditingCell(null);
+  }, []);
 
   const handleAddRow = useCallback(() => {
     const titleColumn = schema.columns.find((c) => c.type === "TITLE");
@@ -94,27 +154,54 @@ export function TableView({ databaseId, schema }: TableViewProps) {
               className="border-b border-[var(--border-default)] cursor-pointer
                          hover:bg-[var(--bg-hover)] transition-colors"
             >
-              {orderedColumns.map((column) => (
-                <td key={column.id} className="px-3 py-2">
-                  {column.type === "TITLE" ? (
-                    <span className="font-medium text-[var(--text-primary)]">
-                      {(row.properties as RowProperties)[column.id]?.type ===
-                      "TITLE"
-                        ? (
-                            (row.properties as RowProperties)[column.id] as {
-                              type: "TITLE";
-                              value: string;
-                            }
-                          ).value
-                        : row.page?.title ?? "Untitled"}
-                    </span>
-                  ) : (
-                    <PropertyCell
-                      value={(row.properties as RowProperties)[column.id]}
-                    />
-                  )}
-                </td>
-              ))}
+              {orderedColumns.map((column) => {
+                const isEditing =
+                  editingCell?.rowId === row.id &&
+                  editingCell?.columnId === column.id;
+                const cellValue = (row.properties as RowProperties)[column.id];
+
+                return (
+                  <td
+                    key={column.id}
+                    className="px-3 py-2"
+                    onClick={(e) => handleCellClick(e, row.id, column)}
+                  >
+                    {isEditing ? (
+                      <PropertyEditor
+                        column={column}
+                        value={cellValue}
+                        onSave={(val) => handleSave(row.id, column.id, val)}
+                        onCancel={handleCancel}
+                      />
+                    ) : column.type === "CHECKBOX" ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCheckboxToggle(row.id, column.id, cellValue);
+                        }}
+                        className="text-lg cursor-pointer"
+                        aria-label={
+                          cellValue?.type === "CHECKBOX" && cellValue.value
+                            ? "Uncheck"
+                            : "Check"
+                        }
+                      >
+                        {cellValue?.type === "CHECKBOX" && cellValue.value
+                          ? "\u2705"
+                          : "\u2B1C"}
+                      </button>
+                    ) : column.type === "TITLE" ? (
+                      <span className="font-medium text-[var(--text-primary)]">
+                        {cellValue?.type === "TITLE"
+                          ? cellValue.value
+                          : row.page?.title ?? "Untitled"}
+                      </span>
+                    ) : (
+                      <PropertyCell value={cellValue} />
+                    )}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>

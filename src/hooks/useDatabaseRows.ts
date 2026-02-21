@@ -64,7 +64,41 @@ export function useDatabaseRows(databaseId: string) {
       if (!res.ok) throw new Error("Failed to update row");
       return res.json();
     },
-    onSuccess: () => {
+    onMutate: async ({ rowId, properties }) => {
+      await queryClient.cancelQueries({
+        queryKey: ["databases", databaseId, "rows"],
+      });
+
+      const previous = queryClient.getQueryData<RowsResponse>([
+        "databases",
+        databaseId,
+        "rows",
+      ]);
+
+      queryClient.setQueryData<RowsResponse>(
+        ["databases", databaseId, "rows"],
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            data: old.data.map((row) =>
+              row.id === rowId ? { ...row, properties } : row
+            ),
+          };
+        }
+      );
+
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(
+          ["databases", databaseId, "rows"],
+          context.previous
+        );
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({
         queryKey: ["databases", databaseId, "rows"],
       });

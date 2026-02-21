@@ -40,7 +40,8 @@ describe("TableView", () => {
       data: { data: [], meta: { total: 0 } },
       isLoading: false,
       createRow: { mutate: vi.fn(), isPending: false },
-    } as ReturnType<typeof useDatabaseRows>);
+      updateRow: { mutate: vi.fn(), isPending: false },
+    } as unknown as ReturnType<typeof useDatabaseRows>);
 
     wrap(<TableView databaseId="db-1" schema={schema} />);
 
@@ -53,7 +54,8 @@ describe("TableView", () => {
       data: { data: [], meta: { total: 0 } },
       isLoading: false,
       createRow: { mutate: vi.fn(), isPending: false },
-    } as ReturnType<typeof useDatabaseRows>);
+      updateRow: { mutate: vi.fn(), isPending: false },
+    } as unknown as ReturnType<typeof useDatabaseRows>);
 
     wrap(<TableView databaseId="db-1" schema={schema} />);
 
@@ -79,7 +81,8 @@ describe("TableView", () => {
       },
       isLoading: false,
       createRow: { mutate: vi.fn(), isPending: false },
-    } as ReturnType<typeof useDatabaseRows>);
+      updateRow: { mutate: vi.fn(), isPending: false },
+    } as unknown as ReturnType<typeof useDatabaseRows>);
 
     wrap(<TableView databaseId="db-1" schema={schema} />);
 
@@ -92,7 +95,8 @@ describe("TableView", () => {
       data: { data: [], meta: { total: 0 } },
       isLoading: false,
       createRow: { mutate: vi.fn(), isPending: false },
-    } as ReturnType<typeof useDatabaseRows>);
+      updateRow: { mutate: vi.fn(), isPending: false },
+    } as unknown as ReturnType<typeof useDatabaseRows>);
 
     wrap(<TableView databaseId="db-1" schema={schema} />);
 
@@ -104,7 +108,8 @@ describe("TableView", () => {
       data: undefined,
       isLoading: true,
       createRow: { mutate: vi.fn(), isPending: false },
-    } as ReturnType<typeof useDatabaseRows>);
+      updateRow: { mutate: vi.fn(), isPending: false },
+    } as unknown as ReturnType<typeof useDatabaseRows>);
 
     const { container } = wrap(
       <TableView databaseId="db-1" schema={schema} />
