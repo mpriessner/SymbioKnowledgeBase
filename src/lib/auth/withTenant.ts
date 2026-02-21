@@ -1,16 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import type { TenantContext } from "@/types/auth";
 import { errorResponse } from "@/lib/apiResponse";
 
 /**
  * Handler function signature for tenant-scoped API routes.
- * Uses `any` for routeContext to allow flexible params typing per route.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RouteContext = { params: Promise<Record<string, string>> };
 type TenantHandler = (
   req: NextRequest,
   context: TenantContext,
-  routeContext: any
+  routeContext: RouteContext
 ) => Promise<Response>;
 
 /**
@@ -32,8 +31,7 @@ const DEV_ROLE = "ADMIN";
  *   export const POST = withTenant(async (req, ctx, { params }) => { ... });
  */
 export function withTenant(handler: TenantHandler) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return async (req: NextRequest, routeContext?: any): Promise<Response> => {
+  return async (req: NextRequest, routeContext?: RouteContext): Promise<Response> => {
     try {
       // Development stub: use default tenant
       // TODO: Replace with real auth when SKB-02.x is merged

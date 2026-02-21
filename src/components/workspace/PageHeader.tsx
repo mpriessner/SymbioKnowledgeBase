@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
+import Image from "next/image";
 import { useUpdatePage } from "@/hooks/usePages";
 import type { Page } from "@/types/page";
 
@@ -10,13 +11,15 @@ interface PageHeaderProps {
 
 export function PageHeader({ page }: PageHeaderProps) {
   const [title, setTitle] = useState(page.title);
+  const [lastSyncedTitle, setLastSyncedTitle] = useState(page.title);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const updatePage = useUpdatePage();
 
-  // Sync title when page data changes externally
-  useEffect(() => {
+  // Sync title when page data changes externally (React recommended pattern)
+  if (page.title !== lastSyncedTitle) {
+    setLastSyncedTitle(page.title);
     setTitle(page.title);
-  }, [page.title]);
+  }
 
   const handleTitleBlur = useCallback(() => {
     const newTitle = title.trim() || "Untitled";
@@ -40,10 +43,12 @@ export function PageHeader({ page }: PageHeaderProps) {
       {/* Cover Image Area */}
       {page.coverUrl && (
         <div className="relative w-full h-48 overflow-hidden rounded-b-lg">
-          <img
+          <Image
             src={page.coverUrl}
             alt="Page cover"
-            className="w-full h-full object-cover"
+            fill
+            className="object-cover"
+            unoptimized
           />
         </div>
       )}
