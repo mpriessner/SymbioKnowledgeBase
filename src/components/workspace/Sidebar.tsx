@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { SidebarTree } from "@/components/workspace/SidebarTree";
+import { DndSidebarTree } from "@/components/workspace/DndSidebarTree";
 import { usePageTree } from "@/hooks/usePageTree";
 import { useCreatePage } from "@/hooks/usePages";
 import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
@@ -123,7 +123,7 @@ export function Sidebar() {
           </div>
         )}
 
-        {data && <SidebarTree tree={data.data} />}
+        {data && <DndSidebarTree tree={data.data} />}
       </div>
     </aside>
   );
