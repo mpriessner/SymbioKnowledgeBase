@@ -161,13 +161,15 @@ model PageLink {
 // ─── API Keys ────────────────────────────────────────────────────────
 
 model ApiKey {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
-  tenantId  String    @map("tenant_id")
-  keyHash   String    @map("key_hash")
-  name      String
-  createdAt DateTime  @default(now()) @map("created_at")
-  revokedAt DateTime? @map("revoked_at")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  tenantId   String    @map("tenant_id")
+  keyHash    String    @map("key_hash")
+  keyPrefix  String    @map("key_prefix")
+  name       String
+  createdAt  DateTime  @default(now()) @map("created_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
 
   // Relations
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

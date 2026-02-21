@@ -1,6 +1,8 @@
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import type { TenantContext } from "@/types/auth";
+
+const API_KEY_PREFIX = "skb_live_";
 
 /**
  * Hash an API key using SHA-256.
@@ -8,6 +10,23 @@ import type { TenantContext } from "@/types/auth";
  */
 export function hashApiKey(rawKey: string): string {
   return createHash("sha256").update(rawKey).digest("hex");
+}
+
+/**
+ * Generate a new cryptographically random API key.
+ *
+ * Format: skb_live_<64 hex characters>
+ * The raw key is returned for one-time display to the user.
+ * Only the SHA-256 hash should be stored in the database.
+ *
+ * @returns { rawKey, keyHash } — rawKey for user display, keyHash for storage
+ */
+export function generateApiKey(): { rawKey: string; keyHash: string } {
+  const randomPart = randomBytes(32).toString("hex"); // 64 hex chars
+  const rawKey = `${API_KEY_PREFIX}${randomPart}`;
+  const keyHash = hashApiKey(rawKey);
+
+  return { rawKey, keyHash };
 }
 
 /**
@@ -53,6 +72,18 @@ export async function resolveApiKey(
   if (!apiKey || !apiKey.user) {
     return null;
   }
+
+  // Update last used timestamp (fire-and-forget, no await needed)
+  prisma.apiKey
+    .update({
+      where: { id: apiKey.id },
+      data: { lastUsedAt: new Date() },
+    })
+    .catch(() => {
+      console.error(
+        `Failed to update lastUsedAt for API key ${apiKey.id}`
+      );
+    });
 
   return {
     tenantId: apiKey.user.tenantId,
