@@ -1,0 +1,470 @@
+openapi: 3.0.3
+info:
+  title: SymbioKnowledgeBase API
+  description: |
+    REST API for SymbioKnowledgeBase, a self-hosted AI-agent-first knowledge management platform.
+
+    All endpoints require authentication via session cookie (NextAuth).
+    All data is scoped by tenant_id — users can only access data within their tenant.
+
+    Standard response envelope:
+    - Success: `{ data: T, meta: { timestamp, ... } }`
+    - Error: `{ error: { code, message, details? }, meta: { timestamp } }`
+  version: 1.0.0
+  contact:
+    name: SymbioKnowledgeBase
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+
+security:
+  - sessionCookie: []
+
+paths:
+  /api/pages:
+    get:
+      summary: List pages
+      tags: [Pages]
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+          description: Filter pages by title (case-insensitive contains)
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: List of pages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Page' }
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+    post:
+      summary: Create a page
+      tags: [Pages]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, minLength: 1 }
+                icon: { type: string, nullable: true }
+                parent_id: { type: string, format: uuid, nullable: true }
+      responses:
+        '201':
+          description: Page created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Page' }
+                  meta: { $ref: '#/components/schemas/TimestampMeta' }
+
+  /api/pages/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: Get a page
+      tags: [Pages]
+      responses:
+        '200':
+          description: Page details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Page' }
+                  meta: { $ref: '#/components/schemas/TimestampMeta' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Update a page
+      tags: [Pages]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                icon: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Page updated
+    delete:
+      summary: Delete a page
+      tags: [Pages]
+      responses:
+        '204':
+          description: Page deleted
+
+  /api/pages/{id}/backlinks:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: Get backlinks for a page
+      tags: [Pages, Wikilinks]
+      responses:
+        '200':
+          description: Pages linking to this page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/BacklinkResult' }
+                  meta: { $ref: '#/components/schemas/CountMeta' }
+
+  /api/search:
+    get:
+      summary: Full-text search
+      tags: [Search]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 500 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Search results with snippets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/SearchResult' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+
+  /api/graph:
+    get:
+      summary: Get knowledge graph data
+      tags: [Graph]
+      parameters:
+        - name: pageId
+          in: query
+          schema: { type: string, format: uuid }
+          description: Center page for local graph mode
+        - name: depth
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 5, default: 2 }
+          description: BFS expansion depth (only with pageId)
+      responses:
+        '200':
+          description: Graph nodes and edges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/GraphData' }
+                  meta: { $ref: '#/components/schemas/GraphMeta' }
+
+  /api/databases:
+    get:
+      summary: List databases
+      tags: [Databases]
+      responses:
+        '200':
+          description: List of databases
+    post:
+      summary: Create a database
+      tags: [Databases]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pageId, schema]
+              properties:
+                pageId: { type: string, format: uuid }
+                schema: { $ref: '#/components/schemas/DatabaseSchema' }
+      responses:
+        '201':
+          description: Database created
+
+  /api/databases/{id}/rows:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: List database rows
+      tags: [Databases]
+      responses:
+        '200':
+          description: List of rows
+    post:
+      summary: Create a database row
+      tags: [Databases]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [properties]
+              properties:
+                properties: { $ref: '#/components/schemas/RowProperties' }
+      responses:
+        '201':
+          description: Row created (page also created)
+
+  /api/users:
+    get:
+      summary: List users (admin only)
+      tags: [Users]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: List of users
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Create a user (admin only)
+      tags: [Users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                role: { type: string, enum: [USER, ADMIN], default: USER }
+      responses:
+        '201':
+          description: User created with new tenant
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Email already exists
+
+  /api/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      summary: Get a user (admin only)
+      tags: [Users]
+      responses:
+        '200':
+          description: User details
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Update a user (admin only)
+      tags: [Users]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                role: { type: string, enum: [USER, ADMIN] }
+      responses:
+        '200':
+          description: User updated
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      summary: Deactivate a user (admin only, soft delete)
+      tags: [Users]
+      responses:
+        '200':
+          description: User deactivated
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/health:
+    get:
+      summary: Health check
+      tags: [System]
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string }
+                  uptime: { type: number }
+
+components:
+  schemas:
+    Page:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        icon: { type: string, nullable: true }
+        parent_id: { type: string, format: uuid, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    BacklinkResult:
+      type: object
+      properties:
+        pageId: { type: string, format: uuid }
+        pageTitle: { type: string }
+        pageIcon: { type: string, nullable: true }
+
+    SearchResult:
+      type: object
+      properties:
+        pageId: { type: string, format: uuid }
+        pageTitle: { type: string }
+        pageIcon: { type: string, nullable: true }
+        snippet: { type: string }
+        score: { type: number }
+
+    GraphData:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              label: { type: string }
+              icon: { type: string, nullable: true }
+              linkCount: { type: integer }
+              updatedAt: { type: string, format: date-time }
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              source: { type: string }
+              target: { type: string }
+
+    GraphMeta:
+      type: object
+      properties:
+        nodeCount: { type: integer }
+        edgeCount: { type: integer }
+        timestamp: { type: string, format: date-time }
+
+    DatabaseSchema:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              type: { type: string, enum: [TITLE, TEXT, NUMBER, SELECT, MULTI_SELECT, DATE, CHECKBOX, URL] }
+              options: { type: array, items: { type: string } }
+
+    RowProperties:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          type: { type: string }
+          value: {}
+
+    PaginationMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        limit: { type: integer }
+        offset: { type: integer }
+        timestamp: { type: string, format: date-time }
+
+    TimestampMeta:
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time }
+
+    CountMeta:
+      type: object
+      properties:
+        total: { type: integer }
+        timestamp: { type: string, format: date-time }
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: array, items: {} }
+        meta:
+          $ref: '#/components/schemas/TimestampMeta'
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      description: NextAuth session cookie
