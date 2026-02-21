@@ -14,7 +14,7 @@ export const GET = withTenant(
   async (
     req: NextRequest,
     context: TenantContext,
-    { params }: { params: Promise<{ id: string }> }
+    { params }
   ) => {
     try {
       const { id } = await params;
@@ -46,7 +46,7 @@ export const PUT = withTenant(
   async (
     req: NextRequest,
     context: TenantContext,
-    { params }: { params: Promise<{ id: string }> }
+    { params }
   ) => {
     try {
       const { id } = await params;
@@ -149,7 +149,7 @@ export const DELETE = withTenant(
   async (
     req: NextRequest,
     context: TenantContext,
-    { params }: { params: Promise<{ id: string }> }
+    { params }
   ) => {
     try {
       const { id } = await params;
