@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/workspace/Sidebar";
+import { BreadcrumbsWrapper } from "@/components/workspace/BreadcrumbsWrapper";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 
 export default function WorkspaceLayout({
@@ -11,6 +12,7 @@ export default function WorkspaceLayout({
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
         <main className="flex-1 overflow-y-auto">
+          <BreadcrumbsWrapper />
           {children}
         </main>
       </div>
