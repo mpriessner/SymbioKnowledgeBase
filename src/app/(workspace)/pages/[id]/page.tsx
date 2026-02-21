@@ -4,6 +4,7 @@ import { use } from "react";
 import { usePage } from "@/hooks/usePages";
 import { PageHeader } from "@/components/workspace/PageHeader";
 import { BlockEditor } from "@/components/editor/BlockEditor";
+import { BacklinksPanel } from "@/components/page/BacklinksPanel";
 
 interface PageViewProps {
   params: Promise<{ id: string }>;
@@ -55,6 +56,11 @@ export default function PageView({ params }: PageViewProps) {
       {/* Block Editor */}
       <div className="max-w-4xl mx-auto">
         <BlockEditor pageId={page.id} />
+      </div>
+
+      {/* Backlinks Panel */}
+      <div className="max-w-4xl mx-auto px-8">
+        <BacklinksPanel pageId={page.id} />
       </div>
     </div>
   );
