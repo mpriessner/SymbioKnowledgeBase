@@ -91,8 +91,7 @@ export const blockTypeRegistry: BlockTypeItem[] = [
     icon: "TG",
     keywords: ["toggle", "collapse", "collapsible", "expand", "accordion"],
     command: (editor) => {
-      // Toggle blocks will be implemented in a later story; for now insert a blockquote as placeholder
-      editor.chain().focus().toggleBlockquote().run();
+      editor.chain().focus().insertToggle().run();
     },
   },
   {
@@ -122,8 +121,7 @@ export const blockTypeRegistry: BlockTypeItem[] = [
     icon: "CO",
     keywords: ["callout", "info", "warning", "alert", "note", "tip"],
     command: (editor) => {
-      // Callout extension will be added in a later story; for now insert a blockquote
-      editor.chain().focus().toggleBlockquote().run();
+      editor.chain().focus().insertCallout().run();
     },
   },
   {
@@ -158,11 +156,7 @@ export const blockTypeRegistry: BlockTypeItem[] = [
     command: (editor) => {
       const url = window.prompt("Enter URL:");
       if (url) {
-        editor
-          .chain()
-          .focus()
-          .insertContent(`<p><a href="${url}">${url}</a></p>`)
-          .run();
+        editor.chain().focus().insertBookmark({ url }).run();
       }
     },
   },

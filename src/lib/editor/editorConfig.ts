@@ -1,12 +1,15 @@
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
-import Image from "@tiptap/extension-image";
-import TaskList from "@tiptap/extension-task-list";
-import TaskItem from "@tiptap/extension-task-item";
 import { SlashCommand } from "@/components/editor/extensions/slashCommand";
 import { LinkShortcut } from "@/components/editor/extensions/linkShortcut";
 import { DragHandle } from "@/components/editor/extensions/dragHandle";
+import { getTaskListExtensions } from "@/components/editor/extensions/taskList";
+import { Toggle } from "@/components/editor/extensions/toggle";
+import { Callout } from "@/components/editor/extensions/callout";
+import { ConfiguredCodeBlock } from "@/components/editor/extensions/codeBlock";
+import { ConfiguredImage } from "@/components/editor/extensions/imageBlock";
+import { Bookmark } from "@/components/editor/extensions/bookmark";
 import { WikilinkExtension } from "@/components/editor/extensions/WikilinkExtension";
 import { createWikilinkSuggestion } from "@/components/editor/extensions/wikilinkSuggestionPlugin";
 import type { Extensions } from "@tiptap/react";
@@ -26,9 +29,11 @@ export interface EditorConfigOptions {
  * - Document, Paragraph, Text (core)
  * - Heading (H1-H3 configured)
  * - BulletList, OrderedList, ListItem
- * - Blockquote, CodeBlock, HorizontalRule
- * - HardBreak, History (undo/redo)
+ * - Blockquote, HorizontalRule
+ * - HardBreak, UndoRedo (100-step depth)
  * - Bold, Italic, Strike, Code (marks)
+ *
+ * CodeBlock is disabled in StarterKit — we use CodeBlockLowlight instead.
  */
 export function getBaseExtensions(
   options: EditorConfigOptions = {}
@@ -51,6 +56,8 @@ export function getBaseExtensions(
       undoRedo: {
         depth: 100,
       },
+      // Disable built-in code block — we use CodeBlockLowlight instead
+      codeBlock: false,
     }),
     Link.configure({
       openOnClick: false,
@@ -60,11 +67,6 @@ export function getBaseExtensions(
         target: "_blank",
       },
       validate: (href) => /^https?:\/\//.test(href),
-    }),
-    Image,
-    TaskList,
-    TaskItem.configure({
-      nested: true,
     }),
     Placeholder.configure({
       placeholder: ({ node }) => {
@@ -82,6 +84,13 @@ export function getBaseExtensions(
     DragHandle.configure({
       onDragHandleClick,
     }),
+    // Advanced block types (SKB-04.5)
+    ...getTaskListExtensions(),
+    Toggle,
+    Callout,
+    ConfiguredCodeBlock,
+    ConfiguredImage,
+    Bookmark,
     WikilinkExtension.configure({
       suggestion: createWikilinkSuggestion(),
     }),
