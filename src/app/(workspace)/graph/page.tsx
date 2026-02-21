@@ -1,22 +1,24 @@
-import type { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Knowledge Graph",
-};
+import { GraphView } from "@/components/graph/GraphView";
 
+/**
+ * Global knowledge graph page.
+ * Renders a full-viewport interactive graph of all pages and their connections.
+ */
 export default function GraphPage() {
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-3xl font-bold text-[var(--text-primary)]">
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-[var(--color-border)] px-6 py-4">
+        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
           Knowledge Graph
         </h1>
-        <p className="mt-4 text-[var(--text-secondary)]">
-          The interactive knowledge graph will be implemented in Epic 6 (SKB-06.x).
-        </p>
-        <p className="mt-2 text-sm text-[var(--text-tertiary)]">
-          Uses react-force-graph for force-directed visualization of page connections.
-        </p>
+      </div>
+
+      {/* Graph viewport (fills remaining space) */}
+      <div className="flex-1">
+        <GraphView />
       </div>
     </div>
   );
