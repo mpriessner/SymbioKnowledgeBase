@@ -1,4 +1,5 @@
 import Sidebar from "@/components/layout/Sidebar";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 
 export default function WorkspaceLayout({
   children,
@@ -6,11 +7,13 @@ export default function WorkspaceLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        {children}
-      </main>
-    </div>
+    <QueryProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
+    </QueryProvider>
   );
 }
