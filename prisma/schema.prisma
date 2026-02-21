@@ -1,0 +1,230 @@
+// SymbioKnowledgeBase — Prisma Schema
+// All tables have tenant_id with composite indexes for multi-tenant isolation.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum BlockType {
+  PARAGRAPH
+  HEADING_1
+  HEADING_2
+  HEADING_3
+  BULLETED_LIST
+  NUMBERED_LIST
+  TODO
+  TOGGLE
+  CODE
+  QUOTE
+  CALLOUT
+  DIVIDER
+  IMAGE
+  BOOKMARK
+  TABLE
+}
+
+// ─── Tenants ─────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  users     User[]
+  pages     Page[]
+  blocks    Block[]
+  pageLinks PageLink[]
+  apiKeys   ApiKey[]
+  databases Database[]
+  dbRows    DbRow[]
+
+  @@map("tenants")
+}
+
+// ─── Users ───────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  email        String
+  passwordHash String   @map("password_hash")
+  role         Role     @default(USER)
+  name         String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apiKeys ApiKey[]
+
+  // Indexes
+  @@unique([tenantId, email], map: "uq_users_email_tenant_id")
+  @@index([tenantId, id], map: "idx_users_tenant_id_id")
+  @@index([tenantId], map: "idx_users_tenant_id")
+
+  @@map("users")
+}
+
+// ─── Pages ───────────────────────────────────────────────────────────
+
+model Page {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  parentId  String?  @map("parent_id")
+  title     String   @default("Untitled")
+  icon      String?
+  coverUrl  String?  @map("cover_url")
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent       Page?      @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Page[]     @relation("PageHierarchy")
+  blocks       Block[]
+  sourceLinks  PageLink[] @relation("SourcePage")
+  targetLinks  PageLink[] @relation("TargetPage")
+  databases    Database[]
+  dbRows       DbRow[]
+
+  // Indexes
+  @@index([tenantId, id], map: "idx_pages_tenant_id_id")
+  @@index([tenantId], map: "idx_pages_tenant_id")
+  @@index([tenantId, parentId], map: "idx_pages_tenant_id_parent_id")
+
+  @@map("pages")
+}
+
+// ─── Blocks ──────────────────────────────────────────────────────────
+
+model Block {
+  id        String    @id @default(uuid())
+  pageId    String    @map("page_id")
+  tenantId  String    @map("tenant_id")
+  type      BlockType @default(PARAGRAPH)
+  content   Json      @default("{}")
+  position  Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId, id], map: "idx_blocks_tenant_id_id")
+  @@index([tenantId], map: "idx_blocks_tenant_id")
+  @@index([pageId], map: "idx_blocks_page_id")
+  @@index([tenantId, pageId], map: "idx_blocks_tenant_id_page_id")
+
+  @@map("blocks")
+}
+
+// ─── Page Links ──────────────────────────────────────────────────────
+
+model PageLink {
+  id           String   @id @default(uuid())
+  sourcePageId String   @map("source_page_id")
+  targetPageId String   @map("target_page_id")
+  tenantId     String   @map("tenant_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sourcePage Page   @relation("SourcePage", fields: [sourcePageId], references: [id], onDelete: Cascade)
+  targetPage Page   @relation("TargetPage", fields: [targetPageId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@unique([sourcePageId, targetPageId], map: "uq_page_links_source_target")
+  @@index([tenantId, id], map: "idx_page_links_tenant_id_id")
+  @@index([tenantId], map: "idx_page_links_tenant_id")
+  @@index([tenantId, sourcePageId], map: "idx_page_links_tenant_id_source")
+  @@index([tenantId, targetPageId], map: "idx_page_links_tenant_id_target")
+
+  @@map("page_links")
+}
+
+// ─── API Keys ────────────────────────────────────────────────────────
+
+model ApiKey {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tenantId  String    @map("tenant_id")
+  keyHash   String    @map("key_hash")
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId, id], map: "idx_api_keys_tenant_id_id")
+  @@index([tenantId], map: "idx_api_keys_tenant_id")
+  @@index([keyHash], map: "idx_api_keys_key_hash")
+
+  @@map("api_keys")
+}
+
+// ─── Databases (Notion-style typed tables) ───────────────────────────
+
+model Database {
+  id        String   @id @default(uuid())
+  pageId    String   @map("page_id")
+  tenantId  String   @map("tenant_id")
+  schema    Json     @default("{}") @map("schema")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  rows   DbRow[]
+
+  // Indexes
+  @@index([tenantId, id], map: "idx_databases_tenant_id_id")
+  @@index([tenantId], map: "idx_databases_tenant_id")
+  @@index([pageId], map: "idx_databases_page_id")
+
+  @@map("databases")
+}
+
+// ─── Database Rows ───────────────────────────────────────────────────
+
+model DbRow {
+  id         String   @id @default(uuid())
+  databaseId String   @map("database_id")
+  pageId     String?  @map("page_id")
+  tenantId   String   @map("tenant_id")
+  properties Json     @default("{}") @map("properties")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  database Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  page     Page?    @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([tenantId, id], map: "idx_db_rows_tenant_id_id")
+  @@index([tenantId], map: "idx_db_rows_tenant_id")
+  @@index([databaseId], map: "idx_db_rows_database_id")
+  @@index([tenantId, databaseId], map: "idx_db_rows_tenant_id_database_id")
+
+  @@map("db_rows")
+}
