@@ -31,6 +31,11 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        // Check if user is deactivated
+        if (user.deactivatedAt) {
+          return null;
+        }
+
         const isPasswordValid = await bcrypt.compare(
           password,
           user.passwordHash
