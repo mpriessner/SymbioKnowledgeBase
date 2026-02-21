@@ -12,6 +12,11 @@ export {
   rebuildPageLinks,
   rebuildAllPageLinks,
 } from "./indexer";
+export {
+  updateWikilinksOnRename,
+  updateWikilinkNodesInDocument,
+  markWikilinksAsDeleted,
+} from "./renameUpdater";
 export type {
   ExtractedWikilink,
   ExtractedWikilinkNode,

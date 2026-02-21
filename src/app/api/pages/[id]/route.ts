@@ -6,6 +6,10 @@ import { updatePageSchema } from "@/lib/validation/pages";
 import type { TenantContext } from "@/types/auth";
 import { serializePage } from "@/lib/pages/serialize";
 import { isDescendant } from "@/lib/pages/getPageTree";
+import {
+  updateWikilinksOnRename,
+  markWikilinksAsDeleted,
+} from "@/lib/wikilinks/renameUpdater";
 import { z } from "zod";
 
 const pageIdSchema = z.string().uuid("Page ID must be a valid UUID");
@@ -111,6 +115,10 @@ export const PUT = withTenant(
         }
       }
 
+      // Detect title change for wikilink propagation
+      const titleChanged =
+        title !== undefined && title !== existingPage.title;
+
       // Build the update data object, only including provided fields
       const updateData: Record<string, unknown> = {};
       if (title !== undefined) updateData.title = title;
@@ -132,9 +140,24 @@ export const PUT = withTenant(
         updateData.position = (maxPosition._max.position ?? -1) + 1;
       }
 
-      const updatedPage = await prisma.page.update({
-        where: { id: idParsed.data },
-        data: updateData,
+      // Use a transaction for atomicity when title changes
+      const updatedPage = await prisma.$transaction(async (tx) => {
+        const page = await tx.page.update({
+          where: { id: idParsed.data },
+          data: updateData,
+        });
+
+        // If title changed, update wikilinks in source pages
+        if (titleChanged && title) {
+          await updateWikilinksOnRename(
+            idParsed.data,
+            title,
+            context.tenantId,
+            tx
+          );
+        }
+
+        return page;
       });
 
       return successResponse(serializePage(updatedPage));
@@ -165,6 +188,9 @@ export const DELETE = withTenant(
       if (!existingPage) {
         return errorResponse("NOT_FOUND", "Page not found", undefined, 404);
       }
+
+      // Mark wikilinks as deleted and clean up page_links
+      await markWikilinksAsDeleted(idParsed.data, context.tenantId);
 
       await prisma.page.delete({
         where: { id: idParsed.data },
