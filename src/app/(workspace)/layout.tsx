@@ -1,4 +1,4 @@
-import Sidebar from "@/components/layout/Sidebar";
+import { Sidebar } from "@/components/workspace/Sidebar";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 
 export default function WorkspaceLayout({
