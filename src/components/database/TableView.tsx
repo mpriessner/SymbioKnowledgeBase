@@ -3,8 +3,10 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useDatabaseRows } from "@/hooks/useDatabaseRows";
+import { useTableFilters } from "@/hooks/useTableFilters";
 import { PropertyCell } from "./PropertyCell";
 import { PropertyEditor } from "./PropertyEditor";
+import { FilterBar } from "./FilterBar";
 import type {
   Column,
   DatabaseSchema,
@@ -27,6 +29,16 @@ export function TableView({ databaseId, schema }: TableViewProps) {
   const { data, isLoading, createRow, updateRow } =
     useDatabaseRows(databaseId);
   const rows = data?.data ?? [];
+
+  const {
+    filters,
+    sort,
+    addFilter,
+    removeFilter,
+    clearFilters,
+    toggleSort,
+    filteredRows,
+  } = useTableFilters(rows);
 
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
 
@@ -73,8 +85,13 @@ export function TableView({ databaseId, schema }: TableViewProps) {
   );
 
   const handleCheckboxToggle = useCallback(
-    (rowId: string, columnId: string, currentValue: PropertyValue | undefined) => {
-      const checked = currentValue?.type === "CHECKBOX" ? currentValue.value : false;
+    (
+      rowId: string,
+      columnId: string,
+      currentValue: PropertyValue | undefined
+    ) => {
+      const checked =
+        currentValue?.type === "CHECKBOX" ? currentValue.value : false;
       const row = rows.find((r) => r.id === rowId);
       if (!row) return;
 
@@ -118,17 +135,35 @@ export function TableView({ databaseId, schema }: TableViewProps) {
 
   return (
     <div className="overflow-x-auto">
+      {/* Filter bar */}
+      <FilterBar
+        columns={schema.columns}
+        filters={filters}
+        onAddFilter={addFilter}
+        onRemoveFilter={removeFilter}
+        onClearAll={clearFilters}
+      />
+
       <table className="w-full border-collapse text-sm">
-        {/* Column headers */}
+        {/* Column headers with sort */}
         <thead>
           <tr className="border-b border-[var(--border-default)]">
             {orderedColumns.map((column) => (
               <th
                 key={column.id}
-                className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider
-                           text-[var(--text-secondary)]"
+                onClick={() => toggleSort(column.id)}
+                className="cursor-pointer select-none px-3 py-2 text-left text-xs
+                           font-medium uppercase tracking-wider text-[var(--text-secondary)]
+                           hover:text-[var(--text-primary)] transition-colors"
               >
-                {column.name}
+                <span className="inline-flex items-center gap-1">
+                  {column.name}
+                  {sort?.columnId === column.id && (
+                    <span className="text-[var(--accent-primary)]">
+                      {sort.direction === "asc" ? "\u2191" : "\u2193"}
+                    </span>
+                  )}
+                </span>
               </th>
             ))}
           </tr>
@@ -136,18 +171,20 @@ export function TableView({ databaseId, schema }: TableViewProps) {
 
         {/* Rows */}
         <tbody>
-          {rows.length === 0 && (
+          {filteredRows.length === 0 && (
             <tr>
               <td
                 colSpan={orderedColumns.length}
                 className="px-3 py-8 text-center text-sm text-[var(--text-secondary)]"
               >
-                No rows yet. Click &quot;Add row&quot; to create one.
+                {filters.length > 0
+                  ? "No rows match the current filters."
+                  : 'No rows yet. Click "Add row" to create one.'}
               </td>
             </tr>
           )}
 
-          {rows.map((row) => (
+          {filteredRows.map((row) => (
             <tr
               key={row.id}
               onClick={() => handleRowClick(row.pageId)}

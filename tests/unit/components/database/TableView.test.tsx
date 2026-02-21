@@ -3,7 +3,12 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => ({
+    getAll: () => [],
+    get: () => null,
+  }),
+  usePathname: () => "/databases/db-1",
 }));
 
 vi.mock("@/hooks/useDatabaseRows", () => ({
