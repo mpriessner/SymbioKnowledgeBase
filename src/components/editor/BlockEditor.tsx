@@ -7,6 +7,7 @@ import { getBaseExtensions } from "@/lib/editor/editorConfig";
 import { usePageBlocks } from "@/hooks/useBlockEditor";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { SaveStatusIndicator } from "@/components/editor/SaveStatusIndicator";
+import { FormattingToolbar } from "@/components/editor/FormattingToolbar";
 import type { SaveStatus } from "@/types/editor";
 import "@/components/editor/editor.css";
 
@@ -98,6 +99,9 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
 
       {/* TipTap editor */}
       <EditorContent editor={editor} />
+
+      {/* Floating formatting toolbar — appears on text selection */}
+      {editor && <FormattingToolbar editor={editor} />}
     </div>
   );
 }
