@@ -1,0 +1,60 @@
+/* TipTap editor base styles */
+
+/* Placeholder styling */
+.tiptap p.is-editor-empty:first-child::before {
+  color: var(--text-tertiary);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Heading placeholder styling */
+.tiptap h1.is-empty::before,
+.tiptap h2.is-empty::before,
+.tiptap h3.is-empty::before {
+  color: var(--text-tertiary);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Focus ring for the editor */
+.tiptap:focus {
+  outline: none;
+}
+
+/* Blockquote styling */
+.tiptap blockquote {
+  border-left: 3px solid var(--border-default);
+  padding-left: 1rem;
+  margin-left: 0;
+  color: var(--text-secondary);
+}
+
+/* Horizontal rule */
+.tiptap hr {
+  border: none;
+  border-top: 2px solid var(--border-default);
+  margin: 1.5rem 0;
+}
+
+/* List styling */
+.tiptap ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+}
+
+.tiptap ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+}
+
+.tiptap ul ul {
+  list-style-type: circle;
+}
+
+.tiptap ul ul ul {
+  list-style-type: square;
+}

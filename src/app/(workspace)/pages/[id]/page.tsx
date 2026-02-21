@@ -3,6 +3,7 @@
 import { use } from "react";
 import { usePage } from "@/hooks/usePages";
 import { PageHeader } from "@/components/workspace/PageHeader";
+import { BlockEditor } from "@/components/editor/BlockEditor";
 
 interface PageViewProps {
   params: Promise<{ id: string }>;
@@ -51,20 +52,9 @@ export default function PageView({ params }: PageViewProps) {
     <div className="w-full min-h-screen">
       <PageHeader page={page} />
 
-      {/* Editor Placeholder */}
-      <div className="px-16 max-w-4xl mx-auto">
-        <div className="py-4 text-gray-400 border-t border-gray-100">
-          <p className="text-base">
-            Start writing, or press{" "}
-            <kbd className="px-1.5 py-0.5 text-xs font-mono bg-gray-100 border border-gray-200 rounded">
-              /
-            </kbd>{" "}
-            for commands...
-          </p>
-          <p className="text-sm mt-2 text-gray-300">
-            (Block editor will be provided by Epic 4)
-          </p>
-        </div>
+      {/* Block Editor */}
+      <div className="max-w-4xl mx-auto">
+        <BlockEditor pageId={page.id} />
       </div>
     </div>
   );
