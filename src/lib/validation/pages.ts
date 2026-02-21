@@ -75,6 +75,10 @@ export const listPagesQuerySchema = z.object({
     .uuid("parentId must be a valid UUID")
     .nullable()
     .optional(),
+  search: z
+    .string()
+    .max(200, "Search query must be 200 characters or fewer")
+    .optional(),
 });
 
 export type CreatePagePayload = z.infer<typeof createPageSchema>;

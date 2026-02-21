@@ -37,7 +37,7 @@ export const GET = withTenant(
         );
       }
 
-      const { limit, offset, sortBy, order, parentId } = parsed.data;
+      const { limit, offset, sortBy, order, parentId, search } = parsed.data;
 
       const where: Record<string, unknown> = {
         tenantId: context.tenantId,
@@ -47,6 +47,11 @@ export const GET = withTenant(
       // parentId=null means root pages only
       if (parentId !== undefined) {
         where.parentId = parentId;
+      }
+
+      // Filter by search term (case-insensitive title match)
+      if (search) {
+        where.title = { contains: search, mode: "insensitive" };
       }
 
       const [pages, total] = await Promise.all([

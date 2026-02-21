@@ -6,6 +6,9 @@ import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { SlashCommand } from "@/components/editor/extensions/slashCommand";
 import { LinkShortcut } from "@/components/editor/extensions/linkShortcut";
+import { DragHandle } from "@/components/editor/extensions/dragHandle";
+import { WikilinkExtension } from "@/components/editor/extensions/WikilinkExtension";
+import { createWikilinkSuggestion } from "@/components/editor/extensions/wikilinkSuggestionPlugin";
 import type { Extensions } from "@tiptap/react";
 
 // Default placeholder text for empty editor
@@ -13,6 +16,7 @@ const DEFAULT_PLACEHOLDER = "Type '/' for commands...";
 
 export interface EditorConfigOptions {
   placeholder?: string;
+  onDragHandleClick?: (pos: number, event: MouseEvent) => void;
 }
 
 /**
@@ -29,7 +33,7 @@ export interface EditorConfigOptions {
 export function getBaseExtensions(
   options: EditorConfigOptions = {}
 ): Extensions {
-  const { placeholder = DEFAULT_PLACEHOLDER } = options;
+  const { placeholder = DEFAULT_PLACEHOLDER, onDragHandleClick } = options;
 
   return [
     StarterKit.configure({
@@ -69,8 +73,17 @@ export function getBaseExtensions(
       },
       showOnlyWhenEditable: true,
       showOnlyCurrent: true,
+      history: {
+        depth: 100,
+      },
     }),
     SlashCommand,
     LinkShortcut,
+    DragHandle.configure({
+      onDragHandleClick,
+    }),
+    WikilinkExtension.configure({
+      suggestion: createWikilinkSuggestion(),
+    }),
   ];
 }
