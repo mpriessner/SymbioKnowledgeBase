@@ -1,0 +1,38 @@
+# Caddy reverse proxy configuration for SymbioKnowledgeBase
+# Caddy automatically provisions and renews TLS certificates.
+#
+# Place this in your Caddyfile and run: caddy run
+#
+# Prerequisites:
+#   - Domain DNS A/AAAA record pointing to this server
+#   - Ports 80 and 443 open on the firewall
+#   - Docker Compose running: docker compose -f docker-compose.prod.yml up -d
+
+kb.example.com {
+    # Reverse proxy to the Next.js container
+    reverse_proxy localhost:3000
+
+    # Request size limit (10MB for file uploads)
+    request_body {
+        max_size 10MB
+    }
+
+    # Access logging
+    log {
+        output file /var/log/caddy/symbio-access.log
+        format json
+    }
+
+    # Rate limiting (requires caddy-ratelimit plugin)
+    # Uncomment if the plugin is installed:
+    # rate_limit {
+    #     zone api_zone {
+    #         match {
+    #             path /api/*
+    #         }
+    #         key {remote_host}
+    #         events 100
+    #         window 1m
+    #     }
+    # }
+}
