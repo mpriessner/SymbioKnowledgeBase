@@ -1,0 +1,97 @@
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SymbioKnowledgeBase — Production Docker Compose
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Prerequisites:
+#   - Copy .env.production.example to .env and set production values
+#   - Generate NEXTAUTH_SECRET: openssl rand -base64 32
+#   - Set a strong DB_PASSWORD
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+services:
+  # ── Next.js Application ──────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: "postgresql://symbio:${DB_PASSWORD}@db:5432/symbio?schema=public&connection_limit=20"
+      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET}"
+      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - symbio-prod-network
+
+  # ── PostgreSQL Database ──────────────────────────────────
+  db:
+    image: postgres:18-alpine
+    # NOTE: No ports exposed to host in production.
+    # Database is only accessible through the internal Docker network.
+    environment:
+      POSTGRES_DB: symbio
+      POSTGRES_USER: symbio
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      # Performance tuning for production
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - pgdata-prod:/var/lib/postgresql/data
+    # Shared memory for PostgreSQL (prevents "could not resize shared memory" errors)
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U symbio -d symbio"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+        reservations:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - symbio-prod-network
+
+volumes:
+  pgdata-prod:
+    driver: local
+
+networks:
+  symbio-prod-network:
+    driver: bridge
