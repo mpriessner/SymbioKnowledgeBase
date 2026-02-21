@@ -8,6 +8,7 @@ import { usePageBlocks } from "@/hooks/useBlockEditor";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { SaveStatusIndicator } from "@/components/editor/SaveStatusIndicator";
 import { FormattingToolbar } from "@/components/editor/FormattingToolbar";
+import { BlockActionMenu } from "@/components/editor/BlockActionMenu";
 import type { SaveStatus } from "@/types/editor";
 import "@/components/editor/editor.css";
 
@@ -134,6 +135,17 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
 
       {/* Floating formatting toolbar — appears on text selection */}
       {editor && <FormattingToolbar editor={editor} />}
+
+      {/* Block action menu (triggered by drag handle click) */}
+      {menuState.isOpen && editor && (
+        <BlockActionMenu
+          editor={editor}
+          blockPos={menuState.blockPos}
+          anchorX={menuState.x}
+          anchorY={menuState.y}
+          onClose={handleMenuClose}
+        />
+      )}
     </div>
   );
 }
