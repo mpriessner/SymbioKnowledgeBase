@@ -1,5 +1,9 @@
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
+import Image from "@tiptap/extension-image";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import { SlashCommand } from "@/components/editor/extensions/slashCommand";
 import type { Extensions } from "@tiptap/react";
 
 // Default placeholder text for empty editor
@@ -16,10 +20,8 @@ export interface EditorConfigOptions {
  * - Document, Paragraph, Text (core)
  * - Heading (H1-H3 configured)
  * - BulletList, OrderedList, ListItem
- * - Blockquote
- * - HorizontalRule
- * - HardBreak
- * - History (undo/redo)
+ * - Blockquote, CodeBlock, HorizontalRule
+ * - HardBreak, History (undo/redo)
  * - Bold, Italic, Strike, Code (marks)
  */
 export function getBaseExtensions(
@@ -41,6 +43,11 @@ export function getBaseExtensions(
         keepAttributes: false,
       },
     }),
+    Image,
+    TaskList,
+    TaskItem.configure({
+      nested: true,
+    }),
     Placeholder.configure({
       placeholder: ({ node }) => {
         if (node.type.name === "heading") {
@@ -52,5 +59,6 @@ export function getBaseExtensions(
       showOnlyWhenEditable: true,
       showOnlyCurrent: true,
     }),
+    SlashCommand,
   ];
 }
