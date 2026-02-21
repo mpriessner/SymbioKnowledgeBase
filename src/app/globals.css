@@ -31,6 +31,16 @@
   --accent-primary-hover: #1b6ec2;
   --accent-bg: #e8f0fe;
 
+  /* Semantic: Danger */
+  --danger: #eb5757;
+  --danger-hover: #d44444;
+
+  /* Semantic: Success */
+  --success: #4daa57;
+
+  /* Overlay */
+  --overlay: rgba(0, 0, 0, 0.5);
+
   /* Sidebar */
   --sidebar-bg: #f7f7f5;
   --sidebar-hover: #ebebea;
@@ -62,6 +72,16 @@
   --accent-primary: #529cca;
   --accent-primary-hover: #6bb0d6;
   --accent-bg: #143a5c;
+
+  /* Semantic: Danger */
+  --danger: #e06c75;
+  --danger-hover: #c95a63;
+
+  /* Semantic: Success */
+  --success: #4daa57;
+
+  /* Overlay */
+  --overlay: rgba(0, 0, 0, 0.7);
 
   /* Sidebar */
   --sidebar-bg: #202020;
