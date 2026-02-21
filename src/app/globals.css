@@ -1,26 +1,112 @@
 @import "tailwindcss";
 
+/*
+ * SymbioKnowledgeBase — Global Styles
+ *
+ * Theme system uses CSS custom properties (variables) that change
+ * based on the .light / .dark class on <html>. Components use these
+ * variables via Tailwind's arbitrary value syntax: bg-[var(--bg-primary)]
+ */
+
+/* ── Light Theme (default) ────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f7f7f5;
+  --bg-tertiary: #f0f0ee;
+  --bg-hover: #ebebea;
+
+  /* Text */
+  --text-primary: #37352f;
+  --text-secondary: #787774;
+  --text-tertiary: #9b9a97;
+  --text-inverse: #ffffff;
+
+  /* Borders */
+  --border-default: #e3e3e0;
+  --border-strong: #cfcfcb;
+
+  /* Accent (brand color) */
+  --accent-primary: #2383e2;
+  --accent-primary-hover: #1b6ec2;
+  --accent-bg: #e8f0fe;
+
+  /* Sidebar */
+  --sidebar-bg: #f7f7f5;
+  --sidebar-hover: #ebebea;
+  --sidebar-active: #e3e3e0;
+  --sidebar-text: #37352f;
+  --sidebar-text-secondary: #787774;
+  --sidebar-width: 256px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Dark Theme ───────────────────────────────────────── */
+.dark {
+  /* Backgrounds */
+  --bg-primary: #191919;
+  --bg-secondary: #202020;
+  --bg-tertiary: #2c2c2c;
+  --bg-hover: #363636;
+
+  /* Text */
+  --text-primary: #ffffffcf;
+  --text-secondary: #ffffff80;
+  --text-tertiary: #ffffff4d;
+  --text-inverse: #191919;
+
+  /* Borders */
+  --border-default: #ffffff14;
+  --border-strong: #ffffff29;
+
+  /* Accent */
+  --accent-primary: #529cca;
+  --accent-primary-hover: #6bb0d6;
+  --accent-bg: #143a5c;
+
+  /* Sidebar */
+  --sidebar-bg: #202020;
+  --sidebar-hover: #2c2c2c;
+  --sidebar-active: #363636;
+  --sidebar-text: #ffffffcf;
+  --sidebar-text-secondary: #ffffff80;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ── Base Styles ──────────────────────────────────────── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Selection ────────────────────────────────────────── */
+::selection {
+  background: var(--accent-bg);
+  color: var(--text-primary);
+}
+
+/* ── Scrollbar (Webkit) ───────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* ── Focus Ring (Accessibility) ───────────────────────── */
+*:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
