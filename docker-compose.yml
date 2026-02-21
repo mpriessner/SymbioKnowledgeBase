@@ -1,0 +1,48 @@
+services:
+  # ── Next.js Application ────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://symbio:${DB_PASSWORD:-symbio_dev_password}@db:5432/symbio?schema=public
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev_secret_change_me_in_production}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NODE_ENV: ${NODE_ENV:-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - symbio-network
+
+  # ── PostgreSQL Database ─────────────────────────────────
+  db:
+    image: postgres:18
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: symbio
+      POSTGRES_USER: symbio
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-symbio_dev_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U symbio -d symbio"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - symbio-network
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  symbio-network:
+    driver: bridge

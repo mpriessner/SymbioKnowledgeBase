@@ -1,0 +1,50 @@
+# Dependencies (reinstalled in Docker)
+node_modules
+npm-debug.log*
+
+# Build output (rebuilt in Docker)
+.next
+out
+
+# Version control
+.git
+.gitignore
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files (secrets)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Documentation (not needed at runtime)
+docs
+*.md
+!README.md
+
+# Tests (not needed in production image)
+tests
+playwright-report
+test-results
+
+# Docker files (prevent recursive copy)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# BMAD project management files
+_bmad
+_bmad-output
+.bmad-core
+.claude
