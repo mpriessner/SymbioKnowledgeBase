@@ -5,6 +5,7 @@ import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { updatePageSchema } from "@/lib/validation/pages";
 import type { TenantContext } from "@/types/auth";
 import { serializePage } from "@/lib/pages/serialize";
+import { isDescendant } from "@/lib/pages/getPageTree";
 import { z } from "zod";
 
 const pageIdSchema = z.string().uuid("Page ID must be a valid UUID");
@@ -93,14 +94,43 @@ export const PUT = withTenant(
         if (!parentPage) {
           return errorResponse("NOT_FOUND", "Parent page not found", undefined, 404);
         }
+
+        // Check for circular reference: is the target parent a descendant of this page?
+        const circular = await isDescendant(
+          context.tenantId,
+          idParsed.data,
+          parentId
+        );
+        if (circular) {
+          return errorResponse(
+            "VALIDATION_ERROR",
+            "Cannot move a page under one of its own descendants (circular reference)",
+            undefined,
+            400
+          );
+        }
       }
 
       // Build the update data object, only including provided fields
       const updateData: Record<string, unknown> = {};
       if (title !== undefined) updateData.title = title;
-      if (parentId !== undefined) updateData.parentId = parentId;
       if (icon !== undefined) updateData.icon = icon;
       if (coverUrl !== undefined) updateData.coverUrl = coverUrl;
+
+      if (parentId !== undefined) {
+        updateData.parentId = parentId;
+
+        // Assign the next available position among new siblings
+        const maxPosition = await prisma.page.aggregate({
+          where: {
+            tenantId: context.tenantId,
+            parentId: parentId,
+            id: { not: idParsed.data }, // exclude the page being moved
+          },
+          _max: { position: true },
+        });
+        updateData.position = (maxPosition._max.position ?? -1) + 1;
+      }
 
       const updatedPage = await prisma.page.update({
         where: { id: idParsed.data },
