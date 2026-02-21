@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { withTenant } from "@/lib/auth/withTenant";
 import { saveDocumentSchema } from "@/lib/validation/blocks";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
+import { updatePageLinks } from "@/lib/wikilinks/indexer";
+import type { TipTapDocument } from "@/lib/wikilinks/types";
 import type { TenantContext } from "@/types/auth";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -119,6 +121,13 @@ export const PUT = withTenant(
           },
         });
       }
+
+      // Update the wikilink page_links index for this page
+      await updatePageLinks(
+        pageId,
+        ctx.tenantId,
+        [block.content as unknown as TipTapDocument]
+      );
 
       return successResponse(block);
     } catch (error) {

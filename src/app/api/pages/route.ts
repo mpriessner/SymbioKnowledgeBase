@@ -10,6 +10,7 @@ import {
   createPageSchema,
   listPagesQuerySchema,
 } from "@/lib/validation/pages";
+import { resolveUnresolvedLinksForNewPage } from "@/lib/wikilinks/resolver";
 import type { TenantContext } from "@/types/auth";
 import { serializePage } from "@/lib/pages/serialize";
 
@@ -115,6 +116,13 @@ export const POST = withTenant(
           position: nextPosition,
         },
       });
+
+      // Resolve any unresolved wikilinks that reference this new page
+      await resolveUnresolvedLinksForNewPage(
+        page.id,
+        page.title,
+        context.tenantId
+      );
 
       return successResponse(serializePage(page), undefined, 201);
     } catch (error) {
