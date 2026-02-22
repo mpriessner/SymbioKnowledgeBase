@@ -5,6 +5,10 @@ import { saveDocumentSchema } from "@/lib/validation/blocks";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { updatePageLinks } from "@/lib/wikilinks/indexer";
 import { updateSearchIndex } from "@/lib/search/indexer";
+import {
+  triggerPageUpdateNotifications,
+  triggerPageMentionNotifications,
+} from "@/lib/notifications/triggers";
 import type { TipTapDocument } from "@/lib/wikilinks/types";
 import type { TenantContext } from "@/types/auth";
 import type { Prisma } from "@/generated/prisma/client";
@@ -135,6 +139,20 @@ export const PUT = withTenant(
         block.id,
         block.content as unknown as TipTapDocument
       );
+
+      // Trigger notifications (fire-and-forget, don't await)
+      triggerPageUpdateNotifications({
+        pageId,
+        tenantId: ctx.tenantId,
+        updatedBy: ctx.userId,
+      });
+
+      triggerPageMentionNotifications({
+        pageId,
+        tenantId: ctx.tenantId,
+        content: block.content as unknown as TipTapDocument,
+        authorId: ctx.userId,
+      });
 
       return successResponse(block);
     } catch (error) {
