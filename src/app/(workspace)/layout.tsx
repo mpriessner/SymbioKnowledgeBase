@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/workspace/Sidebar";
 import { BreadcrumbsWrapper } from "@/components/workspace/BreadcrumbsWrapper";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { QuickSwitcher } from "@/components/search/QuickSwitcher";
+import { EnhancedSearchWrapper } from "@/components/search/EnhancedSearchWrapper";
 
 export default function WorkspaceLayout({
   children,
@@ -18,6 +19,8 @@ export default function WorkspaceLayout({
         </main>
         {/* Quick Switcher (global Cmd/Ctrl+K overlay) */}
         <QuickSwitcher />
+        {/* Enhanced Search (global Cmd/Ctrl+Shift+F overlay) */}
+        <EnhancedSearchWrapper />
       </div>
     </QueryProvider>
   );
