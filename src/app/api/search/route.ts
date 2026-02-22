@@ -1,26 +1,25 @@
 import { NextRequest } from "next/server";
 import { withTenant } from "@/lib/auth/withTenant";
-import { searchBlocks } from "@/lib/search/query";
+import { enhancedSearchBlocks } from "@/lib/search/query";
 import { listResponse, errorResponse } from "@/lib/apiResponse";
 import { SearchQuerySchema } from "@/types/search";
 import type { TenantContext } from "@/types/auth";
 
 /**
- * GET /api/search?q=term&limit=20&offset=0
+ * GET /api/search?q=term&limit=20&offset=0&dateFrom=...&dateTo=...&contentType=code,images
  *
- * Full-text search across all block content within the authenticated tenant.
- *
- * Uses PostgreSQL tsvector/tsquery for relevance-ranked search with snippets.
- * Results are grouped by page — at most one result per page, using the
- * highest-ranked matching block.
+ * Enhanced full-text search with filters.
  *
  * Query parameters:
  * - q (required): Search query string, 1-500 characters
  * - limit (optional): Max results, 1-100, default 20
  * - offset (optional): Pagination offset, >= 0, default 0
+ * - dateFrom (optional): ISO date (YYYY-MM-DD), filter by updatedAt >= dateFrom
+ * - dateTo (optional): ISO date (YYYY-MM-DD), filter by updatedAt <= dateTo
+ * - contentType (optional): Comma-separated list (code,images,links)
  *
  * Returns:
- * - 200: Search results with snippets and relevance scores
+ * - 200: Search results with snippets, scores, and filters applied
  * - 400: Invalid query parameters
  * - 401: Not authenticated
  */
@@ -29,11 +28,13 @@ export const GET = withTenant(
     const { searchParams } = new URL(req.url);
 
     // Parse and validate query parameters
-    // Use ?? undefined so Zod .default() can apply when params are absent
     const parseResult = SearchQuerySchema.safeParse({
       q: searchParams.get("q"),
       limit: searchParams.get("limit") ?? undefined,
       offset: searchParams.get("offset") ?? undefined,
+      dateFrom: searchParams.get("dateFrom") ?? undefined,
+      dateTo: searchParams.get("dateTo") ?? undefined,
+      contentType: searchParams.get("contentType") ?? undefined,
     });
 
     if (!parseResult.success) {
@@ -46,11 +47,24 @@ export const GET = withTenant(
       );
     }
 
-    const { q, limit, offset } = parseResult.data;
+    const { q, limit, offset, dateFrom, dateTo, contentType } = parseResult.data;
+
+    // Build filters object
+    const filters = {
+      dateFrom,
+      dateTo,
+      contentType,
+    };
 
     try {
-      // Execute the search
-      const searchResults = await searchBlocks(q, ctx.tenantId, limit, offset);
+      // Execute the enhanced search
+      const searchResults = await enhancedSearchBlocks(
+        q,
+        ctx.tenantId,
+        filters,
+        limit,
+        offset
+      );
 
       // Map to API response format
       const data = searchResults.results.map((result) => ({
@@ -58,12 +72,14 @@ export const GET = withTenant(
         pageTitle: result.pageTitle,
         pageIcon: result.pageIcon,
         snippet: result.snippet,
-        score: Math.round(result.rank * 100) / 100,
+        score: Math.round(result.score * 100) / 100,
+        updatedAt: result.updatedAt,
+        matchedBlockIds: result.matchedBlockIds,
       }));
 
       return listResponse(data, searchResults.total, limit, offset);
     } catch (error) {
-      console.error("Search failed:", error);
+      console.error("Enhanced search failed:", error);
       return errorResponse(
         "INTERNAL_ERROR",
         "Search failed",
