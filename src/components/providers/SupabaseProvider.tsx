@@ -5,7 +5,6 @@ import {
   useContext,
   useState,
   useEffect,
-  useCallback,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -41,6 +40,18 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
+  }, [supabase]);
+
+  // Proactive token refresh: refresh session every 45 minutes (tokens expire in 1 hour)
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await supabase.auth.refreshSession();
+      }
+    }, 45 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, [supabase]);
 
   return (

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveApiKey } from "@/lib/apiAuth";
 import { prisma } from "@/lib/db";
+import { ensureUserExists } from "@/lib/auth/ensureUserExists";
 import type { TenantContext } from "@/types/auth";
 
 /**
@@ -71,27 +72,14 @@ export async function getTenantContext(
   } = await supabase.auth.getUser();
 
   if (user) {
-    // Look up the Prisma user record to get tenantId and role
-    const dbUser = await prisma.user.findFirst({
-      where: { id: user.id },
-      select: { id: true, tenantId: true, role: true },
-    });
+    // Look up or auto-create the Prisma user record (handles cross-app SSO)
+    const dbUser = await ensureUserExists(user);
 
-    if (dbUser) {
-      return {
-        tenantId: dbUser.tenantId,
-        userId: dbUser.id,
-        role: dbUser.role,
-      };
-    }
-
-    // User exists in Supabase but not in Prisma — cross-app SSO case
-    // The ensureUserExists middleware will handle this
-    throw new AuthenticationError(
-      "User not provisioned in this application. Please register first.",
-      403,
-      "FORBIDDEN"
-    );
+    return {
+      tenantId: dbUser.tenantId,
+      userId: dbUser.id,
+      role: dbUser.role,
+    };
   }
 
   // 3. No valid authentication found
