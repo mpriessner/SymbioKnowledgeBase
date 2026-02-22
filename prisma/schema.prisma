@@ -60,6 +60,7 @@ model Tenant {
   dbRows           DbRow[]
   teamspaces       Teamspace[]
   publicShareLinks PublicShareLink[]
+  presenceRecords  PagePresence[]
 
   @@map("tenants")
 }
@@ -82,6 +83,7 @@ model User {
   apiKeys              ApiKey[]
   teamspaceMemberships TeamspaceMember[]
   createdShareLinks    PublicShareLink[]
+  presenceRecords      PagePresence[]
 
   // Indexes
   @@unique([tenantId, email], map: "uq_users_email_tenant_id")
@@ -116,6 +118,7 @@ model Page {
   databases        Database[]
   dbRows           DbRow[]
   publicShareLinks PublicShareLink[]
+  presenceRecords  PagePresence[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_pages_tenant_id_id")
@@ -312,4 +315,27 @@ model PublicShareLink {
   @@index([pageId], map: "idx_public_share_links_page_id")
 
   @@map("public_share_links")
+}
+
+// ─── Page Presence ──────────────────────────────────────────────
+
+model PagePresence {
+  id            String   @id @default(uuid())
+  pageId        String   @map("page_id")
+  userId        String   @map("user_id")
+  tenantId      String   @map("tenant_id")
+  lastHeartbeat DateTime @default(now()) @map("last_heartbeat")
+  isEditing     Boolean  @default(false) @map("is_editing")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@unique([pageId, userId], map: "uq_page_presence_page_user")
+  @@index([pageId], map: "idx_page_presence_page_id")
+  @@index([lastHeartbeat], map: "idx_page_presence_last_heartbeat")
+
+  @@map("page_presence")
 }
