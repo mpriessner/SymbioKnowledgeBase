@@ -1,40 +1,28 @@
 "use client";
 
+import { useState } from "react";
+import { Search } from "lucide-react";
 import type { GraphFilters } from "@/hooks/useGraphFilters";
 
 interface GraphControlsProps {
-  /** Current filter state */
   filters: GraphFilters;
-  /** Update a single filter value */
   onFilterChange: <K extends keyof GraphFilters>(
     key: K,
     value: GraphFilters[K]
   ) => void;
-  /** Reset all filters to defaults */
   onReset: () => void;
-  /** Whether any filters are currently active */
   isFiltered: boolean;
-  /** Zoom in callback */
   onZoomIn: () => void;
-  /** Zoom out callback */
   onZoomOut: () => void;
-  /** Fit to screen callback */
   onFitToScreen: () => void;
-  /** Reset view callback */
   onResetView: () => void;
-  /** Filtered node/edge counts for display */
   nodeCount: number;
   edgeCount: number;
+  onSearchNode?: (query: string) => void;
 }
 
 /**
- * Graph controls panel with zoom buttons, filters, and display options.
- *
- * Rendered alongside the graph view. Supports:
- * - Zoom in/out/fit/reset buttons
- * - Date range filtering
- * - Minimum link count filter
- * - Show/hide node and edge labels
+ * Graph controls panel with zoom, filters, search, and display options.
  */
 export function GraphControls({
   filters,
@@ -47,9 +35,36 @@ export function GraphControls({
   onResetView,
   nodeCount,
   edgeCount,
+  onSearchNode,
 }: GraphControlsProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const handleSearch = (value: string) => {
+    setSearchQuery(value);
+    onSearchNode?.(value);
+  };
+
   return (
     <div className="w-56 flex-shrink-0 space-y-4 overflow-y-auto border-r border-[var(--color-border)] p-4">
+      {/* Search within graph */}
+      <div>
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
+          Search
+        </h3>
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--color-text-secondary)]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Find node..."
+            className="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-primary)]
+                       pl-7 pr-2 py-1.5 text-xs text-[var(--color-text-primary)]
+                       placeholder-[var(--color-text-secondary)]"
+          />
+        </div>
+      </div>
+
       {/* Zoom Controls */}
       <div>
         <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
@@ -149,16 +164,18 @@ export function GraphControls({
             Min. connections
           </span>
           <input
-            type="number"
+            type="range"
             min={0}
-            max={100}
+            max={20}
             value={filters.minLinkCount}
             onChange={(e) =>
               onFilterChange("minLinkCount", Number(e.target.value) || 0)
             }
-            className="mt-1 w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg-primary)]
-                       px-2 py-1 text-xs text-[var(--color-text-primary)]"
+            className="mt-1 w-full"
           />
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            {filters.minLinkCount}
+          </span>
         </label>
       </div>
 
