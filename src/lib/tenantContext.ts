@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { createServerClient } from "@supabase/ssr";
 import { resolveApiKey } from "@/lib/apiAuth";
+import { prisma } from "@/lib/db";
 import type { TenantContext } from "@/types/auth";
 
 /**
@@ -27,7 +28,7 @@ export class AuthenticationError extends Error {
  *
  * Resolution priority:
  * 1. API key (Authorization: Bearer <key>) — takes precedence for AI agent requests
- * 2. NextAuth.js JWT session (from HTTP-only cookie)
+ * 2. Supabase Auth session (from cookie)
  * 3. Neither — throws AuthenticationError (401)
  */
 export async function getTenantContext(
@@ -49,18 +50,48 @@ export async function getTenantContext(
     );
   }
 
-  // 2. Try NextAuth.js JWT session
-  const token = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  // 2. Try Supabase session from cookies
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll() {
+          // API routes don't need to set cookies (middleware handles refresh)
+        },
+      },
+    }
+  );
 
-  if (token && token.userId && token.tenantId && token.role) {
-    return {
-      tenantId: token.tenantId as string,
-      userId: token.userId as string,
-      role: token.role as string,
-    };
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    // Look up the Prisma user record to get tenantId and role
+    const dbUser = await prisma.user.findFirst({
+      where: { id: user.id },
+      select: { id: true, tenantId: true, role: true },
+    });
+
+    if (dbUser) {
+      return {
+        tenantId: dbUser.tenantId,
+        userId: dbUser.id,
+        role: dbUser.role,
+      };
+    }
+
+    // User exists in Supabase but not in Prisma — cross-app SSO case
+    // The ensureUserExists middleware will handle this
+    throw new AuthenticationError(
+      "User not provisioned in this application. Please register first.",
+      403,
+      "FORBIDDEN"
+    );
   }
 
   // 3. No valid authentication found

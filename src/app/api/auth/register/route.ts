@@ -26,9 +26,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { name, email, password } = parsed.data;
+    const supabaseUserId = body.supabaseUserId as string | undefined;
 
-    // Check for existing user (email unique per tenant, but each registration
-    // creates a new tenant — so we check globally to prevent duplicate accounts)
+    // Check for existing user
     const existingUser = await prisma.user.findFirst({
       where: { email },
     });
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hash password with bcrypt cost factor 10
+    // Hash password (kept for backward compat during migration)
     const passwordHash = await bcrypt.hash(password, 10);
 
     // Create tenant and user in a transaction
@@ -59,6 +59,8 @@ export async function POST(request: NextRequest) {
 
       const user = await tx.user.create({
         data: {
+          // Use Supabase user ID if provided, otherwise auto-generate
+          ...(supabaseUserId ? { id: supabaseUserId } : {}),
           name,
           email,
           passwordHash,

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 interface WorkspaceDropdownProps {
   onOpenSettings: () => void;
@@ -10,6 +11,7 @@ interface WorkspaceDropdownProps {
 export function WorkspaceDropdown({ onOpenSettings }: WorkspaceDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
 
   // Close on outside click
   useEffect(() => {
@@ -45,7 +47,10 @@ export function WorkspaceDropdown({ onOpenSettings }: WorkspaceDropdownProps) {
 
   const handleLogout = async () => {
     setIsOpen(false);
-    await signOut({ callbackUrl: "/login" });
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
   };
 
   return (
