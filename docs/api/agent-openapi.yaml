@@ -1,0 +1,1000 @@
+openapi: 3.0.3
+info:
+  title: SymbioKnowledgeBase Agent API
+  description: |
+    Markdown-based REST API for AI agents to interact with SymbioKnowledgeBase.
+
+    This API is designed for programmatic access by AI agents and automation tools.
+    All page content is exchanged as Markdown (not block JSON), making it straightforward
+    for language models to read and write knowledge base content.
+
+    ## Authentication
+
+    All endpoints require a bearer token. Two token types are supported:
+    - **ApiKey**: A long-lived API key issued per tenant for agent integrations.
+    - **SupabaseJWT**: A short-lived JWT obtained via Supabase Auth for user-scoped access.
+
+    Include the token in the `Authorization` header:
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    ## Rate Limiting
+
+    All responses include rate limit headers:
+    - `X-RateLimit-Limit` — Maximum requests per window
+    - `X-RateLimit-Remaining` — Requests remaining in the current window
+    - `X-RateLimit-Reset` — Unix epoch timestamp when the window resets
+
+    ## Response Envelope
+
+    All successful responses follow the envelope:
+    ```json
+    { "data": T, "meta": { "timestamp": "...", ... } }
+    ```
+
+    All error responses follow:
+    ```json
+    { "error": { "code": "...", "message": "...", "details": [] }, "meta": { "timestamp": "..." } }
+    ```
+  version: 1.0.0
+  contact:
+    name: SymbioKnowledgeBase
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3000/api/agent
+    description: Development server
+  - url: https://kb.symbio.app/api/agent
+    description: Production server
+
+security:
+  - ApiKey: []
+  - SupabaseJWT: []
+
+tags:
+  - name: Pages
+    description: Create, read, update, and list knowledge base pages. Content is exchanged as Markdown.
+  - name: Search
+    description: Full-text search across all pages in the tenant.
+  - name: Graph
+    description: Retrieve the wikilink knowledge graph (nodes and edges).
+
+paths:
+  /pages:
+    get:
+      operationId: listPages
+      summary: List pages
+      description: |
+        Returns a paginated list of page summaries. Supports filtering by parent page
+        and searching by title. Results are ordered by most recently updated first.
+      tags: [Pages]
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum number of pages to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+          example: 20
+        - name: offset
+          in: query
+          description: Number of pages to skip for pagination.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          example: 0
+        - name: parent_id
+          in: query
+          description: Filter to only return direct children of this page.
+          schema:
+            type: string
+            format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        - name: search
+          in: query
+          description: Filter pages whose title contains this string (case-insensitive).
+          schema:
+            type: string
+            maxLength: 200
+          example: "meeting notes"
+      responses:
+        '200':
+          description: Paginated list of page summaries.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PageSummary'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - id: "c3a1f8e2-4d5b-6c7a-8e9f-0a1b2c3d4e5f"
+                    title: "Project Roadmap Q1 2026"
+                    icon: "🗺️"
+                    parent_id: null
+                    created_at: "2026-01-15T09:30:00Z"
+                    updated_at: "2026-02-20T14:22:00Z"
+                  - id: "d4b2e9f3-5e6c-7d8b-9f0a-1b2c3d4e5f6a"
+                    title: "Weekly Standup Notes"
+                    icon: "📋"
+                    parent_id: "c3a1f8e2-4d5b-6c7a-8e9f-0a1b2c3d4e5f"
+                    created_at: "2026-02-01T10:00:00Z"
+                    updated_at: "2026-02-22T08:15:00Z"
+                meta:
+                  total: 47
+                  limit: 50
+                  offset: 0
+                  timestamp: "2026-02-22T12:00:00Z"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+    post:
+      operationId: createPage
+      summary: Create a page
+      description: |
+        Creates a new page with the given title and optional Markdown content.
+        The page can be placed under a parent page to form a hierarchy.
+        Wikilinks in the Markdown (e.g. `[[Other Page]]`) are automatically resolved.
+      tags: [Pages]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: The page title.
+                markdown:
+                  type: string
+                  description: |
+                    The page body as Markdown. Supports standard Markdown syntax
+                    plus wikilinks (`[[Page Title]]`).
+                parent_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: ID of the parent page, or null for a root page.
+                icon:
+                  type: string
+                  nullable: true
+                  maxLength: 10
+                  description: An emoji or short string used as the page icon.
+            example:
+              title: "Sprint 14 Retrospective"
+              markdown: |
+                # Sprint 14 Retrospective
+
+                ## What went well
+                - Shipped the [[Agent API]] integration ahead of schedule
+                - Reduced P95 latency on [[Search]] by 40%
+
+                ## What to improve
+                - Better test coverage for edge cases
+                - More consistent [[Code Review]] turnaround times
+
+                ## Action items
+                - [ ] Set up automated performance benchmarks
+                - [ ] Create onboarding doc for new contributors
+              parent_id: "c3a1f8e2-4d5b-6c7a-8e9f-0a1b2c3d4e5f"
+              icon: "🔄"
+      responses:
+        '201':
+          description: Page created successfully.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PageWithMarkdown'
+                  meta:
+                    $ref: '#/components/schemas/TimestampMeta'
+              example:
+                data:
+                  id: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                  title: "Sprint 14 Retrospective"
+                  icon: "🔄"
+                  parent_id: "c3a1f8e2-4d5b-6c7a-8e9f-0a1b2c3d4e5f"
+                  markdown: |
+                    # Sprint 14 Retrospective
+
+                    ## What went well
+                    - Shipped the [[Agent API]] integration ahead of schedule
+                    - Reduced P95 latency on [[Search]] by 40%
+
+                    ## What to improve
+                    - Better test coverage for edge cases
+                    - More consistent [[Code Review]] turnaround times
+
+                    ## Action items
+                    - [ ] Set up automated performance benchmarks
+                    - [ ] Create onboarding doc for new contributors
+                  created_at: "2026-02-22T12:05:00Z"
+                  updated_at: "2026-02-22T12:05:00Z"
+                meta:
+                  timestamp: "2026-02-22T12:05:00Z"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /pages/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The UUID of the page.
+        schema:
+          type: string
+          format: uuid
+        example: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+
+    get:
+      operationId: getPage
+      summary: Read a page as Markdown
+      description: |
+        Retrieves a single page by ID. The response includes the full page content
+        as Markdown, suitable for direct consumption by language models.
+      tags: [Pages]
+      responses:
+        '200':
+          description: Page with full Markdown content.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PageWithMarkdown'
+                  meta:
+                    $ref: '#/components/schemas/TimestampMeta'
+              example:
+                data:
+                  id: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                  title: "Sprint 14 Retrospective"
+                  icon: "🔄"
+                  parent_id: "c3a1f8e2-4d5b-6c7a-8e9f-0a1b2c3d4e5f"
+                  markdown: |
+                    # Sprint 14 Retrospective
+
+                    ## What went well
+                    - Shipped the [[Agent API]] integration ahead of schedule
+                    - Reduced P95 latency on [[Search]] by 40%
+
+                    ## What to improve
+                    - Better test coverage for edge cases
+                    - More consistent [[Code Review]] turnaround times
+
+                    ## Action items
+                    - [ ] Set up automated performance benchmarks
+                    - [ ] Create onboarding doc for new contributors
+                  created_at: "2026-02-22T12:05:00Z"
+                  updated_at: "2026-02-22T12:05:00Z"
+                meta:
+                  timestamp: "2026-02-22T12:05:30Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+    put:
+      operationId: updatePage
+      summary: Update a page's Markdown
+      description: |
+        Replaces the Markdown content of an existing page. The title, icon, and
+        parent can also be updated. Wikilinks in the new Markdown are re-resolved
+        automatically. Omitted fields are left unchanged.
+      tags: [Pages]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+                  description: Updated page title.
+                markdown:
+                  type: string
+                  description: Replacement Markdown content for the page body.
+                icon:
+                  type: string
+                  nullable: true
+                  maxLength: 10
+                  description: Updated page icon.
+                parent_id:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: Move the page under a different parent.
+            example:
+              markdown: |
+                # Sprint 14 Retrospective
+
+                ## What went well
+                - Shipped the [[Agent API]] integration ahead of schedule
+                - Reduced P95 latency on [[Search]] by 40%
+                - Great collaboration on the [[Design System]] update
+
+                ## What to improve
+                - Better test coverage for edge cases
+                - More consistent [[Code Review]] turnaround times
+
+                ## Action items
+                - [x] Set up automated performance benchmarks
+                - [ ] Create onboarding doc for new contributors
+                - [ ] Schedule follow-up with the platform team
+      responses:
+        '200':
+          description: Page updated successfully.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PageWithMarkdown'
+                  meta:
+                    $ref: '#/components/schemas/TimestampMeta'
+              example:
+                data:
+                  id: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                  title: "Sprint 14 Retrospective"
+                  icon: "🔄"
+                  parent_id: "c3a1f8e2-4d5b-6c7a-8e9f-0a1b2c3d4e5f"
+                  markdown: |
+                    # Sprint 14 Retrospective
+
+                    ## What went well
+                    - Shipped the [[Agent API]] integration ahead of schedule
+                    - Reduced P95 latency on [[Search]] by 40%
+                    - Great collaboration on the [[Design System]] update
+
+                    ## What to improve
+                    - Better test coverage for edge cases
+                    - More consistent [[Code Review]] turnaround times
+
+                    ## Action items
+                    - [x] Set up automated performance benchmarks
+                    - [ ] Create onboarding doc for new contributors
+                    - [ ] Schedule follow-up with the platform team
+                  created_at: "2026-02-22T12:05:00Z"
+                  updated_at: "2026-02-22T12:30:00Z"
+                meta:
+                  timestamp: "2026-02-22T12:30:00Z"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /search:
+    get:
+      operationId: searchPages
+      summary: Full-text search
+      description: |
+        Searches across all page titles and Markdown content within the tenant.
+        Returns matching pages with a relevance score and a text snippet showing
+        the matched context. Results are ordered by relevance score descending.
+      tags: [Search]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: The search query string.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 500
+          example: "API integration"
+        - name: limit
+          in: query
+          description: Maximum number of results to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 10
+        - name: offset
+          in: query
+          description: Number of results to skip for pagination.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          example: 0
+      responses:
+        '200':
+          description: Search results with relevance scores and context snippets.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SearchResult'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+              example:
+                data:
+                  - pageId: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                    pageTitle: "Sprint 14 Retrospective"
+                    pageIcon: "🔄"
+                    snippet: "...Shipped the **Agent API** **integration** ahead of schedule..."
+                    score: 0.92
+                  - pageId: "f6d4ab15-7a8e-9f0d-ba1c-3d4e5f6a7b8c"
+                    pageTitle: "Agent API Design Doc"
+                    pageIcon: "📡"
+                    snippet: "...The **API** **integration** layer handles authentication and rate limiting..."
+                    score: 0.87
+                  - pageId: "a7e5bc26-8b9f-0a1e-cb2d-4e5f6a7b8c9d"
+                    pageTitle: "Third-Party Integrations"
+                    pageIcon: "🔗"
+                    snippet: "...Webhook-based **API** **integration** with external services..."
+                    score: 0.64
+                meta:
+                  total: 3
+                  limit: 20
+                  offset: 0
+                  timestamp: "2026-02-22T12:10:00Z"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+  /graph:
+    get:
+      operationId: getGraph
+      summary: Get knowledge graph data
+      description: |
+        Returns the wikilink knowledge graph as nodes and edges. When called without
+        parameters, returns the full graph for the tenant. When `pageId` is provided,
+        returns a local subgraph centered on that page, expanded to the specified `depth`
+        via breadth-first traversal.
+      tags: [Graph]
+      parameters:
+        - name: pageId
+          in: query
+          description: |
+            Center the graph on this page (local graph mode). When omitted, the full
+            tenant graph is returned.
+          schema:
+            type: string
+            format: uuid
+          example: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+        - name: depth
+          in: query
+          description: |
+            BFS expansion depth from the center page. Only used when `pageId` is provided.
+            A depth of 1 returns only direct neighbors; higher values expand further.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+            default: 2
+          example: 2
+      responses:
+        '200':
+          description: Graph data with nodes and edges.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GraphData'
+                  meta:
+                    $ref: '#/components/schemas/GraphMeta'
+              example:
+                data:
+                  nodes:
+                    - id: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                      label: "Sprint 14 Retrospective"
+                      icon: "🔄"
+                      linkCount: 4
+                      updatedAt: "2026-02-22T12:30:00Z"
+                    - id: "f6d4ab15-7a8e-9f0d-ba1c-3d4e5f6a7b8c"
+                      label: "Agent API Design Doc"
+                      icon: "📡"
+                      linkCount: 7
+                      updatedAt: "2026-02-18T16:45:00Z"
+                    - id: "b8f6cd37-9c0a-1b2f-dc3e-5f6a7b8c9d0e"
+                      label: "Search"
+                      icon: "🔍"
+                      linkCount: 12
+                      updatedAt: "2026-02-21T11:20:00Z"
+                    - id: "c9a7de48-0d1b-2c3a-ed4f-6a7b8c9d0e1f"
+                      label: "Code Review"
+                      icon: "👀"
+                      linkCount: 5
+                      updatedAt: "2026-02-19T09:00:00Z"
+                    - id: "d0b8ef59-1e2c-3d4b-fe5a-7b8c9d0e1f2a"
+                      label: "Design System"
+                      icon: "🎨"
+                      linkCount: 9
+                      updatedAt: "2026-02-20T13:10:00Z"
+                  edges:
+                    - source: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                      target: "f6d4ab15-7a8e-9f0d-ba1c-3d4e5f6a7b8c"
+                    - source: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                      target: "b8f6cd37-9c0a-1b2f-dc3e-5f6a7b8c9d0e"
+                    - source: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                      target: "c9a7de48-0d1b-2c3a-ed4f-6a7b8c9d0e1f"
+                    - source: "e5c3fa04-6f7d-8e9c-af0b-2c3d4e5f6a7b"
+                      target: "d0b8ef59-1e2c-3d4b-fe5a-7b8c9d0e1f2a"
+                    - source: "f6d4ab15-7a8e-9f0d-ba1c-3d4e5f6a7b8c"
+                      target: "b8f6cd37-9c0a-1b2f-dc3e-5f6a7b8c9d0e"
+                meta:
+                  nodeCount: 5
+                  edgeCount: 5
+                  timestamp: "2026-02-22T12:15:00Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimitExceeded'
+
+components:
+  headers:
+    X-RateLimit-Limit:
+      description: Maximum number of requests allowed in the current time window.
+      schema:
+        type: integer
+      example: 100
+    X-RateLimit-Remaining:
+      description: Number of requests remaining in the current time window.
+      schema:
+        type: integer
+      example: 87
+    X-RateLimit-Reset:
+      description: Unix epoch timestamp (seconds) when the current rate limit window resets.
+      schema:
+        type: integer
+      example: 1740225600
+
+  schemas:
+    PageSummary:
+      type: object
+      description: A lightweight page representation without the Markdown body.
+      required: [id, title, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique page identifier.
+        title:
+          type: string
+          description: The page title.
+        icon:
+          type: string
+          nullable: true
+          description: Emoji or short string used as the page icon.
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the parent page, or null for root pages.
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of when the page was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the last update.
+
+    PageWithMarkdown:
+      type: object
+      description: Full page representation including the Markdown body.
+      required: [id, title, markdown, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique page identifier.
+        title:
+          type: string
+          description: The page title.
+        icon:
+          type: string
+          nullable: true
+          description: Emoji or short string used as the page icon.
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the parent page, or null for root pages.
+        markdown:
+          type: string
+          description: |
+            The full page content as Markdown. May contain wikilinks in the
+            form `[[Page Title]]` which reference other pages in the knowledge base.
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of when the page was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of the last update.
+
+    SearchResult:
+      type: object
+      description: A single search result with relevance score and context snippet.
+      required: [pageId, pageTitle, snippet, score]
+      properties:
+        pageId:
+          type: string
+          format: uuid
+          description: ID of the matching page.
+        pageTitle:
+          type: string
+          description: Title of the matching page.
+        pageIcon:
+          type: string
+          nullable: true
+          description: Icon of the matching page.
+        snippet:
+          type: string
+          description: |
+            Text excerpt showing the matched context. Matched terms are wrapped
+            in `**bold**` markers for highlighting.
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Relevance score between 0 and 1 (higher is more relevant).
+
+    GraphData:
+      type: object
+      description: Knowledge graph represented as nodes (pages) and edges (wikilinks).
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          description: List of pages as graph nodes.
+          items:
+            type: object
+            required: [id, label, linkCount, updatedAt]
+            properties:
+              id:
+                type: string
+                format: uuid
+                description: Page ID.
+              label:
+                type: string
+                description: Page title used as the node label.
+              icon:
+                type: string
+                nullable: true
+                description: Page icon.
+              linkCount:
+                type: integer
+                minimum: 0
+                description: Total number of inbound and outbound wikilinks.
+              updatedAt:
+                type: string
+                format: date-time
+                description: Last update timestamp of the page.
+        edges:
+          type: array
+          description: List of directed wikilink connections between pages.
+          items:
+            type: object
+            required: [source, target]
+            properties:
+              source:
+                type: string
+                format: uuid
+                description: ID of the page containing the wikilink.
+              target:
+                type: string
+                format: uuid
+                description: ID of the page being linked to.
+
+    PaginationMeta:
+      type: object
+      description: Metadata for paginated responses.
+      required: [total, limit, offset, timestamp]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+          description: Total number of matching records.
+        limit:
+          type: integer
+          description: Maximum number of records returned.
+        offset:
+          type: integer
+          description: Number of records skipped.
+        timestamp:
+          type: string
+          format: date-time
+          description: Server timestamp when the response was generated.
+
+    TimestampMeta:
+      type: object
+      description: Minimal metadata with server timestamp.
+      required: [timestamp]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Server timestamp when the response was generated.
+
+    GraphMeta:
+      type: object
+      description: Metadata for graph responses.
+      required: [nodeCount, edgeCount, timestamp]
+      properties:
+        nodeCount:
+          type: integer
+          minimum: 0
+          description: Number of nodes in the returned graph.
+        edgeCount:
+          type: integer
+          minimum: 0
+          description: Number of edges in the returned graph.
+        timestamp:
+          type: string
+          format: date-time
+          description: Server timestamp when the response was generated.
+
+    ApiError:
+      type: object
+      description: Standard error response envelope.
+      required: [error, meta]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code.
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              description: Human-readable error message.
+              example: "Invalid request parameters."
+            details:
+              type: array
+              description: Optional list of field-level validation errors.
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    description: The field that failed validation.
+                  message:
+                    type: string
+                    description: Description of the validation failure.
+        meta:
+          $ref: '#/components/schemas/TimestampMeta'
+
+  responses:
+    Unauthorized:
+      description: Authentication required. The request is missing a valid bearer token.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error:
+              code: "UNAUTHORIZED"
+              message: "Missing or invalid authentication token."
+              details: []
+            meta:
+              timestamp: "2026-02-22T12:00:00Z"
+
+    Forbidden:
+      description: Insufficient permissions. The token is valid but does not grant access to this resource.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error:
+              code: "FORBIDDEN"
+              message: "You do not have permission to access this resource."
+              details: []
+            meta:
+              timestamp: "2026-02-22T12:00:00Z"
+
+    NotFound:
+      description: The requested resource does not exist or is not accessible within your tenant.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error:
+              code: "NOT_FOUND"
+              message: "Page not found."
+              details: []
+            meta:
+              timestamp: "2026-02-22T12:00:00Z"
+
+    ValidationError:
+      description: The request failed validation. Check the `details` array for specific field errors.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error:
+              code: "VALIDATION_ERROR"
+              message: "Invalid request parameters."
+              details:
+                - field: "title"
+                  message: "Title is required and must be a non-empty string."
+                - field: "parent_id"
+                  message: "Must be a valid UUID or null."
+            meta:
+              timestamp: "2026-02-22T12:00:00Z"
+
+    RateLimitExceeded:
+      description: Too many requests. Wait until the rate limit window resets before retrying.
+      headers:
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+        X-RateLimit-Reset:
+          $ref: '#/components/headers/X-RateLimit-Reset'
+        Retry-After:
+          description: Number of seconds to wait before retrying.
+          schema:
+            type: integer
+          example: 30
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error:
+              code: "RATE_LIMIT_EXCEEDED"
+              message: "Too many requests. Please retry after 30 seconds."
+              details: []
+            meta:
+              timestamp: "2026-02-22T12:00:00Z"
+
+  securitySchemes:
+    ApiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+      description: |
+        Long-lived API key issued per tenant for agent integrations.
+        Generate one from the SymbioKnowledgeBase settings panel under "API Keys".
+    SupabaseJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Short-lived JSON Web Token obtained via Supabase Auth.
+        Used for user-scoped access where the agent acts on behalf of a specific user.

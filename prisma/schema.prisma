@@ -49,6 +49,7 @@ model Tenant {
   blocks    Block[]
   pageLinks PageLink[]
   apiKeys   ApiKey[]
+  auditLogs AuditLog[]
   databases Database[]
   dbRows    DbRow[]
 
@@ -69,8 +70,9 @@ model User {
   deactivatedAt  DateTime? @map("deactivated_at")
 
   // Relations
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  apiKeys ApiKey[]
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apiKeys   ApiKey[]
+  auditLogs AuditLog[]
 
   // Indexes
   @@unique([tenantId, email], map: "uq_users_email_tenant_id")
@@ -172,13 +174,15 @@ model ApiKey {
   keyHash    String    @map("key_hash")
   keyPrefix  String    @map("key_prefix")
   name       String
+  scopes     String[]  @default(["read"])
   createdAt  DateTime  @default(now()) @map("created_at")
   lastUsedAt DateTime? @map("last_used_at")
   revokedAt  DateTime? @map("revoked_at")
 
   // Relations
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_api_keys_tenant_id_id")
@@ -186,6 +190,32 @@ model ApiKey {
   @@index([keyHash], map: "idx_api_keys_key_hash")
 
   @@map("api_keys")
+}
+
+// ─── Audit Logs ──────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  userId     String?  @map("user_id")
+  apiKeyId   String?  @map("api_key_id")
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id")
+  details    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([tenantId, createdAt], map: "idx_audit_logs_tenant_created")
+  @@index([userId], map: "idx_audit_logs_user")
+  @@index([apiKeyId], map: "idx_audit_logs_api_key")
+
+  @@map("audit_logs")
 }
 
 // ─── Databases (Notion-style typed tables) ───────────────────────────

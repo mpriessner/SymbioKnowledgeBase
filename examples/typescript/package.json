@@ -1,0 +1,12 @@
+{
+  "name": "symbio-kb-example",
+  "version": "1.0.0",
+  "description": "Example TypeScript client for the SymbioKnowledgeBase Agent API",
+  "type": "module",
+  "scripts": {
+    "start": "tsx symbio-kb-client.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.19.0"
+  }
+}
