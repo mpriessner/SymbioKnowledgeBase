@@ -51,14 +51,15 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  users      User[]
-  pages      Page[]
-  blocks     Block[]
-  pageLinks  PageLink[]
-  apiKeys    ApiKey[]
-  databases  Database[]
-  dbRows     DbRow[]
-  teamspaces Teamspace[]
+  users            User[]
+  pages            Page[]
+  blocks           Block[]
+  pageLinks        PageLink[]
+  apiKeys          ApiKey[]
+  databases        Database[]
+  dbRows           DbRow[]
+  teamspaces       Teamspace[]
+  publicShareLinks PublicShareLink[]
 
   @@map("tenants")
 }
@@ -77,9 +78,10 @@ model User {
   deactivatedAt  DateTime? @map("deactivated_at")
 
   // Relations
-  tenant              Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  apiKeys             ApiKey[]
+  tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apiKeys              ApiKey[]
   teamspaceMemberships TeamspaceMember[]
+  createdShareLinks    PublicShareLink[]
 
   // Indexes
   @@unique([tenantId, email], map: "uq_users_email_tenant_id")
@@ -107,12 +109,13 @@ model Page {
   tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parent       Page?       @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children     Page[]      @relation("PageHierarchy")
-  teamspace    Teamspace?  @relation(fields: [teamspaceId], references: [id], onDelete: SetNull)
-  blocks       Block[]
-  sourceLinks  PageLink[]  @relation("SourcePage")
-  targetLinks  PageLink[]  @relation("TargetPage")
-  databases    Database[]
-  dbRows       DbRow[]
+  teamspace        Teamspace?       @relation(fields: [teamspaceId], references: [id], onDelete: SetNull)
+  blocks           Block[]
+  sourceLinks      PageLink[]       @relation("SourcePage")
+  targetLinks      PageLink[]       @relation("TargetPage")
+  databases        Database[]
+  dbRows           DbRow[]
+  publicShareLinks PublicShareLink[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_pages_tenant_id_id")
@@ -285,4 +288,28 @@ model TeamspaceMember {
   @@index([teamspaceId, role], map: "idx_teamspace_members_teamspace_role")
 
   @@map("teamspace_members")
+}
+
+// ─── Public Share Links ─────────────────────────────────────────
+
+model PublicShareLink {
+  id        String    @id @default(uuid())
+  pageId    String    @map("page_id")
+  tenantId  String    @map("tenant_id")
+  token     String    @unique
+  createdBy String    @map("created_by")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page          Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  createdByUser User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([token], map: "idx_public_share_links_token")
+  @@index([pageId], map: "idx_public_share_links_page_id")
+
+  @@map("public_share_links")
 }
