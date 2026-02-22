@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { useTheme } from "@/hooks/useTheme";
+import { ApiKeysSection } from "@/components/settings/ApiKeysSection";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type SettingsSection = "account-preferences" | "workspace-general";
+type SettingsSection = "account-preferences" | "workspace-general" | "workspace-api-keys";
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("account-preferences");
@@ -103,6 +104,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               }`}
             >
               General
+            </button>
+            <button
+              onClick={() => setActiveSection("workspace-api-keys")}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                activeSection === "workspace-api-keys"
+                  ? "bg-[var(--bg-hover)] text-[var(--text-primary)] font-medium"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              API Keys
             </button>
           </div>
         </aside>
@@ -291,6 +302,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeSection === "workspace-api-keys" && (
+            <div>
+              <h1 className="text-2xl font-semibold text-[var(--text-primary)] mb-6">
+                API Keys
+              </h1>
+              <ApiKeysSection />
             </div>
           )}
         </main>
