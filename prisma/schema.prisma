@@ -17,6 +17,13 @@ enum Role {
   USER
 }
 
+enum TeamspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  GUEST
+}
+
 enum BlockType {
   DOCUMENT
   PARAGRAPH
@@ -50,15 +57,17 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  users         User[]
-  pages         Page[]
-  blocks        Block[]
-  pageLinks     PageLink[]
-  apiKeys       ApiKey[]
-  auditLogs     AuditLog[]
-  databases     Database[]
-  dbRows        DbRow[]
-  notifications Notification[]
+  users            User[]
+  pages            Page[]
+  blocks           Block[]
+  pageLinks        PageLink[]
+  apiKeys          ApiKey[]
+  databases        Database[]
+  dbRows           DbRow[]
+  teamspaces       Teamspace[]
+  publicShareLinks PublicShareLink[]
+  presenceRecords  PagePresence[]
+  notifications    Notification[]
 
   @@map("tenants")
 }
@@ -77,11 +86,13 @@ model User {
   deactivatedAt  DateTime? @map("deactivated_at")
 
   // Relations
-  tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   apiKeys               ApiKey[]
-  auditLogs             AuditLog[]
-  receivedNotifications Notification[] @relation("NotificationRecipient")
-  sentNotifications     Notification[] @relation("NotificationSource")
+  teamspaceMemberships  TeamspaceMember[]
+  createdShareLinks     PublicShareLink[]
+  presenceRecords       PagePresence[]
+  receivedNotifications Notification[]     @relation("NotificationRecipient")
+  sentNotifications     Notification[]     @relation("NotificationSource")
 
   // Indexes
   @@unique([tenantId, email], map: "uq_users_email_tenant_id")
@@ -94,31 +105,36 @@ model User {
 // ─── Pages ───────────────────────────────────────────────────────────
 
 model Page {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  parentId  String?  @map("parent_id")
-  title     String   @default("Untitled")
-  icon      String?
-  coverUrl  String?  @map("cover_url")
-  position  Int      @default(0)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  parentId     String?  @map("parent_id")
+  teamspaceId  String?  @map("teamspace_id")
+  title        String   @default("Untitled")
+  icon         String?
+  coverUrl     String?  @map("cover_url")
+  position     Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   // Relations
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent        Page?          @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children      Page[]         @relation("PageHierarchy")
-  blocks        Block[]
-  sourceLinks   PageLink[]     @relation("SourcePage")
-  targetLinks   PageLink[]     @relation("TargetPage")
-  databases     Database[]
-  dbRows        DbRow[]
-  notifications Notification[]
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent       Page?       @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Page[]      @relation("PageHierarchy")
+  teamspace        Teamspace?       @relation(fields: [teamspaceId], references: [id], onDelete: SetNull)
+  blocks           Block[]
+  sourceLinks      PageLink[]       @relation("SourcePage")
+  targetLinks      PageLink[]       @relation("TargetPage")
+  databases        Database[]
+  dbRows           DbRow[]
+  publicShareLinks PublicShareLink[]
+  presenceRecords  PagePresence[]
+  notifications    Notification[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_pages_tenant_id_id")
   @@index([tenantId], map: "idx_pages_tenant_id")
   @@index([tenantId, parentId], map: "idx_pages_tenant_id_parent_id")
+  @@index([tenantId, teamspaceId], map: "idx_pages_tenant_id_teamspace_id")
 
   @@map("pages")
 }
@@ -184,15 +200,13 @@ model ApiKey {
   keyHash    String    @map("key_hash")
   keyPrefix  String    @map("key_prefix")
   name       String
-  scopes     String[]  @default(["read"])
   createdAt  DateTime  @default(now()) @map("created_at")
   lastUsedAt DateTime? @map("last_used_at")
   revokedAt  DateTime? @map("revoked_at")
 
   // Relations
-  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  auditLogs AuditLog[]
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Indexes
   @@index([tenantId, id], map: "idx_api_keys_tenant_id_id")
@@ -200,32 +214,6 @@ model ApiKey {
   @@index([keyHash], map: "idx_api_keys_key_hash")
 
   @@map("api_keys")
-}
-
-// ─── Audit Logs ──────────────────────────────────────────────────────
-
-model AuditLog {
-  id         String   @id @default(uuid())
-  tenantId   String   @map("tenant_id")
-  userId     String?  @map("user_id")
-  apiKeyId   String?  @map("api_key_id")
-  action     String
-  resource   String
-  resourceId String?  @map("resource_id")
-  details    Json?
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  // Relations
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
-
-  // Indexes
-  @@index([tenantId, createdAt], map: "idx_audit_logs_tenant_created")
-  @@index([userId], map: "idx_audit_logs_user")
-  @@index([apiKeyId], map: "idx_audit_logs_api_key")
-
-  @@map("audit_logs")
 }
 
 // ─── Databases (Notion-style typed tables) ───────────────────────────
@@ -274,6 +262,92 @@ model DbRow {
   @@index([tenantId, databaseId], map: "idx_db_rows_tenant_id_database_id")
 
   @@map("db_rows")
+}
+
+// ─── Teamspaces ─────────────────────────────────────────────────
+
+model Teamspace {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  icon      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members TeamspaceMember[]
+  pages   Page[]
+
+  // Indexes
+  @@unique([tenantId, name], map: "uq_teamspaces_tenant_name")
+  @@index([tenantId], map: "idx_teamspaces_tenant_id")
+
+  @@map("teamspaces")
+}
+
+model TeamspaceMember {
+  id          String        @id @default(uuid())
+  teamspaceId String        @map("teamspace_id")
+  userId      String        @map("user_id")
+  role        TeamspaceRole @default(MEMBER)
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  // Relations
+  teamspace Teamspace @relation(fields: [teamspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@unique([teamspaceId, userId], map: "uq_teamspace_members_teamspace_user")
+  @@index([teamspaceId, role], map: "idx_teamspace_members_teamspace_role")
+
+  @@map("teamspace_members")
+}
+
+// ─── Public Share Links ─────────────────────────────────────────
+
+model PublicShareLink {
+  id        String    @id @default(uuid())
+  pageId    String    @map("page_id")
+  tenantId  String    @map("tenant_id")
+  token     String    @unique
+  createdBy String    @map("created_by")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page          Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  createdByUser User   @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([token], map: "idx_public_share_links_token")
+  @@index([pageId], map: "idx_public_share_links_page_id")
+
+  @@map("public_share_links")
+}
+
+// ─── Page Presence ──────────────────────────────────────────────
+
+model PagePresence {
+  id            String   @id @default(uuid())
+  pageId        String   @map("page_id")
+  userId        String   @map("user_id")
+  tenantId      String   @map("tenant_id")
+  lastHeartbeat DateTime @default(now()) @map("last_heartbeat")
+  isEditing     Boolean  @default(false) @map("is_editing")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@unique([pageId, userId], map: "uq_page_presence_page_user")
+  @@index([pageId], map: "idx_page_presence_page_id")
+  @@index([lastHeartbeat], map: "idx_page_presence_last_heartbeat")
+
+  @@map("page_presence")
 }
 
 // ─── Notifications ───────────────────────────────────────────────────

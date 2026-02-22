@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/workspace/PageHeader";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { BacklinksPanel } from "@/components/page/BacklinksPanel";
 import { LocalGraph } from "@/components/graph/LocalGraph";
+import { PresenceIndicators } from "@/components/page/PresenceIndicators";
 
 interface PageViewProps {
   params: Promise<{ id: string }>;
@@ -67,6 +68,11 @@ export default function PageView({ params }: PageViewProps) {
   return (
     <div className="w-full min-h-screen">
       <PageHeader page={page} />
+
+      {/* Presence Indicators */}
+      <div className="w-full px-16 pb-2">
+        <PresenceIndicators pageId={page.id} />
+      </div>
 
       {/* Block Editor */}
       <div className="w-full">
