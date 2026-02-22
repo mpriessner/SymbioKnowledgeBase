@@ -1,17 +1,13 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { Suspense, useRef, useCallback } from "react";
 import { GraphView } from "@/components/graph/GraphView";
 import type { GraphRefHandle } from "@/components/graph/GraphView";
 import { GraphControls } from "@/components/graph/GraphControls";
 import { useGraphData } from "@/hooks/useGraphData";
 import { useGraphFilters } from "@/hooks/useGraphFilters";
 
-/**
- * Global knowledge graph page.
- * Renders a full-viewport interactive graph with filtering controls.
- */
-export default function GraphPage() {
+function GraphPageContent() {
   const graphRefHandle = useRef<GraphRefHandle | null>(null);
 
   const { data } = useGraphData();
@@ -72,5 +68,23 @@ export default function GraphPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Global knowledge graph page.
+ * Wrapped in Suspense because useGraphFilters uses useSearchParams.
+ */
+export default function GraphPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-[var(--border-default)] border-t-[var(--accent-primary)]" />
+        </div>
+      }
+    >
+      <GraphPageContent />
+    </Suspense>
   );
 }

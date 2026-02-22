@@ -128,26 +128,34 @@ export function GraphView({
   }, [width, height]);
 
   // Click handler: navigate to page
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleNodeClick = useCallback(
-    (node: ForceGraphNode) => {
-      if (node.id) {
-        router.push(`/pages/${node.id}`);
+    (node: any) => {
+      const typedNode = node as ForceGraphNode | null;
+      if (typedNode?.id) {
+        router.push(`/pages/${typedNode.id}`);
       }
     },
     [router]
   );
 
   // Hover handler: show/hide tooltip
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleNodeHover = useCallback(
-    (node: ForceGraphNode | null, event?: MouseEvent) => {
-      if (node && event) {
-        setTooltip({
-          title: node.label,
-          linkCount: node.linkCount,
-          x: event.clientX,
-          y: event.clientY,
-          visible: true,
-        });
+    (node: any, _previousNode: any) => {
+      const typedNode = node as ForceGraphNode | null;
+      if (typedNode) {
+        // Get mouse position from window event
+        const event = window.event as MouseEvent | undefined;
+        if (event) {
+          setTooltip({
+            title: typedNode.label,
+            linkCount: typedNode.linkCount,
+            x: event.clientX,
+            y: event.clientY,
+            visible: true,
+          });
+        }
       } else {
         setTooltip((prev) => ({ ...prev, visible: false }));
       }
@@ -156,12 +164,14 @@ export function GraphView({
   );
 
   // Custom node rendering: circle with size based on linkCount
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nodeCanvasObject = useCallback(
     (
-      node: ForceGraphNode,
+      nodeObj: any,
       ctx: CanvasRenderingContext2D,
       globalScale: number
     ) => {
+      const node = nodeObj as ForceGraphNode;
       const label = node.label;
       const fontSize = Math.max(12 / globalScale, 3);
       const radius = Math.max(Math.sqrt(node.linkCount + 1) * 3, 4);
@@ -255,8 +265,9 @@ export function GraphView({
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <ForceGraph2D
-        ref={graphRef as React.MutableRefObject<null>}
+        ref={graphRef as any}
         width={dimensions.width}
         height={dimensions.height}
         graphData={graphData}

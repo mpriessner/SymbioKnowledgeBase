@@ -75,31 +75,32 @@ export function optimisticReorder(
   if (!movedNode) return cloned; // Node not found, return original
 
   // Update the node's parent reference
-  movedNode.parentId = newParentId;
+  const node: PageTreeNode = movedNode;
+  node.parentId = newParentId;
 
   // Insert at the new position
   if (newParentId === null) {
     // Insert at root level
     const pos = Math.min(newPosition, treeWithoutNode.length);
-    treeWithoutNode.splice(pos, 0, movedNode);
+    treeWithoutNode.splice(pos, 0, node);
     // Reindex positions
-    treeWithoutNode.forEach((node, idx) => {
-      node.position = idx;
+    treeWithoutNode.forEach((n, idx) => {
+      n.position = idx;
     });
   } else {
     // Find the parent node and insert
     function insertIntoParent(nodes: PageTreeNode[]): boolean {
-      for (const node of nodes) {
-        if (node.id === newParentId) {
-          const pos = Math.min(newPosition, node.children.length);
-          node.children.splice(pos, 0, movedNode!);
+      for (const n of nodes) {
+        if (n.id === newParentId) {
+          const pos = Math.min(newPosition, n.children.length);
+          n.children.splice(pos, 0, node);
           // Reindex children positions
-          node.children.forEach((child, idx) => {
+          n.children.forEach((child, idx) => {
             child.position = idx;
           });
           return true;
         }
-        if (insertIntoParent(node.children)) return true;
+        if (insertIntoParent(n.children)) return true;
       }
       return false;
     }

@@ -102,7 +102,7 @@ export async function resolveUnresolvedLinksForNewPage(
 
   for (const block of blocksWithPotentialLinks) {
     const extracted = extractWikilinks(
-      block.content as import("./types").TipTapDocument
+      block.content as unknown as import("./types").TipTapDocument
     );
     const matchingLink = extracted.find(
       (link) => link.pageName.toLowerCase() === newPageTitle.toLowerCase()

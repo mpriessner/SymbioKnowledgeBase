@@ -100,7 +100,7 @@ export async function rebuildPageLinks(
     },
   });
 
-  const blockContents = blocks.map((b) => b.content as TipTapDocument);
+  const blockContents = blocks.map((b) => b.content as unknown as TipTapDocument);
 
   // Delete all existing links for this page
   await prisma.pageLink.deleteMany({

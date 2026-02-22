@@ -60,7 +60,7 @@ export async function updateWikilinksOnRename(
 
   // Step 3: Update wikilink nodes in each block
   for (const block of blocks) {
-    const content = block.content as TipTapDocument;
+    const content = block.content as unknown as TipTapDocument;
     if (!content || !content.content) continue;
 
     const wasUpdated = updateWikilinkNodesInDocument(
@@ -73,7 +73,7 @@ export async function updateWikilinksOnRename(
       // Step 4: Save the updated block content
       await db.block.update({
         where: { id: block.id },
-        data: { content: content as unknown as Record<string, unknown> },
+        data: { content: JSON.parse(JSON.stringify(content)) },
       });
       updatedBlockCount++;
     }
@@ -172,7 +172,7 @@ export async function markWikilinksAsDeleted(
   });
 
   for (const block of blocks) {
-    const content = block.content as TipTapDocument;
+    const content = block.content as unknown as TipTapDocument;
     if (!content || !content.content) continue;
 
     const wasUpdated = nullifyPageIdInNodes(content.content, deletedPageId);
@@ -180,7 +180,7 @@ export async function markWikilinksAsDeleted(
     if (wasUpdated) {
       await prisma.block.update({
         where: { id: block.id },
-        data: { content: content as unknown as Record<string, unknown> },
+        data: { content: JSON.parse(JSON.stringify(content)) },
       });
     }
   }
