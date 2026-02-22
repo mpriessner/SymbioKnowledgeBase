@@ -10,6 +10,11 @@ import {
   updateWikilinksOnRename,
   markWikilinksAsDeleted,
 } from "@/lib/wikilinks/renameUpdater";
+import {
+  pageToMarkdown,
+  savePageBlocks,
+  markdownToTiptap,
+} from "@/lib/markdown/helpers";
 import { z } from "zod";
 
 const pageIdSchema = z.string().uuid("Page ID must be a valid UUID");
@@ -27,15 +32,36 @@ export const GET = withTenant(
         return errorResponse("VALIDATION_ERROR", "Invalid page ID", undefined, 400);
       }
 
+      const { searchParams } = new URL(req.url);
+      const format = searchParams.get("format");
+      const accept = req.headers.get("accept");
+
+      // Check if markdown format is requested
+      const wantsMarkdown =
+        format === "markdown" || accept?.includes("text/markdown");
+
       const page = await prisma.page.findFirst({
         where: {
           id: idParsed.data,
           tenantId: context.tenantId,
         },
+        ...(wantsMarkdown ? { include: { blocks: { orderBy: { position: "asc" } } } } : {}),
       });
 
       if (!page) {
         return errorResponse("NOT_FOUND", "Page not found", undefined, 404);
+      }
+
+      // Return markdown if requested
+      if (wantsMarkdown && "blocks" in page) {
+        const markdown = pageToMarkdown(
+          page as typeof page & {
+            blocks: Array<{ id: string; content: unknown; position: number }>;
+          }
+        );
+        return new Response(markdown, {
+          headers: { "Content-Type": "text/markdown; charset=utf-8" },
+        });
       }
 
       return successResponse(serializePage(page));
@@ -57,6 +83,52 @@ export const PUT = withTenant(
       const idParsed = pageIdSchema.safeParse(id);
       if (!idParsed.success) {
         return errorResponse("VALIDATION_ERROR", "Invalid page ID", undefined, 400);
+      }
+
+      // Check if this is a markdown PUT
+      const { searchParams } = new URL(req.url);
+      const format = searchParams.get("format");
+      const contentType = req.headers.get("content-type") || "";
+
+      if (
+        format === "markdown" ||
+        contentType.includes("text/markdown")
+      ) {
+        const markdownBody = await req.text();
+        if (markdownBody.length > 10 * 1024 * 1024) {
+          return errorResponse(
+            "VALIDATION_ERROR",
+            "Content too large (max 10MB)",
+            undefined,
+            400
+          );
+        }
+
+        const existingPageMd = await prisma.page.findFirst({
+          where: { id: idParsed.data, tenantId: context.tenantId },
+        });
+        if (!existingPageMd) {
+          return errorResponse("NOT_FOUND", "Page not found", undefined, 404);
+        }
+
+        const { content: tiptapContent, metadata } =
+          markdownToTiptap(markdownBody);
+
+        await prisma.page.update({
+          where: { id: idParsed.data },
+          data: {
+            title: metadata.title || existingPageMd.title,
+            icon: metadata.icon || existingPageMd.icon,
+          },
+        });
+
+        await savePageBlocks(
+          idParsed.data,
+          context.tenantId,
+          tiptapContent
+        );
+
+        return successResponse({ message: "Page updated from markdown" });
       }
 
       const body = await req.json();
