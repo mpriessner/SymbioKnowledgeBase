@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { registerSchema } from "@/lib/validation/auth";
 
 type FieldErrors = Partial<Record<string, string>>;
@@ -22,7 +23,6 @@ export default function RegisterPage() {
     setErrors({});
     setGeneralError("");
 
-    // Client-side validation
     const parsed = registerSchema.safeParse({ name, email, password });
     if (!parsed.success) {
       const fieldErrors: FieldErrors = {};
@@ -37,15 +37,41 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
+      const supabase = createClient();
+
+      // Create Supabase auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: parsed.data.email,
+        password: parsed.data.password,
+        options: {
+          data: { name: parsed.data.name },
+        },
+      });
+
+      if (authError) {
+        setGeneralError(authError.message);
+        return;
+      }
+
+      if (!authData.user) {
+        setGeneralError("Failed to create account. Please try again.");
+        return;
+      }
+
+      // Create Prisma user + tenant via API (passes Supabase user ID)
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsed.data),
+        body: JSON.stringify({
+          name: parsed.data.name,
+          email: parsed.data.email,
+          password: parsed.data.password,
+          supabaseUserId: authData.user.id,
+        }),
       });
 
-      const result = await response.json();
-
       if (!response.ok) {
+        const result = await response.json();
         if (response.status === 409) {
           setGeneralError("A user with this email already exists.");
         } else if (result.error?.details) {
@@ -64,7 +90,6 @@ export default function RegisterPage() {
         return;
       }
 
-      // Redirect to login with success message
       router.push("/login?registered=true");
     } catch {
       setGeneralError("An unexpected error occurred. Please try again.");

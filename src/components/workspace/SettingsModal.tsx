@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { useSession } from "next-auth/react";
+import { useUser } from "@/components/providers/SupabaseProvider";
 import { useTheme } from "@/hooks/useTheme";
 import { ExportSection } from "@/components/export/ExportSection";
 import { ImportSection } from "@/components/import/ImportSection";
@@ -18,7 +18,7 @@ type SettingsSection = "account-preferences" | "workspace-general" | "workspace-
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("account-preferences");
   const [mounted, setMounted] = useState(false);
-  const { data: session } = useSession();
+  const user = useUser();
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
@@ -139,17 +139,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </h1>
 
               {/* User info */}
-              {session?.user && (
+              {user && (
                 <div className="mb-8 pb-8 border-b border-[var(--border-default)]">
                   <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-3">
                     Account
                   </h2>
                   <div className="space-y-2">
                     <p className="text-sm text-[var(--text-primary)]">
-                      <span className="font-medium">Name:</span> {session.user.name || "Not set"}
+                      <span className="font-medium">Name:</span> {user.user_metadata?.name || "Not set"}
                     </p>
                     <p className="text-sm text-[var(--text-primary)]">
-                      <span className="font-medium">Email:</span> {session.user.email || "Not set"}
+                      <span className="font-medium">Email:</span> {user.email || "Not set"}
                     </p>
                   </div>
                 </div>

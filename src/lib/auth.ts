@@ -36,6 +36,11 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        // passwordHash is nullable after Supabase migration
+        if (!user.passwordHash) {
+          return null;
+        }
+
         const isPasswordValid = await bcrypt.compare(
           password,
           user.passwordHash

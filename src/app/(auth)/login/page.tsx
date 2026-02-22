@@ -1,9 +1,9 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 import { loginSchema } from "@/lib/validation/auth";
 
 type FieldErrors = Partial<Record<string, string>>;
@@ -25,7 +25,6 @@ function LoginForm() {
     setErrors({});
     setGeneralError("");
 
-    // Client-side validation
     const parsed = loginSchema.safeParse({ email, password });
     if (!parsed.success) {
       const fieldErrors: FieldErrors = {};
@@ -40,14 +39,14 @@ function LoginForm() {
     setIsLoading(true);
 
     try {
-      const result = await signIn("credentials", {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithPassword({
         email: parsed.data.email,
         password: parsed.data.password,
-        redirect: false,
       });
 
-      if (result?.error) {
-        setGeneralError("Invalid email or password");
+      if (error) {
+        setGeneralError(error.message || "Invalid email or password");
       } else {
         router.push(callbackUrl);
         router.refresh();

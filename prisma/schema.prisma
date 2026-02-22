@@ -75,10 +75,10 @@ model Tenant {
 // ─── Users ───────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(uuid())
+  id           String   @id // Supabase auth.users.id (UUID) — no @default for Supabase-managed IDs
   tenantId     String   @map("tenant_id")
   email        String
-  passwordHash String   @map("password_hash")
+  passwordHash String?  @map("password_hash") // Deprecated — managed by Supabase Auth
   role         Role     @default(USER)
   name         String?
   createdAt      DateTime  @default(now()) @map("created_at")

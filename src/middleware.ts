@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { getToken } from "next-auth/jwt";
+import { updateSession } from "@/lib/supabase/middleware";
 
 // Routes that do not require authentication
-const PUBLIC_PATHS = ["/", "/login", "/register", "/api/auth"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/shared", "/api/auth"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(
@@ -24,30 +24,28 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for valid JWT token
-  const token = await getToken({
-    req: request,
-    secret: process.env.NEXTAUTH_SECRET,
-  });
+  // Allow API routes with Authorization header (API key auth)
+  if (
+    pathname.startsWith("/api/") &&
+    request.headers.get("authorization")
+  ) {
+    return NextResponse.next();
+  }
 
-  // Redirect to login if not authenticated
-  if (!token) {
+  // Refresh Supabase session and check authentication
+  const { user, response } = await updateSession(request);
+
+  if (!user) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico (favicon)
-     */
     "/((?!_next/static|_next/image|favicon.ico).*)",
   ],
 };

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { withAdmin } from "@/lib/auth/withAdmin";
@@ -126,6 +127,7 @@ export const POST = withAdmin(
 
       const user = await tx.user.create({
         data: {
+          id: randomUUID(),
           name,
           email,
           passwordHash,
