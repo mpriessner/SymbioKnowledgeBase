@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import ApiKeyManager from "@/components/settings/ApiKeyManager";
+import { TeamManagement } from "@/components/settings/TeamManagement";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -14,6 +15,10 @@ export default function SettingsPage() {
 
       <div className="mt-8">
         <ApiKeyManager />
+      </div>
+
+      <div className="mt-12">
+        <TeamManagement />
       </div>
 
       <div className="mt-12">

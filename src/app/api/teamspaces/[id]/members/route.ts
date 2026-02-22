@@ -10,6 +10,65 @@ const addMemberSchema = z.object({
   role: z.enum(["ADMIN", "MEMBER", "GUEST"]).default("MEMBER"),
 });
 
+// GET /api/teamspaces/:id/members — List members
+export const GET = withTenant(
+  async (
+    _req: NextRequest,
+    ctx: TenantContext,
+    routeContext: { params: Promise<Record<string, string>> }
+  ) => {
+    try {
+      const { id: teamspaceId } = await routeContext.params;
+
+      // Verify caller is a member
+      const callerMembership = await prisma.teamspaceMember.findUnique({
+        where: {
+          teamspaceId_userId: {
+            teamspaceId,
+            userId: ctx.userId,
+          },
+        },
+      });
+
+      if (!callerMembership) {
+        return errorResponse(
+          "NOT_FOUND",
+          "Teamspace not found",
+          undefined,
+          404
+        );
+      }
+
+      const members = await prisma.teamspaceMember.findMany({
+        where: { teamspaceId },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const data = members.map((m) => ({
+        id: m.id,
+        userId: m.userId,
+        role: m.role,
+        userName: m.user.name,
+        userEmail: m.user.email,
+        createdAt: m.createdAt.toISOString(),
+      }));
+
+      return successResponse(data);
+    } catch (error) {
+      console.error("GET /api/teamspaces/:id/members error:", error);
+      return errorResponse(
+        "INTERNAL_ERROR",
+        "Internal server error",
+        undefined,
+        500
+      );
+    }
+  }
+);
+
 // POST /api/teamspaces/:id/members — Add member (ADMIN+ only)
 export const POST = withTenant(
   async (

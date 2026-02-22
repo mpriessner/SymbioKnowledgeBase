@@ -49,23 +49,31 @@ const userSelect = {
 } as const;
 
 // GET /api/users — List all users (admin only)
+// Supports optional ?email= filter for user lookup
 export const GET = withAdmin(
-  async (req: NextRequest, _ctx: TenantContext) => {
+  async (req: NextRequest, ctx: TenantContext) => {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(
       parseInt(searchParams.get("limit") || "50", 10),
       100
     );
     const offset = parseInt(searchParams.get("offset") || "0", 10);
+    const emailFilter = searchParams.get("email");
+
+    const where = {
+      tenantId: ctx.tenantId,
+      ...(emailFilter ? { email: emailFilter } : {}),
+    };
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({
+        where,
         select: userSelect,
         orderBy: { createdAt: "desc" },
         take: limit,
         skip: offset,
       }),
-      prisma.user.count(),
+      prisma.user.count({ where }),
     ]);
 
     return listResponse(users.map(serializeUser), total, limit, offset);
