@@ -28,6 +28,19 @@ export async function POST(request: NextRequest) {
     const { name, email, password } = parsed.data;
     const supabaseUserId = body.supabaseUserId as string | undefined;
 
+    if (!supabaseUserId) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "supabaseUserId is required — register via Supabase Auth first",
+          },
+          meta: { timestamp: new Date().toISOString() },
+        },
+        { status: 400 }
+      );
+    }
+
     // Check for existing user
     const existingUser = await prisma.user.findFirst({
       where: { email },
@@ -59,8 +72,7 @@ export async function POST(request: NextRequest) {
 
       const user = await tx.user.create({
         data: {
-          // Use Supabase user ID if provided, otherwise auto-generate
-          ...(supabaseUserId ? { id: supabaseUserId } : {}),
+          id: supabaseUserId,
           name,
           email,
           passwordHash,
