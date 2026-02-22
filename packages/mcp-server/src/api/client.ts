@@ -1,0 +1,163 @@
+/**
+ * Agent API client for the MCP server.
+ * Communicates with SymbioKnowledgeBase REST endpoints.
+ */
+
+export interface PageSummary {
+  id: string;
+  title: string;
+  icon: string | null;
+  parent_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PageWithMarkdown extends PageSummary {
+  markdown: string;
+}
+
+export interface SearchResult {
+  page_id: string;
+  title: string;
+  icon: string | null;
+  snippet: string;
+  score: number;
+}
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  icon: string | null;
+  link_count: number;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface ApiListResponse<T> {
+  data: T[];
+  meta: { total: number; limit: number; offset: number };
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  meta: Record<string, unknown>;
+}
+
+export interface AgentClient {
+  search(
+    query: string,
+    limit?: number,
+    offset?: number
+  ): Promise<ApiListResponse<SearchResult>>;
+  readPage(id: string): Promise<ApiResponse<PageWithMarkdown>>;
+  createPage(
+    title: string,
+    markdown?: string,
+    parentId?: string
+  ): Promise<ApiResponse<{ id: string; title: string; created_at: string }>>;
+  updatePage(
+    id: string,
+    markdown: string
+  ): Promise<ApiResponse<{ id: string; updated_at: string }>>;
+  listPages(
+    parentId?: string,
+    limit?: number,
+    offset?: number
+  ): Promise<ApiListResponse<PageSummary>>;
+  getGraph(
+    pageId?: string,
+    depth?: number
+  ): Promise<
+    ApiResponse<{ nodes: GraphNode[]; edges: GraphEdge[] }>
+  >;
+}
+
+export function createAgentClient(
+  baseUrl: string,
+  authToken: string
+): AgentClient {
+  async function callAPI<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const url = `${baseUrl}/api/agent${endpoint}`;
+
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        "Content-Type": "application/json",
+        ...(options.headers as Record<string, string>),
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response
+        .json()
+        .catch(() => ({ error: { message: "Unknown error" } }));
+      throw new Error(
+        `API Error (${response.status}): ${(error as Record<string, Record<string, string>>).error?.message || response.statusText}`
+      );
+    }
+
+    return response.json() as Promise<T>;
+  }
+
+  return {
+    async search(query, limit = 20, offset = 0) {
+      const params = new URLSearchParams({
+        q: query,
+        limit: String(limit),
+        offset: String(offset),
+      });
+      return callAPI<ApiListResponse<SearchResult>>(`/search?${params}`);
+    },
+
+    async readPage(id) {
+      return callAPI<ApiResponse<PageWithMarkdown>>(`/pages/${id}`);
+    },
+
+    async createPage(title, markdown?, parentId?) {
+      const body: Record<string, string> = { title };
+      if (markdown) body.markdown = markdown;
+      if (parentId) body.parent_id = parentId;
+
+      return callAPI<
+        ApiResponse<{ id: string; title: string; created_at: string }>
+      >("/pages", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+
+    async updatePage(id, markdown) {
+      return callAPI<ApiResponse<{ id: string; updated_at: string }>>(
+        `/pages/${id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ markdown }),
+        }
+      );
+    },
+
+    async listPages(parentId?, limit = 50, offset = 0) {
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      });
+      if (parentId) params.set("parent_id", parentId);
+      return callAPI<ApiListResponse<PageSummary>>(`/pages?${params}`);
+    },
+
+    async getGraph(pageId?, depth = 2) {
+      const params = new URLSearchParams({ depth: String(depth) });
+      if (pageId) params.set("pageId", pageId);
+      return callAPI<
+        ApiResponse<{ nodes: GraphNode[]; edges: GraphEdge[] }>
+      >(`/graph?${params}`);
+    },
+  };
+}
