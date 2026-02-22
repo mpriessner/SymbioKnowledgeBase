@@ -18,6 +18,8 @@ interface GraphControlsProps {
   onResetView: () => void;
   nodeCount: number;
   edgeCount: number;
+  clusterCount?: number;
+  orphanCount?: number;
   onSearchNode?: (query: string) => void;
 }
 
@@ -35,6 +37,8 @@ export function GraphControls({
   onResetView,
   nodeCount,
   edgeCount,
+  clusterCount,
+  orphanCount,
   onSearchNode,
 }: GraphControlsProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -214,10 +218,36 @@ export function GraphControls({
 
       {/* Stats */}
       <div className="border-t border-[var(--color-border)] pt-3">
-        <p className="text-xs text-[var(--color-text-secondary)]">
-          {nodeCount} pages, {edgeCount} connections
-          {isFiltered && " (filtered)"}
-        </p>
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
+          Statistics
+        </h3>
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="rounded-md bg-[var(--color-bg-secondary)] px-2 py-1.5 text-center">
+            <p className="text-sm font-semibold text-[var(--color-text-primary)]">{nodeCount}</p>
+            <p className="text-xs text-[var(--color-text-secondary)]">Pages</p>
+          </div>
+          <div className="rounded-md bg-[var(--color-bg-secondary)] px-2 py-1.5 text-center">
+            <p className="text-sm font-semibold text-[var(--color-text-primary)]">{edgeCount}</p>
+            <p className="text-xs text-[var(--color-text-secondary)]">Links</p>
+          </div>
+          {clusterCount !== undefined && (
+            <div className="rounded-md bg-[var(--color-bg-secondary)] px-2 py-1.5 text-center">
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">{clusterCount}</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Clusters</p>
+            </div>
+          )}
+          {orphanCount !== undefined && (
+            <div className="rounded-md bg-[var(--color-bg-secondary)] px-2 py-1.5 text-center">
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">{orphanCount}</p>
+              <p className="text-xs text-[var(--color-text-secondary)]">Orphans</p>
+            </div>
+          )}
+        </div>
+        {isFiltered && (
+          <p className="mt-2 text-xs text-[var(--color-text-secondary)]">
+            Showing filtered results
+          </p>
+        )}
       </div>
     </div>
   );

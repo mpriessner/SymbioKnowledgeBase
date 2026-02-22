@@ -1,11 +1,13 @@
 "use client";
 
-import { Suspense, useRef, useCallback } from "react";
+import { Suspense, useRef, useCallback, useMemo } from "react";
 import { GraphView } from "@/components/graph/GraphView";
 import type { GraphRefHandle } from "@/components/graph/GraphView";
 import { GraphControls } from "@/components/graph/GraphControls";
+import { GraphStats } from "@/components/graph/GraphStats";
 import { useGraphData } from "@/hooks/useGraphData";
 import { useGraphFilters } from "@/hooks/useGraphFilters";
+import { computeGraphMetrics } from "@/lib/graph/metrics";
 
 function GraphPageContent() {
   const graphRefHandle = useRef<GraphRefHandle | null>(null);
@@ -35,6 +37,11 @@ function GraphPageContent() {
     graphRefHandle.current?.zoom(1, 500);
   }, []);
 
+  const metrics = useMemo(
+    () => computeGraphMetrics(filteredData.nodes, filteredData.edges),
+    [filteredData]
+  );
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -57,6 +64,8 @@ function GraphPageContent() {
           onResetView={handleResetView}
           nodeCount={filteredData.nodes.length}
           edgeCount={filteredData.edges.length}
+          clusterCount={metrics.clusterCount}
+          orphanCount={metrics.orphanCount}
         />
 
         <div className="flex-1">
