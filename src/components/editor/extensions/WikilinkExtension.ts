@@ -2,6 +2,7 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import Suggestion from "@tiptap/suggestion";
 import type { SuggestionOptions } from "@tiptap/suggestion";
+import { PluginKey } from "@tiptap/pm/state";
 import { WikilinkNodeView } from "../WikilinkNodeView";
 
 export interface WikilinkAttributes {
@@ -117,6 +118,7 @@ export const WikilinkExtension = Node.create({
       Suggestion({
         editor: this.editor,
         ...this.options.suggestion,
+        pluginKey: new PluginKey("wikilinkSuggestion"),
       }),
     ];
   },

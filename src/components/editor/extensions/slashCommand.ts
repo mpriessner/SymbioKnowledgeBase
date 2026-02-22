@@ -2,6 +2,7 @@ import { Extension } from "@tiptap/core";
 import { ReactRenderer } from "@tiptap/react";
 import Suggestion from "@tiptap/suggestion";
 import type { SuggestionOptions, SuggestionProps } from "@tiptap/suggestion";
+import { PluginKey } from "@tiptap/pm/state";
 import tippy, { type Instance as TippyInstance } from "tippy.js";
 import {
   filterBlockTypes,
@@ -48,6 +49,7 @@ export const SlashCommand = Extension.create({
       Suggestion<BlockTypeItem>({
         editor: this.editor,
         ...this.options.suggestion,
+        pluginKey: new PluginKey("slashCommandSuggestion"),
 
         items: ({ query }: { query: string }) => {
           return filterBlockTypes(query);

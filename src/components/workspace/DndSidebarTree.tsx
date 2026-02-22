@@ -31,7 +31,7 @@ interface DropPosition {
 
 /**
  * Flattens the tree into a list of IDs (in render order) for SortableContext.
- * Only includes expanded nodes' children.
+ * Always includes all node IDs so collapsed parents remain valid drop targets.
  */
 function flattenTreeIds(
   nodes: PageTreeNode[],
@@ -40,8 +40,28 @@ function flattenTreeIds(
   const ids: string[] = [];
   for (const node of nodes) {
     ids.push(node.id);
-    if (node.children.length > 0 && isExpanded(node.id)) {
-      ids.push(...flattenTreeIds(node.children, isExpanded));
+    if (node.children.length > 0) {
+      if (isExpanded(node.id)) {
+        ids.push(...flattenTreeIds(node.children, isExpanded));
+      } else {
+        // Include collapsed children IDs so they remain valid sortable items
+        // This allows dragging items back into collapsed parents
+        ids.push(...getAllDescendantIds(node.children));
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Gets all descendant IDs from a list of nodes (regardless of expand state).
+ */
+function getAllDescendantIds(nodes: PageTreeNode[]): string[] {
+  const ids: string[] = [];
+  for (const node of nodes) {
+    ids.push(node.id);
+    if (node.children.length > 0) {
+      ids.push(...getAllDescendantIds(node.children));
     }
   }
   return ids;
@@ -147,12 +167,28 @@ export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
         const height = overRect.height;
         const relativeY = currentY - top;
 
-        if (relativeY < height * 0.25) {
-          setDropPosition({ type: "before" });
-        } else if (relativeY > height * 0.75) {
-          setDropPosition({ type: "after" });
+        // Check if target has children (is a potential parent)
+        const targetNode = findNodeWithParent(tree, overIdStr);
+        const isParentNode = targetNode?.node && targetNode.node.children.length > 0;
+
+        if (isParentNode) {
+          // For parent nodes: use wider middle zone to make "child" drops easier
+          if (relativeY < height * 0.2) {
+            setDropPosition({ type: "before" });
+          } else if (relativeY > height * 0.8) {
+            setDropPosition({ type: "after" });
+          } else {
+            setDropPosition({ type: "child" });
+          }
         } else {
-          setDropPosition({ type: "child" });
+          // For leaf nodes: standard zones
+          if (relativeY < height * 0.25) {
+            setDropPosition({ type: "before" });
+          } else if (relativeY > height * 0.75) {
+            setDropPosition({ type: "after" });
+          } else {
+            setDropPosition({ type: "child" });
+          }
         }
       }
     },

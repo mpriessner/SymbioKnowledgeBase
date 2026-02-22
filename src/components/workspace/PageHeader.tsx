@@ -76,7 +76,7 @@ export function PageHeader({ page }: PageHeaderProps) {
       )}
 
       {/* Icon and Title */}
-      <div className="px-16 pt-8 pb-4 max-w-4xl mx-auto">
+      <div className="px-16 pt-8 pb-4">
         {/* Icon with emoji picker */}
         {page.icon && (
           <div className="mb-2 relative">

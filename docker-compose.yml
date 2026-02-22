@@ -28,7 +28,7 @@ services:
       POSTGRES_USER: symbio
       POSTGRES_PASSWORD: ${DB_PASSWORD:-symbio_dev_password}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U symbio -d symbio"]
       interval: 5s

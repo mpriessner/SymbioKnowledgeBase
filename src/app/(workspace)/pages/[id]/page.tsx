@@ -31,7 +31,7 @@ export default function PageView({ params }: PageViewProps) {
 
   if (isLoading) {
     return (
-      <div className="w-full max-w-4xl mx-auto px-16 py-8">
+      <div className="w-full px-16 py-8">
         {/* Title skeleton */}
         <div className="animate-pulse">
           <div className="h-10 bg-gray-200 rounded w-1/3 mb-4" />
@@ -45,7 +45,7 @@ export default function PageView({ params }: PageViewProps) {
 
   if (error) {
     return (
-      <div className="w-full max-w-4xl mx-auto px-16 py-8">
+      <div className="w-full px-16 py-8">
         <div className="text-red-600 bg-red-50 border border-red-200 rounded-lg p-4">
           <h2 className="font-semibold text-lg mb-1">Error loading page</h2>
           <p className="text-sm">{error.message}</p>
@@ -56,7 +56,7 @@ export default function PageView({ params }: PageViewProps) {
 
   if (!data?.data) {
     return (
-      <div className="w-full max-w-4xl mx-auto px-16 py-8">
+      <div className="w-full px-16 py-8">
         <p className="text-gray-500">Page not found.</p>
       </div>
     );
@@ -69,17 +69,17 @@ export default function PageView({ params }: PageViewProps) {
       <PageHeader page={page} />
 
       {/* Block Editor */}
-      <div className="max-w-4xl mx-auto">
+      <div className="w-full">
         <BlockEditor pageId={page.id} />
       </div>
 
       {/* Backlinks Panel */}
-      <div className="max-w-4xl mx-auto px-8">
+      <div className="w-full px-8">
         <BacklinksPanel pageId={page.id} />
       </div>
 
       {/* Local Graph */}
-      <div className="max-w-4xl mx-auto px-8">
+      <div className="w-full px-8">
         <LocalGraph pageId={page.id} />
       </div>
     </div>

@@ -64,6 +64,7 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
       onDragHandleClick: handleDragHandleClick,
     }),
     editable,
+    immediatelyRender: false,
     editorProps: {
       attributes: {
         class:
@@ -86,7 +87,12 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
         !currentContent.content[0].content;
 
       if (isEmptyDoc) {
-        editor.commands.setContent(documentContent);
+        // Defer to avoid flushSync inside React lifecycle
+        queueMicrotask(() => {
+          if (!editor.isDestroyed) {
+            editor.commands.setContent(documentContent);
+          }
+        });
       }
     }
   }, [editor, documentContent]);
