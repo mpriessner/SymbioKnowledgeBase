@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import { Download } from "lucide-react";
 import { useUpdatePage } from "@/hooks/usePages";
 import { EmojiPicker } from "@/components/workspace/EmojiPicker";
 import { CoverImageManager } from "@/components/workspace/CoverImageManager";
@@ -64,8 +65,41 @@ export function PageHeader({ page }: PageHeaderProps) {
     updatePage.mutate({ id: page.id, coverUrl: null });
   }, [page.id, updatePage]);
 
+  const handleExportMarkdown = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/pages/${page.id}/export`);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download =
+        res.headers
+          .get("content-disposition")
+          ?.match(/filename="(.+)"/)?.[1] || `${page.title}.md`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      // Silently fail
+    }
+  }, [page.id, page.title]);
+
   return (
     <div className="w-full">
+      {/* Export button - top right */}
+      <div className="absolute right-4 top-2 z-10">
+        <button
+          onClick={handleExportMarkdown}
+          className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
+          title="Export as Markdown"
+          aria-label="Export as Markdown"
+        >
+          <Download className="h-4 w-4" />
+        </button>
+      </div>
+
       {/* Cover Image Area */}
       {(page.coverUrl || showCoverInput) && (
         <CoverImageManager

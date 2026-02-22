@@ -4,13 +4,15 @@ import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
 import { useTheme } from "@/hooks/useTheme";
+import { ExportSection } from "@/components/export/ExportSection";
+import { ImportSection } from "@/components/import/ImportSection";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type SettingsSection = "account-preferences" | "workspace-general";
+type SettingsSection = "account-preferences" | "workspace-general" | "workspace-import-export";
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("account-preferences");
@@ -103,6 +105,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               }`}
             >
               General
+            </button>
+            <button
+              onClick={() => setActiveSection("workspace-import-export")}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                activeSection === "workspace-import-export"
+                  ? "bg-[var(--bg-hover)] text-[var(--text-primary)] font-medium"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              Import & Export
             </button>
           </div>
         </aside>
@@ -289,6 +301,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </p>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "workspace-import-export" && (
+            <div>
+              <h1 className="text-2xl font-semibold text-[var(--text-primary)] mb-6">
+                Import & Export
+              </h1>
+
+              <div className="space-y-8">
+                <div className="pb-8 border-b border-[var(--border-default)]">
+                  <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                    Export
+                  </h2>
+                  <ExportSection />
+                </div>
+
+                <div>
+                  <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-4">
+                    Import
+                  </h2>
+                  <ImportSection />
                 </div>
               </div>
             </div>
