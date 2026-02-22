@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { DndSidebarTree } from "@/components/workspace/DndSidebarTree";
 import { WorkspaceDropdown } from "@/components/workspace/WorkspaceDropdown";
 import { SettingsModal } from "@/components/workspace/SettingsModal";
+import { SidebarTeamspaceSection } from "@/components/workspace/SidebarTeamspaceSection";
 import { usePageTree } from "@/hooks/usePageTree";
 import { useCreatePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
 import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
+import { useTeamspaces } from "@/hooks/useTeamspaces";
+import type { PageTreeNode } from "@/types/page";
 
 export function Sidebar() {
   const router = useRouter();
@@ -17,6 +20,7 @@ export function Sidebar() {
   const createPage = useCreatePage();
   const { recentPages } = useRecentPages();
   const { isCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
+  const { data: teamspaces } = useTeamspaces();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [isMac, setIsMac] = useState(false);
@@ -220,7 +224,7 @@ export function Sidebar() {
                     onClick={() => router.push(`/pages/${page.id}`)}
                     className="w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-[var(--sidebar-text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors truncate"
                   >
-                    <span className="text-xs flex-shrink-0">{page.icon || "📄"}</span>
+                    <span className="text-xs flex-shrink-0">{page.icon || "\u{1F4C4}"}</span>
                     <span className="truncate">{page.title || "Untitled"}</span>
                   </button>
                 ))}
@@ -229,34 +233,28 @@ export function Sidebar() {
           )}
 
           {/* Private pages section */}
-          <div className="px-2 pt-3 pb-1">
-            <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--sidebar-text-secondary)]">
-              Private
-            </span>
-          </div>
+          <SidebarTeamspaceSection
+            sectionId="private"
+            label="Private"
+            icon={<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>}
+            isLoading={isLoading}
+            error={error}
+            tree={data ? data.data.filter((n: PageTreeNode) => !n.teamspaceId) : []}
+          />
 
-          {isLoading && (
-            <div className="px-3 py-4 space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-2 animate-pulse">
-                  <div className="w-4 h-4 bg-[var(--bg-tertiary)] rounded" />
-                  <div
-                    className="h-3 bg-[var(--bg-tertiary)] rounded"
-                    style={{ width: `${60 + i * 20}px` }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {error && (
-            <div className="px-3 py-4">
-              <p className="text-sm text-[var(--danger)]">Failed to load pages</p>
-              <p className="text-xs text-[var(--danger)] mt-1 opacity-75">{error.message}</p>
-            </div>
-          )}
-
-          {data && <DndSidebarTree tree={data.data} />}
+          {/* Teamspace sections */}
+          {teamspaces?.map((ts) => (
+            <SidebarTeamspaceSection
+              key={ts.id}
+              sectionId={ts.id}
+              label={ts.name}
+              icon={ts.icon ? <span className="text-sm">{ts.icon}</span> : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" /></svg>}
+              badge={`${ts.member_count}`}
+              isLoading={isLoading}
+              error={null}
+              tree={data ? data.data.filter((n: PageTreeNode) => n.teamspaceId === ts.id) : []}
+            />
+          ))}
         </div>
 
         {/* Sidebar Footer */}

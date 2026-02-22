@@ -8,6 +8,7 @@ export function serializePage(page: {
   id: string;
   tenantId: string;
   parentId: string | null;
+  teamspaceId?: string | null;
   title: string;
   icon: string | null;
   coverUrl: string | null;
@@ -19,6 +20,7 @@ export function serializePage(page: {
     id: page.id,
     tenantId: page.tenantId,
     parentId: page.parentId,
+    teamspaceId: page.teamspaceId ?? null,
     title: page.title,
     icon: page.icon,
     coverUrl: page.coverUrl,

@@ -2,6 +2,7 @@ export interface Page {
   id: string;
   tenantId: string;
   parentId: string | null;
+  teamspaceId: string | null;
   title: string;
   icon: string | null;
   coverUrl: string | null;
@@ -17,6 +18,7 @@ export interface PageTreeNode extends Page {
 export interface CreatePageInput {
   title?: string;
   parentId?: string | null;
+  teamspaceId?: string | null;
   icon?: string | null;
   coverUrl?: string | null;
 }
