@@ -11,6 +11,9 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useGraphData } from "@/hooks/useGraphData";
 import { GraphTooltip } from "./GraphTooltip";
+import { GraphLegend } from "./GraphLegend";
+import { getNodeColor, getNodeRadius, getEdgeColor } from "@/lib/graph/colorPalette";
+import type { ThemeMode } from "@/lib/graph/colorPalette";
 import type { GraphNode, GraphData } from "@/types/graph";
 
 // Dynamically import ForceGraph2D to avoid SSR issues (uses Canvas/WebGL)
@@ -46,11 +49,15 @@ interface ForceGraphNode extends GraphNode {
   fy?: number;
 }
 
-// Color palette for nodes
-const NODE_COLOR_DEFAULT = "#529CCA";
-const NODE_COLOR_ORPHAN = "#9CA3AF";
-const NODE_COLOR_CENTER = "#EF4444";
-const LINK_COLOR = "#D1D5DB";
+// Detect theme from document attribute
+function getThemeMode(): ThemeMode {
+  if (typeof document !== "undefined") {
+    return document.documentElement.getAttribute("data-theme") === "dark"
+      ? "dark"
+      : "light";
+  }
+  return "light";
+}
 
 /**
  * Interactive knowledge graph visualization using react-force-graph.
@@ -163,6 +170,8 @@ export function GraphView({
     []
   );
 
+  const theme = getThemeMode();
+
   // Custom node rendering: circle with size based on linkCount
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nodeCanvasObject = useCallback(
@@ -174,15 +183,11 @@ export function GraphView({
       const node = nodeObj as ForceGraphNode;
       const label = node.label;
       const fontSize = Math.max(12 / globalScale, 3);
-      const radius = Math.max(Math.sqrt(node.linkCount + 1) * 3, 4);
+      const radius = getNodeRadius(node.linkCount, 3);
 
-      // Determine color
-      let color = NODE_COLOR_DEFAULT;
-      if (highlightCenter && node.id === pageId) {
-        color = NODE_COLOR_CENTER;
-      } else if (node.linkCount === 0) {
-        color = NODE_COLOR_ORPHAN;
-      }
+      // Determine color using palette
+      const centerId = highlightCenter ? pageId : undefined;
+      const color = getNodeColor(node, theme, centerId);
 
       // Draw circle
       ctx.beginPath();
@@ -195,7 +200,7 @@ export function GraphView({
         ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillStyle = "#37352f";
+        ctx.fillStyle = theme === "dark" ? "#E5E7EB" : "#37352f";
 
         const maxLabelLength = 20;
         const displayLabel =
@@ -210,7 +215,7 @@ export function GraphView({
         );
       }
     },
-    [highlightCenter, pageId, showLabels]
+    [highlightCenter, pageId, showLabels, theme]
   );
 
   // Pin center node when engine stops (for local graph)
@@ -276,7 +281,7 @@ export function GraphView({
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
         onEngineStop={handleEngineStop}
-        linkColor={() => LINK_COLOR}
+        linkColor={() => getEdgeColor(theme)}
         linkWidth={1}
         linkDirectionalArrowLength={4}
         linkDirectionalArrowRelPos={1}
@@ -296,12 +301,12 @@ export function GraphView({
         visible={tooltip.visible}
       />
 
-      {/* Stats footer (hidden when parent manages controls) */}
-      {!overrideData && (
-        <div className="absolute bottom-4 left-4 rounded-md bg-[var(--color-bg-primary)]/80 px-3 py-1.5 text-xs text-[var(--color-text-secondary)] backdrop-blur-sm">
-          {data?.meta.nodeCount} pages, {data?.meta.edgeCount} connections
-        </div>
-      )}
+      {/* Legend and stats */}
+      <GraphLegend
+        theme={theme}
+        nodeCount={graphData.nodes.length}
+        edgeCount={graphData.links.length}
+      />
     </div>
   );
 }
