@@ -1,16 +1,38 @@
 "use client";
 
-import { Suspense, useRef, useCallback, useMemo } from "react";
+import { Suspense, useRef, useCallback, useMemo, useState, useEffect } from "react";
 import { GraphView } from "@/components/graph/GraphView";
 import type { GraphRefHandle } from "@/components/graph/GraphView";
+import { Graph3DView } from "@/components/graph/Graph3DView";
 import { GraphControls } from "@/components/graph/GraphControls";
-import { GraphStats } from "@/components/graph/GraphStats";
 import { useGraphData } from "@/hooks/useGraphData";
 import { useGraphFilters } from "@/hooks/useGraphFilters";
 import { computeGraphMetrics } from "@/lib/graph/metrics";
 
+/**
+ * Check if WebGL is supported in the browser.
+ */
+function isWebGLSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    return !!(
+      window.WebGLRenderingContext &&
+      (canvas.getContext("webgl") || canvas.getContext("experimental-webgl"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 function GraphPageContent() {
   const graphRefHandle = useRef<GraphRefHandle | null>(null);
+  const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
+  const [webglSupported, setWebglSupported] = useState(true);
+
+  useEffect(() => {
+    setWebglSupported(isWebGLSupported());
+  }, []);
 
   const { data } = useGraphData();
   const { filters, updateFilter, resetFilters, filteredData, isFiltered } =
@@ -49,6 +71,32 @@ function GraphPageContent() {
         <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
           Knowledge Graph
         </h1>
+
+        {/* 2D/3D Toggle */}
+        {webglSupported && (
+          <div className="flex items-center gap-1 rounded-md border border-[var(--color-border)] p-0.5">
+            <button
+              onClick={() => setViewMode("2d")}
+              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+                viewMode === "2d"
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              2D
+            </button>
+            <button
+              onClick={() => setViewMode("3d")}
+              className={`rounded px-3 py-1 text-xs font-medium transition-colors ${
+                viewMode === "3d"
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]"
+              }`}
+            >
+              3D
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main content: controls + graph */}
@@ -69,11 +117,18 @@ function GraphPageContent() {
         />
 
         <div className="flex-1">
-          <GraphView
-            overrideData={filteredData}
-            showLabels={filters.showLabels}
-            onGraphRef={handleGraphRef}
-          />
+          {viewMode === "2d" ? (
+            <GraphView
+              overrideData={filteredData}
+              showLabels={filters.showLabels}
+              onGraphRef={handleGraphRef}
+            />
+          ) : (
+            <Graph3DView
+              overrideData={filteredData}
+              showLabels={filters.showLabels}
+            />
+          )}
         </div>
       </div>
     </div>
