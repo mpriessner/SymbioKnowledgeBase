@@ -9,6 +9,7 @@ import { usePageTree } from "@/hooks/usePageTree";
 import { useCreatePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
 import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
+import { useUnreadCount } from "@/hooks/useUnreadCount";
 
 export function Sidebar() {
   const router = useRouter();
@@ -17,6 +18,7 @@ export function Sidebar() {
   const createPage = useCreatePage();
   const { recentPages } = useRecentPages();
   const { isCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
+  const { unreadCount } = useUnreadCount();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [isMac, setIsMac] = useState(false);
@@ -202,6 +204,28 @@ export function Sidebar() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
             </svg>
             <span>Graph</span>
+          </button>
+
+          <button
+            onClick={() => router.push("/inbox")}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors ${
+              isActive("/inbox")
+                ? "bg-[var(--sidebar-active)] text-[var(--sidebar-text)] font-medium"
+                : "text-[var(--sidebar-text-secondary)] hover:bg-[var(--sidebar-hover)]"
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" />
+            </svg>
+            <span className="flex-1 text-left">Inbox</span>
+            {unreadCount > 0 && (
+              <span
+                className="bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1"
+                aria-label={`${unreadCount} unread notifications`}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </button>
         </div>
 
