@@ -34,7 +34,8 @@ export function listResponse<T>(
   data: T[],
   total: number,
   limit: number,
-  offset: number
+  offset: number,
+  extraMeta?: Record<string, unknown>
 ): NextResponse<ApiListResponse<T>> {
   return NextResponse.json({
     data,
@@ -43,6 +44,7 @@ export function listResponse<T>(
       limit,
       offset,
       timestamp: new Date().toISOString(),
+      ...extraMeta,
     },
   });
 }

@@ -28,6 +28,7 @@ export interface ApiListMeta extends ApiMeta {
   total: number;
   limit: number;
   offset: number;
+  [key: string]: unknown;
 }
 
 /**

@@ -17,6 +17,13 @@ enum Role {
   USER
 }
 
+enum NotificationType {
+  PAGE_MENTION
+  PAGE_UPDATE
+  AGENT_CREATED
+  SYSTEM
+}
+
 enum BlockType {
   DOCUMENT
   PARAGRAPH
@@ -44,13 +51,14 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
-  users     User[]
-  pages     Page[]
-  blocks    Block[]
-  pageLinks PageLink[]
-  apiKeys   ApiKey[]
-  databases Database[]
-  dbRows    DbRow[]
+  users         User[]
+  pages         Page[]
+  blocks        Block[]
+  pageLinks     PageLink[]
+  apiKeys       ApiKey[]
+  databases     Database[]
+  dbRows        DbRow[]
+  notifications Notification[]
 
   @@map("tenants")
 }
@@ -69,8 +77,10 @@ model User {
   deactivatedAt  DateTime? @map("deactivated_at")
 
   // Relations
-  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  apiKeys ApiKey[]
+  tenant                Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apiKeys               ApiKey[]
+  receivedNotifications Notification[] @relation("NotificationRecipient")
+  sentNotifications     Notification[] @relation("NotificationSource")
 
   // Indexes
   @@unique([tenantId, email], map: "uq_users_email_tenant_id")
@@ -97,11 +107,12 @@ model Page {
   tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parent       Page?      @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children     Page[]     @relation("PageHierarchy")
-  blocks       Block[]
-  sourceLinks  PageLink[] @relation("SourcePage")
-  targetLinks  PageLink[] @relation("TargetPage")
-  databases    Database[]
-  dbRows       DbRow[]
+  blocks        Block[]
+  sourceLinks   PageLink[] @relation("SourcePage")
+  targetLinks   PageLink[] @relation("TargetPage")
+  databases     Database[]
+  dbRows        DbRow[]
+  notifications Notification[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_pages_tenant_id_id")
@@ -234,4 +245,31 @@ model DbRow {
   @@index([tenantId, databaseId], map: "idx_db_rows_tenant_id_database_id")
 
   @@map("db_rows")
+}
+
+// ─── Notifications ────────────────────────────────────────────────
+
+model Notification {
+  id           String           @id @default(uuid())
+  tenantId     String           @map("tenant_id")
+  userId       String           @map("user_id")
+  type         NotificationType
+  title        String
+  body         String?
+  pageId       String?          @map("page_id")
+  sourceUserId String?          @map("source_user_id")
+  read         Boolean          @default(false)
+  createdAt    DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  page       Page?  @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  sourceUser User?  @relation("NotificationSource", fields: [sourceUserId], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([tenantId, userId, createdAt], map: "idx_notifications_user_created")
+  @@index([tenantId, userId, read], map: "idx_notifications_user_read")
+
+  @@map("notifications")
 }
