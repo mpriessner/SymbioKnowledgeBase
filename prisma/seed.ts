@@ -31,6 +31,7 @@ async function main() {
     },
     update: {},
     create: {
+      id: "00000000-0000-0000-0000-000000000002",
       tenantId: tenant.id,
       email: "admin@symbio.local",
       passwordHash: passwordHash,
