@@ -6,7 +6,7 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 // Use the existing tenant and user
-const TENANT_ID = "c210db6a-2474-4383-9bde-2c91238dcbec";
+const TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // Fixed UUIDs for idempotent seeding (valid UUID v4: pos 13=4, pos 17=a)
 const PAGE = {
