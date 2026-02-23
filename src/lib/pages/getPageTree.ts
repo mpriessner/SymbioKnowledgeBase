@@ -31,6 +31,7 @@ export function buildPageTree(pages: PageRow[]): PageTreeNode[] {
       id: page.id,
       tenantId: page.tenantId,
       parentId: page.parentId,
+      teamspaceId: (page as Record<string, unknown>).teamspaceId as string | null ?? null,
       title: page.title,
       icon: page.icon,
       coverUrl: page.coverUrl,

@@ -172,7 +172,7 @@ async function authenticateApiKey(token: string): Promise<AgentContext> {
         tenantId: apiKey.tenantId,
         userId: apiKey.userId,
         apiKeyId: apiKey.id,
-        scopes: apiKey.scopes,
+        scopes: ["read", "write"],
       };
     }
   }

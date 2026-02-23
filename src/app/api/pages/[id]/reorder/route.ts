@@ -18,13 +18,9 @@ const reorderSchema = z.object({
 });
 
 export const PUT = withTenant(
-  async (
-    req: NextRequest,
-    context: TenantContext,
-    { params }: { params: Promise<{ id: string }> }
-  ) => {
+  async (req: NextRequest, context: TenantContext, routeContext) => {
     try {
-      const { id } = await params;
+      const { id } = await routeContext.params;
 
       const body = await req.json();
       const parsed = reorderSchema.safeParse(body);

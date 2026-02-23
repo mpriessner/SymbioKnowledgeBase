@@ -24,7 +24,7 @@ export function markdownToTiptap(markdown: string): DeserializeResult {
   const ast = processor.parse(processed);
 
   // 4. Convert AST to TipTap JSON
-  const tiptapJson = astToTiptap(ast);
+  const tiptapJson = astToTiptap(ast as unknown as MdastNode);
 
   return { content: tiptapJson, metadata };
 }

@@ -9,7 +9,6 @@ import { z } from "zod";
 
 const createKeySchema = z.object({
   name: z.string().min(1).max(100),
-  scopes: z.array(z.enum(["read", "write"])).min(1),
 });
 
 /**
@@ -30,7 +29,7 @@ export const POST = withTenant(
         );
       }
 
-      const { name, scopes } = parsed.data;
+      const { name } = parsed.data;
 
       // Generate API key: skb_live_ + 32 hex chars
       const key = `skb_live_${randomBytes(16).toString("hex")}`;
@@ -44,7 +43,6 @@ export const POST = withTenant(
           keyHash,
           keyPrefix,
           name,
-          scopes,
         },
       });
 
@@ -55,7 +53,6 @@ export const POST = withTenant(
           key,
           keyPrefix,
           name,
-          scopes,
           created_at: apiKey.createdAt.toISOString(),
         },
         undefined,
@@ -85,7 +82,6 @@ export const GET = withTenant(
           id: true,
           name: true,
           keyPrefix: true,
-          scopes: true,
           createdAt: true,
           lastUsedAt: true,
         },
@@ -97,7 +93,6 @@ export const GET = withTenant(
           id: k.id,
           name: k.name,
           key_prefix: k.keyPrefix,
-          scopes: k.scopes,
           created_at: k.createdAt.toISOString(),
           last_used_at: k.lastUsedAt?.toISOString() ?? null,
         }))

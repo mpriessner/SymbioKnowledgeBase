@@ -1,9 +1,11 @@
-import { prisma } from "@/lib/db";
 import type { AgentContext } from "./auth";
 
 /**
  * Log an agent API action for audit purposes.
  * Only logs mutations (create, update, delete).
+ *
+ * TODO: Add AuditLog model to Prisma schema and persist to DB.
+ * For now, logs to console.
  */
 export async function logAgentAction(
   ctx: AgentContext,
@@ -13,17 +15,11 @@ export async function logAgentAction(
   details?: Record<string, unknown>
 ): Promise<void> {
   try {
-    await prisma.auditLog.create({
-      data: {
-        tenantId: ctx.tenantId,
-        userId: ctx.userId,
-        apiKeyId: ctx.apiKeyId ?? null,
-        action,
-        resource,
-        resourceId: resourceId ?? null,
-        details: details ? sanitizeDetails(details) : null,
-      },
-    });
+    const sanitized = details ? sanitizeDetails(details) : undefined;
+    console.log(
+      `[AUDIT] tenant=${ctx.tenantId} user=${ctx.userId} action=${action} resource=${resource} resourceId=${resourceId ?? "N/A"}`,
+      sanitized ? JSON.stringify(sanitized) : ""
+    );
   } catch (error) {
     // Don't fail the request if audit logging fails
     console.error("Audit log error:", error);

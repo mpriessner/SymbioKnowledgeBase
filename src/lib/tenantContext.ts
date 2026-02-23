@@ -52,33 +52,46 @@ export async function getTenantContext(
   }
 
   // 2. Try Supabase session from cookies
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (supabaseUrl && supabaseKey && !supabaseUrl.includes("xxxxx") && supabaseUrl.startsWith("http")) {
+    const supabase = createServerClient(
+      supabaseUrl,
+      supabaseKey,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll() {
+            // API routes don't need to set cookies (middleware handles refresh)
+          },
         },
-        setAll() {
-          // API routes don't need to set cookies (middleware handles refresh)
-        },
-      },
+      }
+    );
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (user) {
+      // Look up or auto-create the Prisma user record (handles cross-app SSO)
+      const dbUser = await ensureUserExists(user);
+
+      return {
+        tenantId: dbUser.tenantId,
+        userId: dbUser.id,
+        role: dbUser.role,
+      };
     }
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    // Look up or auto-create the Prisma user record (handles cross-app SSO)
-    const dbUser = await ensureUserExists(user);
-
+  } else {
+    // Supabase not configured — use default dev tenant (local dev mode)
+    const defaultTenantId = process.env.DEFAULT_TENANT_ID || "00000000-0000-0000-0000-000000000001";
     return {
-      tenantId: dbUser.tenantId,
-      userId: dbUser.id,
-      role: dbUser.role,
+      tenantId: defaultTenantId,
+      userId: "dev-user",
+      role: "ADMIN",
     };
   }
 

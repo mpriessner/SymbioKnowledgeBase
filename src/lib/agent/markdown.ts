@@ -1,10 +1,8 @@
-import type { JsonValue } from "@/generated/prisma/client/runtime/library";
-
 /**
  * Convert TipTap JSON document to Markdown string.
  * Placeholder — full implementation in EPIC-14 (SKB-14.1).
  */
-export function tiptapToMarkdown(doc: JsonValue): string {
+export function tiptapToMarkdown(doc: unknown): string {
   if (!doc || typeof doc !== "object") return "";
 
   const root = doc as Record<string, unknown>;
@@ -108,7 +106,7 @@ function getTextContent(
  * Convert Markdown string to TipTap JSON document.
  * Placeholder — full implementation in EPIC-14 (SKB-14.2).
  */
-export function markdownToTiptap(markdown: string): JsonValue {
+export function markdownToTiptap(markdown: string): unknown {
   const lines = markdown.split("\n");
   const content: Array<Record<string, unknown>> = [];
 

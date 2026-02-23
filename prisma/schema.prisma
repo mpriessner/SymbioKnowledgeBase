@@ -47,6 +47,7 @@ enum NotificationType {
   PAGE_MENTION
   PAGE_UPDATE
   AGENT_CREATED
+  SYSTEM
 }
 
 // ─── Tenants ─────────────────────────────────────────────────────────
