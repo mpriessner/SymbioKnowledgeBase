@@ -106,22 +106,22 @@ export default function PageView({ params }: PageViewProps) {
         </div>
       </div>
 
-      {/* Right Sidebar with LocalGraph */}
+      {/* Right Sidebar with LocalGraph — only on xl (1280px+) screens */}
       <div
         className={`
-          hidden lg:flex flex-col
+          hidden xl:flex flex-col flex-shrink-0
           border-l border-[var(--border-default)]
           bg-[var(--bg-secondary)]
           transition-all duration-200
-          ${showRightSidebar ? "w-[280px]" : "w-0 overflow-hidden"}
+          ${showRightSidebar ? "w-[min(280px,20vw)]" : "w-0 overflow-hidden"}
         `}
       >
         {/* Sidebar toggle */}
         <button
           onClick={() => toggleRightSidebar(!showRightSidebar)}
-          className="absolute right-[280px] top-4 z-20 hidden lg:flex items-center justify-center w-5 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          className="absolute top-4 z-20 hidden xl:flex items-center justify-center w-5 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
           title={showRightSidebar ? "Hide sidebar" : "Show sidebar"}
-          style={{ display: showRightSidebar ? "flex" : "none" }}
+          style={{ display: showRightSidebar ? "flex" : "none", right: 'min(280px, 20vw)' }}
         >
           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -143,11 +143,11 @@ export default function PageView({ params }: PageViewProps) {
         )}
       </div>
 
-      {/* Collapsed sidebar toggle button */}
+      {/* Collapsed sidebar toggle button — only on xl (1280px+) screens */}
       {!showRightSidebar && (
         <button
           onClick={() => toggleRightSidebar(true)}
-          className="hidden lg:flex fixed right-0 top-4 z-20 items-center justify-center w-8 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          className="hidden xl:flex fixed right-0 top-4 z-20 items-center justify-center w-8 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
           title="Show sidebar"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
