@@ -121,20 +121,26 @@ export function GraphView({
     };
   }, [data, overrideData]);
 
-  // Responsive sizing
+  // Responsive sizing — use ResizeObserver so the graph re-renders whenever
+  // its container becomes visible (e.g. after collapse → expand).
   useEffect(() => {
-    const updateDimensions = () => {
-      if (containerRef.current) {
-        setDimensions({
-          width: width || containerRef.current.clientWidth,
-          height: height || containerRef.current.clientHeight,
-        });
+    const el = containerRef.current;
+    if (!el) return;
+
+    const update = () => {
+      const w = width || el.clientWidth;
+      const h = height || el.clientHeight;
+      if (w > 0 && h > 0) {
+        setDimensions({ width: w, height: h });
       }
     };
 
-    updateDimensions();
-    window.addEventListener("resize", updateDimensions);
-    return () => window.removeEventListener("resize", updateDimensions);
+    // Measure immediately in case layout is already resolved
+    update();
+
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [width, height]);
 
   // Click handler: navigate to page

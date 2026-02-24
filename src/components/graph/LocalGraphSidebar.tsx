@@ -22,11 +22,15 @@ interface LocalGraphSidebarProps {
  * - Click to navigate to pages
  * - "Open full graph" link
  */
+const MIN_DEPTH = 1;
+const MAX_DEPTH = 4;
+
 export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [depth, setDepth] = useState(1);
   const graphRef = useRef<GraphRefHandle | null>(null);
-  
-  const { data, isLoading } = useGraphData({ pageId, depth: 1, enabled: !isCollapsed });
+
+  const { data, isLoading } = useGraphData({ pageId, depth, enabled: !isCollapsed });
 
   const nodeCount = data?.meta.nodeCount ?? 0;
   const edgeCount = data?.meta.edgeCount ?? 0;
@@ -52,6 +56,14 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
     if (graphRef.current) {
       graphRef.current.zoomToFit(300, 20);
     }
+  }, []);
+
+  const increaseDepth = useCallback(() => {
+    setDepth((d) => Math.min(d + 1, MAX_DEPTH));
+  }, []);
+
+  const decreaseDepth = useCallback(() => {
+    setDepth((d) => Math.max(d - 1, MIN_DEPTH));
   }, []);
 
   return (
@@ -109,7 +121,39 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
             </div>
           ) : (
             <div className="relative">
-              {/* Zoom controls */}
+              {/* Depth control (left) */}
+              <div className="absolute top-2 left-2 z-10 flex items-center gap-1">
+                <button
+                  onClick={decreaseDepth}
+                  disabled={depth <= MIN_DEPTH}
+                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Decrease depth"
+                  aria-label="Decrease depth"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                  </svg>
+                </button>
+                <span
+                  className="text-[10px] font-medium text-[var(--text-secondary)] min-w-[16px] text-center select-none"
+                  title={`Showing ${depth} hop${depth > 1 ? "s" : ""} from current page`}
+                >
+                  {depth}
+                </span>
+                <button
+                  onClick={increaseDepth}
+                  disabled={depth >= MAX_DEPTH}
+                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Increase depth"
+                  aria-label="Increase depth"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Zoom controls (right) */}
               <div className="absolute top-2 right-2 z-10 flex flex-col gap-1">
                 <button
                   onClick={handleZoomIn}
@@ -147,7 +191,7 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
               <div style={{ height: 200 }}>
                 <GraphView
                   pageId={pageId}
-                  depth={1}
+                  depth={depth}
                   height={200}
                   highlightCenter={true}
                   showLabels={true}
