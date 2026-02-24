@@ -78,16 +78,16 @@ export function SortableSidebarTreeNode({
     },
   });
 
-  const style = {
-    transform: CSS.Translate.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  };
-
   const isActive = pathname === `/pages/${node.id}`;
   const hasChildren = node.children.length > 0;
   const paddingLeft = 12 + depth * 16;
   const isDropTarget = overId === node.id && !isDragging;
+
+  const rowStyle = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    paddingLeft: `${paddingLeft}px`,
+  };
 
   const handleClick = useCallback(() => {
     router.push(`/pages/${node.id}`);
@@ -180,7 +180,7 @@ export function SortableSidebarTreeNode({
   }, [createPage, node.title, node.parentId, node.icon, router]);
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div>
       {/* Drop indicator line: before */}
       {isDropTarget && dropPosition?.type === "before" && (
         <div
@@ -189,8 +189,11 @@ export function SortableSidebarTreeNode({
         />
       )}
 
-      {/* Node row */}
+      {/* Node row — setNodeRef scoped to just the row so collision detection
+          measures against this single row, not the entire subtree */}
       <div
+        ref={setNodeRef}
+        style={rowStyle}
         className={`
           group flex items-center h-8 cursor-pointer rounded-md mx-1
           transition-colors duration-100
@@ -198,7 +201,6 @@ export function SortableSidebarTreeNode({
           ${isActive ? "bg-blue-100 text-blue-900" : "hover:bg-gray-100 text-gray-700"}
           ${isDropTarget && dropPosition?.type === "child" ? "bg-blue-100 ring-2 ring-blue-400 ring-inset" : ""}
         `}
-        style={{ paddingLeft: `${paddingLeft}px` }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         onMouseEnter={() => setIsHovered(true)}

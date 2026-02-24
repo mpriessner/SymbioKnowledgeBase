@@ -5,12 +5,14 @@ import {
   DndContext,
   DragOverlay,
   closestCenter,
+  pointerWithin,
   PointerSensor,
   useSensor,
   useSensors,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -114,6 +116,19 @@ function isDescendantInTree(
   return findAndCheck(nodes);
 }
 
+/**
+ * Custom collision detection: prefer pointerWithin (pointer is inside an item),
+ * fall back to closestCenter (pointer is between items). This ensures that at
+ * any nesting depth the correct row is identified as the drop target.
+ */
+const hybridCollision: CollisionDetection = (args) => {
+  const withinCollisions = pointerWithin(args);
+  if (withinCollisions.length > 0) {
+    return withinCollisions;
+  }
+  return closestCenter(args);
+};
+
 export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
   const expandState = useSidebarExpandState();
   const reorderPage = useReorderPage();
@@ -158,7 +173,7 @@ export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
 
       // Determine drop position based on pointer position relative to the over element.
       // Uses BOTH vertical (Y) and horizontal (X) position:
-      //   - Dragging to the RIGHT of the target's left edge = nest as child
+      //   - Dragging to the RIGHT of the target's content area = nest as child
       //   - Vertical top/bottom edges = before/after (sibling reorder)
       const overRect = over.rect;
       const pointerX = (event.activatorEvent as PointerEvent)?.clientX ?? 0;
@@ -170,20 +185,27 @@ export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
 
       if (overRect) {
         const top = overRect.top;
-        const left = overRect.left;
         const height = overRect.height;
         const relativeY = currentY - top;
-        const relativeX = currentX - left;
+
+        // Get the target's depth from dnd-kit sortable data
+        const overDepth = (over.data?.current as { depth?: number })?.depth ?? 0;
+
+        // Calculate the target's content start position.
+        // Each depth level adds 16px indent, plus 12px base padding.
+        // The nestThreshold is relative to the target's CONTENT position,
+        // not the sidebar edge. This ensures nesting works at any depth.
+        const targetContentLeft = overRect.left + 12 + overDepth * 16;
 
         // Check if target already has children
         const targetNode = findNodeWithParent(tree, overIdStr);
         const isParentNode = targetNode?.node && targetNode.node.children.length > 0;
 
-        // Horizontal threshold: if cursor is indented >30px right of the target's
-        // left edge, treat as a "child" drop (nesting). This makes it much easier
-        // to nest pages — just drag slightly to the right.
+        // "wantsNest" is true when the cursor is >30px to the right of the
+        // target's content area. This works consistently at all depths because
+        // we account for the target's indentation.
         const nestThreshold = 30;
-        const wantsNest = relativeX > nestThreshold;
+        const wantsNest = currentX > targetContentLeft + nestThreshold;
 
         if (isParentNode) {
           // For parent nodes: wider middle zone + horizontal nesting
@@ -197,7 +219,6 @@ export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
         } else {
           // For leaf nodes: horizontal offset is the primary nesting signal
           if (wantsNest) {
-            // Dragged to the right → nest as child
             setDropPosition({ type: "child" });
           } else if (relativeY < height * 0.5) {
             setDropPosition({ type: "before" });
@@ -285,7 +306,7 @@ export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={hybridCollision}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}

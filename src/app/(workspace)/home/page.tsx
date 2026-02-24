@@ -58,7 +58,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex flex-col w-full px-8 py-12 min-h-full bg-[var(--bg-primary)]">
+    <div className="flex flex-col w-full content-pad py-12 min-h-full bg-[var(--bg-primary)]">
       {/* Greeting */}
       <div className="w-full mb-12">
         <h1 className="text-4xl font-semibold text-[var(--text-primary)] mb-2">

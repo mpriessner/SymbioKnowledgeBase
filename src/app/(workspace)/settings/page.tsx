@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function SettingsPage() {
   return (
-    <div className="w-full px-8 py-12">
+    <div className="w-full content-pad py-12">
       <h1 className="text-3xl font-bold text-[var(--text-primary)]">
         Settings
       </h1>

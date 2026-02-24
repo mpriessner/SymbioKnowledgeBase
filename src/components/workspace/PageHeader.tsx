@@ -129,7 +129,7 @@ export function PageHeader({ page }: PageHeaderProps) {
       )}
 
       {/* Icon and Title */}
-      <div className="px-16 pt-8 pb-4">
+      <div className="content-pad pt-8 pb-4">
         {/* Icon with emoji picker */}
         {page.icon && (
           <div className="mb-2 relative">

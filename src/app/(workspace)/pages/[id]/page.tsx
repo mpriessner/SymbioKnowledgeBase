@@ -34,7 +34,7 @@ export default function PageView({ params }: PageViewProps) {
 
   if (isLoading) {
     return (
-      <div className="w-full px-16 py-8">
+      <div className="w-full content-pad py-8">
         {/* Title skeleton */}
         <div className="animate-pulse">
           <div className="h-10 bg-gray-200 rounded w-1/3 mb-4" />
@@ -48,7 +48,7 @@ export default function PageView({ params }: PageViewProps) {
 
   if (error) {
     return (
-      <div className="w-full px-16 py-8">
+      <div className="w-full content-pad py-8">
         <div className="text-red-600 bg-red-50 border border-red-200 rounded-lg p-4">
           <h2 className="font-semibold text-lg mb-1">Error loading page</h2>
           <p className="text-sm">{error.message}</p>
@@ -59,7 +59,7 @@ export default function PageView({ params }: PageViewProps) {
 
   if (!data?.data) {
     return (
-      <div className="w-full px-16 py-8">
+      <div className="w-full content-pad py-8">
         <p className="text-gray-500">Page not found.</p>
       </div>
     );
@@ -74,7 +74,7 @@ export default function PageView({ params }: PageViewProps) {
         <PageHeader page={page} />
 
         {/* Presence Indicators */}
-        <div className="w-full px-16 pb-2">
+      <div className="w-full content-pad pb-2">
           <PresenceIndicators pageId={page.id} />
         </div>
 
@@ -84,12 +84,12 @@ export default function PageView({ params }: PageViewProps) {
         </div>
 
         {/* Backlinks Panel */}
-        <div className="w-full px-8">
+      <div className="w-full content-pad">
           <BacklinksPanel pageId={page.id} />
         </div>
 
         {/* Local Graph (bottom, expandable) */}
-        <div className="w-full px-8 pb-8">
+      <div className="w-full content-pad pb-8">
           <LocalGraph pageId={page.id} />
         </div>
       </div>

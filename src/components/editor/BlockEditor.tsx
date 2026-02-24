@@ -68,7 +68,7 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
     editorProps: {
       attributes: {
         class:
-          "tiptap prose prose-stone dark:prose-invert w-full !max-w-none min-h-[500px] px-8 py-4 focus:outline-none",
+          "tiptap prose prose-stone dark:prose-invert w-full !max-w-none content-pad py-4 focus:outline-none",
         "data-testid": "block-editor",
       },
     },
@@ -132,7 +132,7 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
   return (
     <div className="relative w-full" data-testid="block-editor-container">
       {/* Save status indicator */}
-      <div className="sticky top-0 z-10 flex justify-end px-8 py-2 bg-[var(--bg-primary)]/80 backdrop-blur-sm">
+      <div className="sticky top-0 z-10 flex justify-end content-pad py-2 bg-[var(--bg-primary)]/80 backdrop-blur-sm">
         <SaveStatusIndicator status={saveStatus} />
       </div>
 

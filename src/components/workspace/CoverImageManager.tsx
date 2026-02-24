@@ -98,7 +98,7 @@ export function CoverImageManager({
   // URL input modal
   if (isEditing) {
     return (
-      <div className="w-full bg-gray-50 border-b border-gray-200 px-16 py-4">
+      <div className="w-full bg-gray-50 border-b border-gray-200 content-pad py-4">
         <div className="w-full">
           <p className="text-sm font-medium text-gray-700 mb-2">
             {coverUrl ? "Change cover image" : "Add cover image"}

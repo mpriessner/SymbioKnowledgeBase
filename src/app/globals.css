@@ -10,6 +10,9 @@
 
 /* ── Light Theme (default) ────────────────────────────── */
 :root {
+  /* Layout */
+  --content-padding: clamp(16px, 2.5vw, 32px);
+
   /* Backgrounds */
   --bg-primary: #ffffff;
   --bg-secondary: #f7f7f5;
@@ -117,6 +120,12 @@ body {
   font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Shared horizontal padding for main content */
+.content-pad {
+  padding-left: var(--content-padding);
+  padding-right: var(--content-padding);
 }
 
 /* Workspace layout should always span the full viewport */
