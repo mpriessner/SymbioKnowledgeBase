@@ -1,7 +1,10 @@
 "use client";
 
-import { useRef, useEffect, useCallback } from "react";
-import { X, Send, Sparkles } from "lucide-react";
+import { useCallback } from "react";
+import { X, Sparkles, Trash2 } from "lucide-react";
+import { ChatMessages } from "./ChatMessages";
+import { ChatInput } from "./ChatInput";
+import { useAIChat } from "@/hooks/useAIChat";
 
 interface AIChatPopupProps {
   isOpen: boolean;
@@ -12,22 +15,18 @@ interface AIChatPopupProps {
  * AI Chat Popup Window.
  *
  * Floating popup with header, message area, and input field.
- * Story 2 will implement full chat functionality.
+ * Wires together ChatMessages, ChatInput, and useAIChat hook.
  */
 export function AIChatPopup({ isOpen, onClose }: AIChatPopupProps) {
-  const popupRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Focus input when popup opens
-  useEffect(() => {
-    if (isOpen) {
-      // Small delay to ensure popup is rendered
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
+  const {
+    messages,
+    isLoading,
+    error,
+    sendMessage,
+    clearHistory,
+    cancelRequest,
+    clearError,
+  } = useAIChat();
 
   // Handle Escape key to close
   const handleKeyDown = useCallback(
@@ -39,11 +38,24 @@ export function AIChatPopup({ isOpen, onClose }: AIChatPopupProps) {
     [onClose]
   );
 
+  const handleSend = useCallback(
+    (content: string) => {
+      clearError();
+      sendMessage(content);
+    },
+    [sendMessage, clearError]
+  );
+
+  const handleClearHistory = useCallback(() => {
+    if (messages.length > 0) {
+      clearHistory();
+    }
+  }, [messages.length, clearHistory]);
+
   if (!isOpen) return null;
 
   return (
     <div
-      ref={popupRef}
       role="dialog"
       aria-label="AI Chat Assistant"
       aria-modal="false"
@@ -70,76 +82,66 @@ export function AIChatPopup({ isOpen, onClose }: AIChatPopupProps) {
             Symbio AI
           </span>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close chat"
-          className="
-            rounded-md p-1.5
-            text-[var(--text-secondary)]
-            hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]
-            transition-colors duration-150
-            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]
-          "
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      {/* Message Area (placeholder for Story 2) */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="flex flex-col items-center justify-center h-full text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--bg-secondary)] mb-3">
-            <Sparkles className="h-6 w-6 text-[var(--accent-primary)]" />
-          </div>
-          <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">
-            How can I help you?
-          </h3>
-          <p className="text-sm text-[var(--text-secondary)] max-w-[280px]">
-            Ask me anything about your workspace, get help writing content, or analyze documents.
-          </p>
-        </div>
-      </div>
-
-      {/* Footer / Input Area */}
-      <div className="px-4 py-3 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]">
-        <div className="flex items-center gap-2">
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Ask Symbio AI..."
-            disabled
-            className="
-              flex-1
-              rounded-lg
-              border border-[var(--border-default)]
-              bg-[var(--bg-primary)]
-              px-3 py-2
-              text-sm text-[var(--text-primary)]
-              placeholder:text-[var(--text-tertiary)]
-              focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-transparent
-              disabled:opacity-50 disabled:cursor-not-allowed
-            "
-          />
+        <div className="flex items-center gap-1">
+          {/* Clear history button */}
           <button
-            disabled
-            aria-label="Send message"
+            onClick={handleClearHistory}
+            disabled={messages.length === 0}
+            aria-label="Clear chat history"
+            title="Clear chat history"
             className="
-              flex h-9 w-9 items-center justify-center
-              rounded-lg
-              bg-[var(--accent-primary)] text-white
-              hover:bg-[var(--accent-primary-hover)]
+              rounded-md p-1.5
+              text-[var(--text-secondary)]
+              hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]
               transition-colors duration-150
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-2
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]
               disabled:opacity-50 disabled:cursor-not-allowed
             "
           >
-            <Send className="h-4 w-4" />
+            <Trash2 className="h-4 w-4" />
+          </button>
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            aria-label="Close chat"
+            className="
+              rounded-md p-1.5
+              text-[var(--text-secondary)]
+              hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]
+              transition-colors duration-150
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]
+            "
+          >
+            <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="mt-2 text-xs text-[var(--text-tertiary)] text-center">
-          Chat functionality coming in Story 2
-        </p>
       </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 py-2 bg-[var(--danger)] bg-opacity-10 border-b border-[var(--danger)] text-sm text-[var(--danger)]">
+          <div className="flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              onClick={clearError}
+              className="text-[var(--danger)] hover:underline text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Message Area */}
+      <ChatMessages messages={messages} isLoading={isLoading} />
+
+      {/* Input Area */}
+      <ChatInput
+        onSend={handleSend}
+        onCancel={cancelRequest}
+        isLoading={isLoading}
+        placeholder="Ask Symbio AI..."
+      />
     </div>
   );
 }
