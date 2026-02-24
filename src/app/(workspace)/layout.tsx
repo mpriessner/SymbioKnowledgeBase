@@ -12,9 +12,9 @@ export default function WorkspaceLayout({
 }) {
   return (
     <QueryProvider>
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex overflow-hidden" style={{ width: '100vw', height: '100vh' }}>
         <Sidebar />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 min-w-0 overflow-y-auto">
           <BreadcrumbsWrapper />
           {children}
         </main>
