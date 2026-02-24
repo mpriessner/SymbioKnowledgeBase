@@ -4,7 +4,7 @@ import { useCallback, useState, useRef, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useRouter, usePathname } from "next/navigation";
-import { useCreatePage } from "@/hooks/usePages";
+import { useCreatePage, useUpdatePage } from "@/hooks/usePages";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { MoreHorizontal } from "lucide-react";
 import {
@@ -44,9 +44,13 @@ export function SortableSidebarTreeNode({
   const router = useRouter();
   const pathname = usePathname();
   const createPage = useCreatePage();
+  const updatePage = useUpdatePage();
   const [isHovered, setIsHovered] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(node.title);
   const titleRef = useRef<HTMLSpanElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const { contextMenu, openContextMenu, closeContextMenu } = usePageContextMenu();
 
   // Check if title is truncated
@@ -127,6 +131,53 @@ export function SortableSidebarTreeNode({
     },
     [openContextMenu, node.id, node.title]
   );
+
+  const handleStartRename = useCallback(() => {
+    setRenameValue(node.title);
+    setIsRenaming(true);
+    // Focus the input after it renders
+    setTimeout(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    }, 0);
+  }, [node.title]);
+
+  const handleFinishRename = useCallback(() => {
+    const newTitle = renameValue.trim() || "Untitled";
+    setIsRenaming(false);
+    if (newTitle !== node.title) {
+      updatePage.mutate({ id: node.id, title: newTitle });
+    }
+  }, [renameValue, node.title, node.id, updatePage]);
+
+  const handleRenameKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleFinishRename();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setIsRenaming(false);
+        setRenameValue(node.title);
+      }
+    },
+    [handleFinishRename, node.title]
+  );
+
+  const handleDuplicate = useCallback(() => {
+    createPage.mutate(
+      {
+        title: `${node.title} (copy)`,
+        parentId: node.parentId || undefined,
+        icon: node.icon || undefined,
+      },
+      {
+        onSuccess: (data) => {
+          router.push(`/pages/${data.data.id}`);
+        },
+      }
+    );
+  }, [createPage, node.title, node.parentId, node.icon, router]);
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -226,12 +277,25 @@ export function SortableSidebarTreeNode({
           )}
         </span>
 
-        {/* Page title with tooltip for truncated text */}
-        <Tooltip content={isTruncated ? node.title : ""} placement="right">
-          <span ref={titleRef} className="flex-1 truncate text-sm leading-none">
-            {node.title}
-          </span>
-        </Tooltip>
+        {/* Page title with tooltip for truncated text, or inline rename input */}
+        {isRenaming ? (
+          <input
+            ref={renameInputRef}
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={handleFinishRename}
+            onKeyDown={handleRenameKeyDown}
+            className="flex-1 text-sm leading-none bg-white border border-blue-400 rounded px-1 py-0.5 outline-none min-w-0"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <Tooltip content={isTruncated ? node.title : ""} placement="right">
+            <span ref={titleRef} className="flex-1 truncate text-sm leading-none">
+              {node.title}
+            </span>
+          </Tooltip>
+        )}
 
         {/* Action buttons (visible on hover, hidden during drag) */}
         {isHovered && !activeId && (
@@ -301,6 +365,8 @@ export function SortableSidebarTreeNode({
           pageTitle={contextMenu.pageTitle}
           position={contextMenu.position}
           onClose={closeContextMenu}
+          onRename={handleStartRename}
+          onDuplicate={handleDuplicate}
         />
       )}
     </div>

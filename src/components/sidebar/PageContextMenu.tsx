@@ -18,6 +18,7 @@ interface PageContextMenuProps {
   position: ContextMenuPosition;
   onClose: () => void;
   onRename?: () => void;
+  onDuplicate?: () => void;
 }
 
 interface MenuItem {
@@ -71,6 +72,7 @@ export function PageContextMenu({
   position,
   onClose,
   onRename,
+  onDuplicate,
 }: PageContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -134,16 +136,16 @@ export function PageContextMenu({
           break;
 
         case "duplicate":
-          // Placeholder - would POST to /api/pages with copied content
-          console.log("Duplicate page:", pageId);
+          onDuplicate?.();
           onClose();
           break;
 
-        case "copyLink":
+        case "copyLink": {
           const pageUrl = `${window.location.origin}/pages/${pageId}`;
           await navigator.clipboard.writeText(pageUrl);
           onClose();
           break;
+        }
 
         case "favorite":
           // Placeholder - would toggle favorite status
@@ -156,7 +158,7 @@ export function PageContextMenu({
           break;
       }
     },
-    [pageId, onClose, onRename]
+    [pageId, onClose, onRename, onDuplicate]
   );
 
   const handleConfirmDelete = useCallback(async () => {

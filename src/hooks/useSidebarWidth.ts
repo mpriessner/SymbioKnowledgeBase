@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 
 const STORAGE_KEY = "symbio-sidebar-width";
 const MIN_WIDTH = 200;
-const MAX_WIDTH = 400;
+const MAX_WIDTH = 600;
 const DEFAULT_WIDTH = 256;
 
 /**
