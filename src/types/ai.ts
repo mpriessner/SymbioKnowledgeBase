@@ -18,9 +18,17 @@ export interface ChatState {
   error: string | null;
 }
 
+export interface PageContext {
+  pageId?: string;
+  pageTitle?: string;
+  pageContent?: string;
+  pathname?: string;
+}
+
 export interface SendMessageOptions {
   pageContext?: string;
   selectedText?: string;
+  context?: PageContext;
 }
 
 export interface ChatApiRequest {

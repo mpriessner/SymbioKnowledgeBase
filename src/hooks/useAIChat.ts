@@ -117,6 +117,25 @@ export function useAIChat() {
           google: aiConfig?.googleModel || "gemini-2.0-flash",
         };
 
+        // Build context string from options
+        let contextString: string | undefined;
+        if (options?.context) {
+          const parts: string[] = [];
+          if (options.context.pageTitle) {
+            parts.push(`Page: "${options.context.pageTitle}"`);
+          }
+          if (options.context.pageContent) {
+            parts.push(`Content:\n${options.context.pageContent}`);
+          }
+          if (parts.length > 0) {
+            contextString = parts.join("\n\n");
+          }
+        }
+        // Fall back to legacy context options
+        if (!contextString) {
+          contextString = options?.pageContext || options?.selectedText || undefined;
+        }
+
         const response = await fetch("/api/ai/chat", {
           method: "POST",
           headers: {
@@ -124,7 +143,7 @@ export function useAIChat() {
           },
           body: JSON.stringify({
             messages: apiMessages,
-            context: options?.pageContext || options?.selectedText || undefined,
+            context: contextString,
             model: modelMap[provider],
             provider,
             apiKey: apiKeyMap[provider],

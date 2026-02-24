@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle, type KeyboardEvent } from "react";
 import { Send, Square, Loader2 } from "lucide-react";
 
 interface ChatInputProps {
@@ -9,17 +9,43 @@ interface ChatInputProps {
   isLoading: boolean;
   disabled?: boolean;
   placeholder?: string;
+  externalValue?: string;
+  onExternalValueChange?: () => void;
 }
 
-export function ChatInput({
-  onSend,
-  onCancel,
-  isLoading,
-  disabled = false,
-  placeholder = "Ask anything...",
-}: ChatInputProps) {
+export interface ChatInputRef {
+  focus: () => void;
+}
+
+export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(function ChatInput(
+  {
+    onSend,
+    onCancel,
+    isLoading,
+    disabled = false,
+    placeholder = "Ask anything...",
+    externalValue,
+    onExternalValueChange,
+  },
+  ref
+) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Expose focus method via ref
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+  }));
+
+  // Handle external value changes (e.g., from suggestion cards)
+  useEffect(() => {
+    if (externalValue !== undefined && externalValue !== value) {
+      setValue(externalValue);
+      onExternalValueChange?.();
+      // Focus the textarea after setting value
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    }
+  }, [externalValue, onExternalValueChange]); // intentionally exclude value to avoid loops
 
   // Auto-resize textarea
   const adjustHeight = useCallback(() => {
@@ -120,4 +146,4 @@ export function ChatInput({
       </div>
     </div>
   );
-}
+});
