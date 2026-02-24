@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState, useCallback } from "react";
+import { use, useEffect, useState } from "react";
 import { usePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
 import { PageHeader } from "@/components/workspace/PageHeader";
@@ -10,8 +10,6 @@ import { LocalGraph } from "@/components/graph/LocalGraph";
 import { LocalGraphSidebar } from "@/components/graph/LocalGraphSidebar";
 import { PresenceIndicators } from "@/components/page/PresenceIndicators";
 
-const RIGHT_SIDEBAR_KEY = "symbio-right-sidebar";
-
 interface PageViewProps {
   params: Promise<{ id: string }>;
 }
@@ -20,17 +18,7 @@ export default function PageView({ params }: PageViewProps) {
   const { id } = use(params);
   const { data, isLoading, error } = usePage(id);
   const { addRecentPage } = useRecentPages();
-
-  // Default to false (content-first); persist in localStorage
-  const [showRightSidebar, setShowRightSidebar] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(RIGHT_SIDEBAR_KEY) === "true";
-  });
-
-  const toggleRightSidebar = useCallback((value: boolean) => {
-    setShowRightSidebar(value);
-    try { localStorage.setItem(RIGHT_SIDEBAR_KEY, String(value)); } catch {}
-  }, []);
+  const [showRightSidebar, setShowRightSidebar] = useState(true);
 
   // Record page visit for recent pages list
   const pageData = data?.data;
@@ -106,22 +94,22 @@ export default function PageView({ params }: PageViewProps) {
         </div>
       </div>
 
-      {/* Right Sidebar with LocalGraph — only on xl (1280px+) screens */}
+      {/* Right Sidebar with LocalGraph */}
       <div
         className={`
-          hidden xl:flex flex-col flex-shrink-0
+          hidden lg:flex flex-col
           border-l border-[var(--border-default)]
           bg-[var(--bg-secondary)]
           transition-all duration-200
-          ${showRightSidebar ? "w-[min(280px,20vw)]" : "w-0 overflow-hidden"}
+          ${showRightSidebar ? "w-[280px]" : "w-0 overflow-hidden"}
         `}
       >
         {/* Sidebar toggle */}
         <button
-          onClick={() => toggleRightSidebar(!showRightSidebar)}
-          className="absolute top-4 z-20 hidden xl:flex items-center justify-center w-5 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          onClick={() => setShowRightSidebar(!showRightSidebar)}
+          className="absolute right-[280px] top-4 z-20 hidden lg:flex items-center justify-center w-5 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
           title={showRightSidebar ? "Hide sidebar" : "Show sidebar"}
-          style={{ display: showRightSidebar ? "flex" : "none", right: 'min(280px, 20vw)' }}
+          style={{ display: showRightSidebar ? "flex" : "none" }}
         >
           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -143,11 +131,11 @@ export default function PageView({ params }: PageViewProps) {
         )}
       </div>
 
-      {/* Collapsed sidebar toggle button — only on xl (1280px+) screens */}
+      {/* Collapsed sidebar toggle button */}
       {!showRightSidebar && (
         <button
-          onClick={() => toggleRightSidebar(true)}
-          className="hidden xl:flex fixed right-0 top-4 z-20 items-center justify-center w-8 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          onClick={() => setShowRightSidebar(true)}
+          className="hidden lg:flex fixed right-0 top-4 z-20 items-center justify-center w-8 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
           title="Show sidebar"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

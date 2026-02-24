@@ -101,7 +101,7 @@ export function Sidebar() {
     <>
       <aside
         className="relative flex-shrink-0 border-r border-[var(--border-default)] bg-[var(--sidebar-bg)] flex flex-col h-full overflow-hidden"
-        style={{ width: sidebarWidth, maxWidth: '30vw' }}
+        style={{ width: sidebarWidth }}
       >
         {/* Resize Handle */}
         <div
