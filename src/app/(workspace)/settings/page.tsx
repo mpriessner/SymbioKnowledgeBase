@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import ApiKeyManager from "@/components/settings/ApiKeyManager";
 import { TeamManagement } from "@/components/settings/TeamManagement";
-import { AccountProfileSection } from "@/components/settings/AccountProfileSection";
-import { AccountSecuritySection } from "@/components/settings/AccountSecuritySection";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -14,16 +12,11 @@ export default function SettingsPage() {
       <h1 className="text-3xl font-bold text-[var(--text-primary)]">
         Settings
       </h1>
+      <p className="mt-2 text-sm text-[var(--text-secondary)]">
+        For profile, security, and AI configuration, use the Settings modal (click the gear icon in the sidebar).
+      </p>
 
-      <div className="mt-8">
-        <AccountProfileSection />
-      </div>
-
-      <div className="mt-12 border-t border-[var(--border-default)] pt-12">
-        <AccountSecuritySection />
-      </div>
-
-      <div className="mt-12 border-t border-[var(--border-default)] pt-12">
+      <div className="mt-8 border-t border-[var(--border-default)] pt-8">
         <ApiKeyManager />
       </div>
 

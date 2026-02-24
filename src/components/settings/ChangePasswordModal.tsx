@@ -185,7 +185,7 @@ export function ChangePasswordModal({
                     type={showCurrent ? "text" : "password"}
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full px-3 py-2 pr-10 text-sm rounded border border-[var(--border-default)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                    className="w-full px-3 py-2 pr-10 text-sm rounded border border-[var(--border-default)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)]"
                     autoComplete="current-password"
                   />
                   <button
@@ -241,7 +241,7 @@ export function ChangePasswordModal({
                   type={showNew ? "text" : "password"}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-3 py-2 pr-10 text-sm rounded border border-[var(--border-default)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                  className="w-full px-3 py-2 pr-10 text-sm rounded border border-[var(--border-default)] bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)]"
                   autoComplete="new-password"
                   minLength={8}
                 />
@@ -323,7 +323,7 @@ export function ChangePasswordModal({
                   type={showConfirm ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className={`w-full px-3 py-2 pr-10 text-sm rounded border bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)] ${
+                  className={`w-full px-3 py-2 pr-10 text-sm rounded border bg-[var(--bg-primary)] text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)] ${
                     confirmPassword && confirmPassword !== newPassword
                       ? "border-red-500"
                       : "border-[var(--border-default)]"
@@ -396,7 +396,7 @@ export function ChangePasswordModal({
                   newPassword !== confirmPassword ||
                   (hasExistingPassword && !currentPassword)
                 }
-                className="flex-1 px-4 py-2 text-sm font-medium rounded bg-[var(--accent)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                className="flex-1 px-4 py-2 text-sm font-medium rounded bg-[var(--accent-primary)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
               >
                 {isSubmitting ? "Updating..." : "Update password"}
               </button>
