@@ -3,6 +3,7 @@ import { BreadcrumbsWrapper } from "@/components/workspace/BreadcrumbsWrapper";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { QuickSwitcher } from "@/components/search/QuickSwitcher";
 import { EnhancedSearchWrapper } from "@/components/search/EnhancedSearchWrapper";
+import { AIChatButton } from "@/components/ai/AIChatButton";
 
 export default function WorkspaceLayout({
   children,
@@ -21,6 +22,8 @@ export default function WorkspaceLayout({
         <QuickSwitcher />
         {/* Enhanced Search (global Cmd/Ctrl+Shift+F overlay) */}
         <EnhancedSearchWrapper />
+        {/* AI Chat Assistant (floating button + popup) */}
+        <AIChatButton />
       </div>
     </QueryProvider>
   );
