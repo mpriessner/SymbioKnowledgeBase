@@ -29,6 +29,8 @@ function GraphPageContent() {
   const graphRefHandle = useRef<GraphRefHandle | null>(null);
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
   const [webglSupported, setWebglSupported] = useState(true);
+  const [highlightedNodes, setHighlightedNodes] = useState<string[]>([]);
+  const [searchMatches, setSearchMatches] = useState<number>(0);
 
   useEffect(() => {
     setWebglSupported(isWebGLSupported());
@@ -58,6 +60,32 @@ function GraphPageContent() {
     graphRefHandle.current?.centerAt(0, 0, 500);
     graphRefHandle.current?.zoom(1, 500);
   }, []);
+
+  const handleSearchNode = useCallback((query: string) => {
+    if (!query.trim()) {
+      setHighlightedNodes([]);
+      setSearchMatches(0);
+      return;
+    }
+
+    // Find matching nodes (case-insensitive)
+    const matches = filteredData.nodes.filter(node =>
+      node.label?.toLowerCase().includes(query.toLowerCase())
+    );
+
+    setHighlightedNodes(matches.map(n => n.id));
+    setSearchMatches(matches.length);
+
+    // Center on first match
+    if (matches.length > 0 && graphRefHandle.current) {
+      const firstMatch = matches[0];
+      // Use x/y if available, otherwise center at origin
+      const x = (firstMatch as { x?: number }).x ?? 0;
+      const y = (firstMatch as { y?: number }).y ?? 0;
+      graphRefHandle.current.centerAt(x, y, 500);
+      graphRefHandle.current.zoom(2, 500);
+    }
+  }, [filteredData]);
 
   const metrics = useMemo(
     () => computeGraphMetrics(filteredData.nodes, filteredData.edges),
@@ -114,6 +142,8 @@ function GraphPageContent() {
           edgeCount={filteredData.edges.length}
           clusterCount={metrics.clusterCount}
           orphanCount={metrics.orphanCount}
+          onSearchNode={handleSearchNode}
+          searchMatchCount={searchMatches}
         />
 
         <div className="flex-1">
@@ -122,6 +152,7 @@ function GraphPageContent() {
               overrideData={filteredData}
               showLabels={filters.showLabels}
               onGraphRef={handleGraphRef}
+              highlightedNodes={highlightedNodes}
             />
           ) : (
             <Graph3DView

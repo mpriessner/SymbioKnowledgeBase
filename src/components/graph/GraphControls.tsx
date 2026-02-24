@@ -21,6 +21,7 @@ interface GraphControlsProps {
   clusterCount?: number;
   orphanCount?: number;
   onSearchNode?: (query: string) => void;
+  searchMatchCount?: number;
 }
 
 /**
@@ -40,6 +41,7 @@ export function GraphControls({
   clusterCount,
   orphanCount,
   onSearchNode,
+  searchMatchCount,
 }: GraphControlsProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -67,6 +69,13 @@ export function GraphControls({
                        placeholder-[var(--color-text-secondary)]"
           />
         </div>
+        {searchQuery && (
+          <p className="mt-1.5 text-xs text-[var(--color-text-secondary)]">
+            {searchMatchCount === 0
+              ? "No matches"
+              : `${searchMatchCount} match${searchMatchCount === 1 ? "" : "es"} found`}
+          </p>
+        )}
       </div>
 
       {/* Zoom Controls */}

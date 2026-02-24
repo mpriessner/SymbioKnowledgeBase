@@ -40,6 +40,8 @@ interface GraphViewProps {
   showLabels?: boolean;
   /** Callback to expose the graph ref for external zoom controls */
   onGraphRef?: (ref: GraphRefHandle | null) => void;
+  /** Node IDs to highlight (from search) */
+  highlightedNodes?: string[];
 }
 
 interface ForceGraphNode extends GraphNode {
@@ -74,6 +76,7 @@ export function GraphView({
   overrideData,
   showLabels = true,
   onGraphRef,
+  highlightedNodes = [],
 }: GraphViewProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -183,11 +186,38 @@ export function GraphView({
       const node = nodeObj as ForceGraphNode;
       const label = node.label;
       const fontSize = Math.max(12 / globalScale, 3);
-      const radius = getNodeRadius(node.linkCount, 3);
+      const baseRadius = getNodeRadius(node.linkCount, 3);
+      
+      // Check if this node is highlighted from search
+      const isHighlighted = highlightedNodes.includes(node.id);
+      const hasSearchActive = highlightedNodes.length > 0;
+      
+      // Adjust radius for highlighted nodes
+      const radius = isHighlighted ? baseRadius * 1.5 : baseRadius;
 
       // Determine color using palette
       const centerId = highlightCenter ? pageId : undefined;
-      const color = getNodeColor(node, theme, centerId);
+      const baseColor = getNodeColor(node, theme, centerId);
+      
+      // Apply highlight/dim effect based on search
+      let color = baseColor;
+      if (hasSearchActive) {
+        if (isHighlighted) {
+          // Bright blue for highlighted nodes
+          color = "#3b82f6";
+        } else {
+          // Dim non-matching nodes
+          color = theme === "dark" ? "rgba(100,100,100,0.4)" : "rgba(150,150,150,0.4)";
+        }
+      }
+
+      // Draw glow effect for highlighted nodes
+      if (isHighlighted) {
+        ctx.beginPath();
+        ctx.arc(node.x || 0, node.y || 0, radius + 4, 0, 2 * Math.PI, false);
+        ctx.fillStyle = "rgba(59, 130, 246, 0.3)";
+        ctx.fill();
+      }
 
       // Draw circle
       ctx.beginPath();
@@ -195,12 +225,20 @@ export function GraphView({
       ctx.fillStyle = color;
       ctx.fill();
 
-      // Draw label (only if enabled and zoomed in enough)
-      if (showLabels && globalScale > 0.8) {
-        ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+      // Draw label (only if enabled and zoomed in enough, or always for highlighted)
+      if ((showLabels && globalScale > 0.8) || isHighlighted) {
+        ctx.font = `${isHighlighted ? "bold " : ""}${fontSize}px Inter, system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
-        ctx.fillStyle = theme === "dark" ? "#E5E7EB" : "#37352f";
+        
+        // Text color: brighter for highlighted, dimmed for non-matching during search
+        if (hasSearchActive) {
+          ctx.fillStyle = isHighlighted
+            ? (theme === "dark" ? "#ffffff" : "#1e40af")
+            : (theme === "dark" ? "rgba(229,231,235,0.4)" : "rgba(55,53,47,0.4)");
+        } else {
+          ctx.fillStyle = theme === "dark" ? "#E5E7EB" : "#37352f";
+        }
 
         const maxLabelLength = 20;
         const displayLabel =
@@ -215,7 +253,7 @@ export function GraphView({
         );
       }
     },
-    [highlightCenter, pageId, showLabels, theme]
+    [highlightCenter, pageId, showLabels, theme, highlightedNodes]
   );
 
   // Pin center node when engine stops (for local graph)
