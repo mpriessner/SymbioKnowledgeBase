@@ -46,6 +46,7 @@ export const updatePageSchema = z.object({
     .url("coverUrl must be a valid URL")
     .nullable()
     .optional(),
+  spaceType: z.enum(["PRIVATE", "TEAM", "AGENT"]).optional(),
 });
 
 export const listPagesQuerySchema = z.object({

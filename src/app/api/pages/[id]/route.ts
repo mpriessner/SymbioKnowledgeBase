@@ -145,12 +145,13 @@ export const PUT = withTenant(
       // Verify the page exists and belongs to this tenant
       const existingPage = await prisma.page.findFirst({
         where: { id: idParsed.data, tenantId: context.tenantId },
+        select: { id: true, title: true, spaceType: true },
       });
       if (!existingPage) {
         return errorResponse("NOT_FOUND", "Page not found", undefined, 404);
       }
 
-      const { title, parentId, icon, coverUrl } = parsed.data;
+      const { title, parentId, icon, coverUrl, spaceType } = parsed.data;
 
       // If parentId is being changed, validate the new parent
       if (parentId !== undefined && parentId !== null) {
@@ -196,6 +197,7 @@ export const PUT = withTenant(
       if (title !== undefined) updateData.title = title;
       if (icon !== undefined) updateData.icon = icon;
       if (coverUrl !== undefined) updateData.coverUrl = coverUrl;
+      if (spaceType !== undefined) updateData.spaceType = spaceType;
 
       if (parentId !== undefined) {
         updateData.parentId = parentId;
@@ -212,7 +214,7 @@ export const PUT = withTenant(
         updateData.position = (maxPosition._max.position ?? -1) + 1;
       }
 
-      // Use a transaction for atomicity when title changes
+      // Use a transaction for atomicity when title changes or spaceType changes
       const updatedPage = await prisma.$transaction(async (tx) => {
         const page = await tx.page.update({
           where: { id: idParsed.data },
@@ -227,6 +229,24 @@ export const PUT = withTenant(
             context.tenantId,
             tx
           );
+        }
+
+        // If spaceType changed, cascade to all descendants
+        if (spaceType !== undefined && spaceType !== existingPage.spaceType) {
+          const updateDescendants = async (parentId: string): Promise<void> => {
+            const children = await tx.page.findMany({
+              where: { parentId, tenantId: context.tenantId },
+              select: { id: true },
+            });
+            for (const child of children) {
+              await tx.page.update({
+                where: { id: child.id },
+                data: { spaceType },
+              });
+              await updateDescendants(child.id);
+            }
+          };
+          await updateDescendants(idParsed.data);
         }
 
         return page;

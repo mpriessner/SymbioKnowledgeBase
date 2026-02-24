@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "symbio-recent-pages";
 const MAX_RECENT_PAGES = 5;
@@ -12,27 +12,65 @@ export interface RecentPage {
   visitedAt: number;
 }
 
+// ── Shared in-memory cache so every hook instance sees the same data ───
+let cache: RecentPage[] = [];
+let listeners: Array<() => void> = [];
+
+function readFromStorage(): RecentPage[] {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) return JSON.parse(stored) as RecentPage[];
+  } catch {
+    // Ignore parse errors
+  }
+  return [];
+}
+
+function writeToStorage(pages: RecentPage[]) {
+  cache = pages;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pages));
+  } catch {
+    // Ignore storage errors
+  }
+  // Notify all hook instances that data changed
+  listeners.forEach((fn) => fn());
+}
+
+function subscribe(listener: () => void) {
+  listeners.push(listener);
+  return () => {
+    listeners = listeners.filter((fn) => fn !== listener);
+  };
+}
+
+function getSnapshot(): RecentPage[] {
+  return cache;
+}
+
+function getServerSnapshot(): RecentPage[] {
+  return [];
+}
+
 /**
  * Hook for managing the recent pages list.
  *
+ * Uses useSyncExternalStore so every component calling this hook
+ * instantly sees updates when any component adds a recent page.
  * Stores the last 5 visited pages in localStorage.
- * Provides methods to add a page visit and retrieve the list.
  */
 export function useRecentPages() {
-  const [recentPages, setRecentPages] = useState<RecentPage[]>([]);
-
-  // Load from localStorage on mount
+  // Initialise cache from localStorage once
+  const [initialised, setInitialised] = useState(false);
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as RecentPage[];
-        setRecentPages(parsed);
-      }
-    } catch {
-      // Ignore parse errors
+    if (!initialised) {
+      cache = readFromStorage();
+      listeners.forEach((fn) => fn());
+      setInitialised(true);
     }
-  }, []);
+  }, [initialised]);
+
+  const recentPages = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   /**
    * Records a page visit. Adds the page to the front of the recent list,
@@ -40,25 +78,12 @@ export function useRecentPages() {
    */
   const addRecentPage = useCallback(
     (page: { id: string; title: string; icon: string | null }) => {
-      setRecentPages((prev) => {
-        // Remove existing entry for this page (if any)
-        const filtered = prev.filter((p) => p.id !== page.id);
-
-        // Add to front with current timestamp
-        const updated: RecentPage[] = [
-          { ...page, visitedAt: Date.now() },
-          ...filtered,
-        ].slice(0, MAX_RECENT_PAGES);
-
-        // Persist to localStorage
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-        } catch {
-          // Ignore storage errors
-        }
-
-        return updated;
-      });
+      const filtered = cache.filter((p) => p.id !== page.id);
+      const updated: RecentPage[] = [
+        { ...page, visitedAt: Date.now() },
+        ...filtered,
+      ].slice(0, MAX_RECENT_PAGES);
+      writeToStorage(updated);
     },
     []
   );
@@ -67,12 +92,7 @@ export function useRecentPages() {
    * Clears the recent pages list.
    */
   const clearRecentPages = useCallback(() => {
-    setRecentPages([]);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Ignore
-    }
+    writeToStorage([]);
   }, []);
 
   return { recentPages, addRecentPage, clearRecentPages };

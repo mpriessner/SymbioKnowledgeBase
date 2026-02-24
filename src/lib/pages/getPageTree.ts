@@ -162,3 +162,39 @@ export async function getPageAncestry(
 
   return ancestors;
 }
+
+/**
+ * Fetches all pages for a tenant grouped by spaceType and returns them as nested trees.
+ * Returns separate trees for PRIVATE, TEAM, and AGENT spaces.
+ */
+export async function getPageTreeBySpace(tenantId: string) {
+  const pages = await prisma.page.findMany({
+    where: { tenantId },
+    select: {
+      id: true,
+      title: true,
+      icon: true,
+      parentId: true,
+      position: true,
+      spaceType: true,
+      tenantId: true,
+      teamspaceId: true,
+      coverUrl: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+  });
+
+  const grouped = {
+    private: pages.filter((p) => p.spaceType === "PRIVATE"),
+    team: pages.filter((p) => p.spaceType === "TEAM"),
+    agent: pages.filter((p) => p.spaceType === "AGENT"),
+  };
+
+  return {
+    private: buildPageTree(grouped.private),
+    team: buildPageTree(grouped.team),
+    agent: buildPageTree(grouped.agent),
+  };
+}
