@@ -58,9 +58,9 @@ export default function HomePage() {
   };
 
   return (
-    <div className="flex flex-col items-center px-8 py-12 min-h-full w-full bg-[var(--bg-primary)]">
+    <div className="flex flex-col w-full px-8 py-12 min-h-full bg-[var(--bg-primary)]">
       {/* Greeting */}
-      <div className="w-full max-w-4xl mb-12">
+      <div className="w-full mb-12">
         <h1 className="text-4xl font-semibold text-[var(--text-primary)] mb-2">
           Good {timeOfDay}
         </h1>
@@ -68,7 +68,7 @@ export default function HomePage() {
 
       {/* Recently Visited */}
       {recentPages.length > 0 && (
-        <section className="w-full max-w-4xl mb-12">
+        <section className="w-full mb-12">
           <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-4 uppercase tracking-wide">
             Recently visited
           </h2>
@@ -99,7 +99,7 @@ export default function HomePage() {
       )}
 
       {/* Quick Actions */}
-      <section className="w-full max-w-4xl mb-12">
+      <section className="w-full mb-12">
         <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-4 uppercase tracking-wide">
           Quick actions
         </h2>
@@ -158,7 +158,7 @@ export default function HomePage() {
       </section>
 
       {/* All Pages */}
-      <section className="w-full max-w-4xl">
+      <section className="w-full">
         <h2 className="text-sm font-semibold text-[var(--text-secondary)] mb-4 uppercase tracking-wide">
           All pages
         </h2>

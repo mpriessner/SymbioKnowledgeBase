@@ -48,7 +48,7 @@ export function Breadcrumbs({ tree, currentPageId }: BreadcrumbsProps) {
   const lastIndex = visibleSegments.length - 1;
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center px-16 py-2 max-w-4xl mx-auto">
+    <nav aria-label="Breadcrumb" className="flex items-center w-full px-16 py-2">
       {/* Home breadcrumb */}
       <Link
         href="/"
