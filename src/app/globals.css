@@ -119,6 +119,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Workspace layout should always span the full viewport */
+.workspace-main {
+  width: 100%;
+  max-width: none;
+}
+
+.workspace-main > * {
+  width: 100%;
+  max-width: none;
+}
+
 /* ── Selection ────────────────────────────────────────── */
 ::selection {
   background: var(--accent-bg);

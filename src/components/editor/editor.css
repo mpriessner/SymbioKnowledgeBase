@@ -1,5 +1,11 @@
 /* TipTap editor base styles */
 
+/* Ensure editor content can expand to full width */
+.tiptap {
+  width: 100%;
+  max-width: none;
+}
+
 /* Placeholder styling */
 .tiptap p.is-editor-empty:first-child::before {
   color: var(--text-tertiary);

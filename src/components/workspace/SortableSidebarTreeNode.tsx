@@ -196,7 +196,7 @@ export function SortableSidebarTreeNode({
           transition-colors duration-100
           ${isDragging ? "opacity-40" : ""}
           ${isActive ? "bg-blue-100 text-blue-900" : "hover:bg-gray-100 text-gray-700"}
-          ${isDropTarget && dropPosition?.type === "child" ? "bg-blue-50 ring-1 ring-blue-300" : ""}
+          ${isDropTarget && dropPosition?.type === "child" ? "bg-blue-100 ring-2 ring-blue-400 ring-inset" : ""}
         `}
         style={{ paddingLeft: `${paddingLeft}px` }}
         onClick={handleClick}

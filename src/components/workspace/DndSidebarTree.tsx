@@ -156,38 +156,53 @@ export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
         return;
       }
 
-      // Determine drop position based on pointer Y relative to the over element
+      // Determine drop position based on pointer position relative to the over element.
+      // Uses BOTH vertical (Y) and horizontal (X) position:
+      //   - Dragging to the RIGHT of the target's left edge = nest as child
+      //   - Vertical top/bottom edges = before/after (sibling reorder)
       const overRect = over.rect;
+      const pointerX = (event.activatorEvent as PointerEvent)?.clientX ?? 0;
       const pointerY = (event.activatorEvent as PointerEvent)?.clientY ?? 0;
+      const deltaX = event.delta?.x ?? 0;
       const deltaY = event.delta?.y ?? 0;
+      const currentX = pointerX + deltaX;
       const currentY = pointerY + deltaY;
 
       if (overRect) {
         const top = overRect.top;
+        const left = overRect.left;
         const height = overRect.height;
         const relativeY = currentY - top;
+        const relativeX = currentX - left;
 
-        // Check if target has children (is a potential parent)
+        // Check if target already has children
         const targetNode = findNodeWithParent(tree, overIdStr);
         const isParentNode = targetNode?.node && targetNode.node.children.length > 0;
 
+        // Horizontal threshold: if cursor is indented >30px right of the target's
+        // left edge, treat as a "child" drop (nesting). This makes it much easier
+        // to nest pages — just drag slightly to the right.
+        const nestThreshold = 30;
+        const wantsNest = relativeX > nestThreshold;
+
         if (isParentNode) {
-          // For parent nodes: use wider middle zone to make "child" drops easier
-          if (relativeY < height * 0.2) {
+          // For parent nodes: wider middle zone + horizontal nesting
+          if (relativeY < height * 0.2 && !wantsNest) {
             setDropPosition({ type: "before" });
-          } else if (relativeY > height * 0.8) {
+          } else if (relativeY > height * 0.8 && !wantsNest) {
             setDropPosition({ type: "after" });
           } else {
             setDropPosition({ type: "child" });
           }
         } else {
-          // For leaf nodes: standard zones
-          if (relativeY < height * 0.25) {
-            setDropPosition({ type: "before" });
-          } else if (relativeY > height * 0.75) {
-            setDropPosition({ type: "after" });
-          } else {
+          // For leaf nodes: horizontal offset is the primary nesting signal
+          if (wantsNest) {
+            // Dragged to the right → nest as child
             setDropPosition({ type: "child" });
+          } else if (relativeY < height * 0.5) {
+            setDropPosition({ type: "before" });
+          } else {
+            setDropPosition({ type: "after" });
           }
         }
       }
@@ -298,6 +313,11 @@ export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
       <DragOverlay dropAnimation={null}>
         {activeNode && (
           <div className="flex items-center h-8 px-3 bg-white border border-blue-200 rounded-md shadow-lg opacity-90">
+            {dropPosition?.type === "child" && (
+              <svg className="w-3 h-3 text-blue-500 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            )}
             <span className="text-sm mr-2">
               {activeNode.icon || "📄"}
             </span>

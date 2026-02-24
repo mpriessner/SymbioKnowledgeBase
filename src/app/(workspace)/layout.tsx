@@ -12,19 +12,19 @@ export default function WorkspaceLayout({
 }) {
   return (
     <QueryProvider>
-      <div className="flex overflow-hidden" style={{ width: '100vw', height: '100vh' }}>
+      <div className="flex h-screen w-screen overflow-hidden">
         <Sidebar />
-        <main className="flex-1 min-w-0 overflow-y-auto">
+        <main className="workspace-main flex-1 min-w-0 w-full max-w-none overflow-y-auto">
           <BreadcrumbsWrapper />
           {children}
         </main>
-        {/* Quick Switcher (global Cmd/Ctrl+K overlay) */}
-        <QuickSwitcher />
-        {/* Enhanced Search (global Cmd/Ctrl+Shift+F overlay) */}
-        <EnhancedSearchWrapper />
-        {/* AI Chat Assistant (floating button + popup) */}
-        <AIChatButton />
       </div>
+      {/* Quick Switcher (global Cmd/Ctrl+K overlay) */}
+      <QuickSwitcher />
+      {/* Enhanced Search (global Cmd/Ctrl+Shift+F overlay) */}
+      <EnhancedSearchWrapper />
+      {/* AI Chat Assistant (floating button + popup) */}
+      <AIChatButton />
     </QueryProvider>
   );
 }

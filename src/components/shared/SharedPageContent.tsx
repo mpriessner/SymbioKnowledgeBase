@@ -18,7 +18,7 @@ export function SharedPageContent({ content }: SharedPageContentProps) {
     editorProps: {
       attributes: {
         class:
-          "prose prose-stone dark:prose-invert max-w-none px-0 py-4 focus:outline-none",
+          "tiptap prose prose-stone dark:prose-invert w-full !max-w-none px-0 py-4 focus:outline-none",
       },
     },
   });

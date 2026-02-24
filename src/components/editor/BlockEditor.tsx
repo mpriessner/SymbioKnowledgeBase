@@ -68,7 +68,7 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
     editorProps: {
       attributes: {
         class:
-          "prose prose-stone dark:prose-invert max-w-none min-h-[500px] px-8 py-4 focus:outline-none",
+          "tiptap prose prose-stone dark:prose-invert w-full !max-w-none min-h-[500px] px-8 py-4 focus:outline-none",
         "data-testid": "block-editor",
       },
     },
