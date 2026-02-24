@@ -68,21 +68,40 @@ export function PageHeader({ page }: PageHeaderProps) {
   const handleExportMarkdown = useCallback(async () => {
     try {
       const res = await fetch(`/api/pages/${page.id}/export`);
-      if (!res.ok) return;
-      const blob = await res.blob();
+      if (!res.ok) {
+        console.error("Export failed:", res.status, res.statusText);
+        return;
+      }
+
+      // Verify we got markdown content, not an error JSON
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        console.error("Export returned JSON instead of markdown");
+        return;
+      }
+
+      const text = await res.text();
+      if (!text || text.trim().length === 0) {
+        console.error("Export returned empty content");
+        return;
+      }
+
+      // Create a proper markdown blob with explicit type
+      const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download =
-        res.headers
-          .get("content-disposition")
-          ?.match(/filename="(.+)"/)?.[1] || `${page.title}.md`;
+      // Extract filename from Content-Disposition or build from title
+      const dispositionFilename = res.headers
+        .get("content-disposition")
+        ?.match(/filename="(.+)"/)?.[1];
+      link.download = dispositionFilename || `${page.title || "untitled"}.md`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch {
-      // Silently fail
+    } catch (error) {
+      console.error("Export markdown error:", error);
     }
   }, [page.id, page.title]);
 
