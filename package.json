@@ -47,6 +47,7 @@
     "react-force-graph": "^1.48.2",
     "react-force-graph-2d": "^1.29.1",
     "react-force-graph-3d": "^1.29.1",
+    "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "swagger-ui-react": "^5.31.2",
