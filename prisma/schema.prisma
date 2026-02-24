@@ -41,6 +41,7 @@ enum BlockType {
   IMAGE
   BOOKMARK
   TABLE
+  FILE
 }
 
 enum NotificationType {
@@ -50,25 +51,64 @@ enum NotificationType {
   SYSTEM
 }
 
+enum FileStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum SpaceType {
+  PRIVATE
+  TEAM
+  AGENT
+}
+
+enum ChangeType {
+  MANUAL
+  AUTO_SYNC
+  PROPAGATED
+  MACHINE_UPDATE
+  AI_SUGGESTED
+}
+
+enum SourceType {
+  URL
+  PAGE
+  MACHINE_PROTOCOL
+}
+
+enum SubscriptionBehavior {
+  MIRROR
+  NOTIFY
+  SUGGEST
+}
+
 // ─── Tenants ─────────────────────────────────────────────────────────
 
 model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  name         String
+  storageQuota BigInt   @default(5368709120) @map("storage_quota")
+  storageUsed  BigInt   @default(0) @map("storage_used")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   // Relations
-  users            User[]
-  pages            Page[]
-  blocks           Block[]
-  pageLinks        PageLink[]
-  apiKeys          ApiKey[]
-  databases        Database[]
-  dbRows           DbRow[]
-  teamspaces       Teamspace[]
-  publicShareLinks PublicShareLink[]
-  presenceRecords  PagePresence[]
-  notifications    Notification[]
+  users                  User[]
+  pages                  Page[]
+  blocks                 Block[]
+  pageLinks              PageLink[]
+  apiKeys                ApiKey[]
+  databases              Database[]
+  dbRows                 DbRow[]
+  teamspaces             Teamspace[]
+  publicShareLinks       PublicShareLink[]
+  presenceRecords        PagePresence[]
+  notifications          Notification[]
+  auditLogs              AuditLog[]
+  documentVersions       DocumentVersion[]
+  documentSubscriptions  DocumentSubscription[]
+  fileAttachments        FileAttachment[]
 
   @@map("tenants")
 }
@@ -82,6 +122,7 @@ model User {
   passwordHash String?  @map("password_hash") // Deprecated — managed by Supabase Auth
   role         Role     @default(USER)
   name         String?
+  avatarUrl    String?  @map("avatar_url")
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deactivatedAt  DateTime? @map("deactivated_at")
@@ -94,6 +135,8 @@ model User {
   presenceRecords       PagePresence[]
   receivedNotifications Notification[]     @relation("NotificationRecipient")
   sentNotifications     Notification[]     @relation("NotificationSource")
+  auditLogs             AuditLog[]
+  fileAttachments       FileAttachment[]
 
   // Indexes
   @@unique([tenantId, email], map: "uq_users_email_tenant_id")
@@ -112,30 +155,35 @@ model Page {
   teamspaceId  String?  @map("teamspace_id")
   title        String   @default("Untitled")
   icon         String?
-  coverUrl     String?  @map("cover_url")
-  position     Int      @default(0)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  coverUrl     String?   @map("cover_url")
+  position     Int       @default(0)
+  spaceType    SpaceType @default(PRIVATE) @map("space_type")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   // Relations
   tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parent       Page?       @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children     Page[]      @relation("PageHierarchy")
-  teamspace        Teamspace?       @relation(fields: [teamspaceId], references: [id], onDelete: SetNull)
-  blocks           Block[]
-  sourceLinks      PageLink[]       @relation("SourcePage")
-  targetLinks      PageLink[]       @relation("TargetPage")
-  databases        Database[]
-  dbRows           DbRow[]
-  publicShareLinks PublicShareLink[]
-  presenceRecords  PagePresence[]
-  notifications    Notification[]
+  teamspace             Teamspace?           @relation(fields: [teamspaceId], references: [id], onDelete: SetNull)
+  blocks                Block[]
+  sourceLinks           PageLink[]           @relation("SourcePage")
+  targetLinks           PageLink[]           @relation("TargetPage")
+  databases             Database[]
+  dbRows                DbRow[]
+  publicShareLinks      PublicShareLink[]
+  presenceRecords       PagePresence[]
+  notifications         Notification[]
+  documentVersions      DocumentVersion[]
+  documentSubscriptions DocumentSubscription[]
+  fileAttachments       FileAttachment[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_pages_tenant_id_id")
   @@index([tenantId], map: "idx_pages_tenant_id")
   @@index([tenantId, parentId], map: "idx_pages_tenant_id_parent_id")
   @@index([tenantId, teamspaceId], map: "idx_pages_tenant_id_teamspace_id")
+  @@index([tenantId, spaceType], map: "idx_pages_tenant_id_space_type")
 
   @@map("pages")
 }
@@ -201,13 +249,15 @@ model ApiKey {
   keyHash    String    @map("key_hash")
   keyPrefix  String    @map("key_prefix")
   name       String
+  scopes     String[]  @default([])
   createdAt  DateTime  @default(now()) @map("created_at")
   lastUsedAt DateTime? @map("last_used_at")
   revokedAt  DateTime? @map("revoked_at")
 
   // Relations
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_api_keys_tenant_id_id")
@@ -376,4 +426,114 @@ model Notification {
   @@index([tenantId, userId, read], map: "idx_notifications_user_read")
 
   @@map("notifications")
+}
+
+// ─── Document Versions ──────────────────────────────────────────────
+
+model DocumentVersion {
+  id           String     @id @default(uuid())
+  pageId       String     @map("page_id")
+  tenantId     String     @map("tenant_id")
+  version      Int
+  content      Json
+  plainText    String     @map("plain_text")
+  changeType   ChangeType @map("change_type")
+  changeSource String?    @map("change_source")
+  changeNotes  String?    @map("change_notes")
+  diffFromPrev Json?      @map("diff_from_prev")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@unique([pageId, version])
+  @@index([pageId])
+  @@index([tenantId, pageId])
+
+  @@map("document_versions")
+}
+
+// ─── Document Subscriptions ─────────────────────────────────────────
+
+model DocumentSubscription {
+  id               String               @id @default(uuid())
+  tenantId         String               @map("tenant_id")
+  subscriberPageId String               @map("subscriber_page_id")
+  sourceType       SourceType           @map("source_type")
+  sourcePageId     String?              @map("source_page_id")
+  sourceUrl        String?              @map("source_url")
+  behavior         SubscriptionBehavior @default(NOTIFY)
+  lastSyncedAt     DateTime?            @map("last_synced_at")
+  lastSyncVersion  Int?                 @map("last_sync_version")
+  isActive         Boolean              @default(true) @map("is_active")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  // Relations
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriberPage Page   @relation(fields: [subscriberPageId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId, subscriberPageId])
+  @@index([sourcePageId])
+
+  @@map("document_subscriptions")
+}
+
+// ─── File Attachments ───────────────────────────────────────────────
+
+model FileAttachment {
+  id          String     @id @default(uuid())
+  tenantId    String     @map("tenant_id")
+  userId      String     @map("user_id")
+  pageId      String?    @map("page_id")
+  fileName    String     @map("file_name")
+  fileSize    BigInt     @map("file_size")
+  mimeType    String     @map("mime_type")
+  storagePath String     @map("storage_path")
+  storageUrl  String?    @map("storage_url")
+  status      FileStatus @default(UPLOADING)
+  checksum    String?
+  metadata    Json?
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  page   Page?  @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([tenantId, pageId])
+  @@index([tenantId, userId])
+
+  @@map("file_attachments")
+}
+
+// ─── Audit Logs ─────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  userId     String   @map("user_id")
+  apiKeyId   String?  @map("api_key_id")
+  action     String
+  resource   String
+  resourceId String?  @map("resource_id")
+  details    Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  // Indexes
+  @@index([tenantId, createdAt], map: "idx_audit_logs_tenant_created")
+  @@index([userId], map: "idx_audit_logs_user_id")
+  @@index([resource, resourceId], map: "idx_audit_logs_resource")
+
+  @@map("audit_logs")
 }
