@@ -3,7 +3,6 @@
 import {
   forwardRef,
   useCallback,
-  useEffect,
   useImperativeHandle,
   useState,
 } from "react";
@@ -22,10 +21,8 @@ export const SlashMenu = forwardRef<SlashMenuRef, SlashMenuProps>(
   function SlashMenu({ items, command }, ref) {
     const [selectedIndex, setSelectedIndex] = useState(0);
 
-    // Reset selection when items change
-    useEffect(() => {
-      setSelectedIndex(0);
-    }, [items]);
+    // Clamp selected index to valid range - handles list changes automatically
+    const validSelectedIndex = items.length === 0 ? 0 : Math.min(selectedIndex, items.length - 1);
 
     const selectItem = useCallback(
       (index: number) => {
@@ -55,7 +52,7 @@ export const SlashMenu = forwardRef<SlashMenuRef, SlashMenuProps>(
         }
 
         if (event.key === "Enter") {
-          selectItem(selectedIndex);
+          selectItem(validSelectedIndex);
           return true;
         }
 
@@ -87,14 +84,14 @@ export const SlashMenu = forwardRef<SlashMenuRef, SlashMenuProps>(
           <button
             key={item.id}
             className={`flex w-full items-start gap-3 px-3 py-2 text-left transition-colors ${
-              index === selectedIndex
+              index === validSelectedIndex
                 ? "bg-[var(--bg-hover)]"
                 : "hover:bg-[var(--bg-tertiary)]"
             }`}
             onClick={() => selectItem(index)}
             onMouseEnter={() => setSelectedIndex(index)}
             role="option"
-            aria-selected={index === selectedIndex}
+            aria-selected={index === validSelectedIndex}
             data-testid={`slash-menu-item-${item.id}`}
           >
             {/* Icon */}
