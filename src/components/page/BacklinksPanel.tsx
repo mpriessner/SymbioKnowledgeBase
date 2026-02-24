@@ -40,12 +40,12 @@ export function BacklinksPanel({ pageId }: BacklinksPanelProps) {
   }
 
   return (
-    <div className="mt-8 border-t border-[var(--color-border)] pt-4">
+    <div className="mt-8 border-t border-[var(--border-default)] pt-4">
       {/* Header — click to toggle */}
       <button
         onClick={toggleExpanded}
         className="flex w-full items-center gap-2 text-left text-sm font-medium
-                   text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]
+                   text-[var(--text-secondary)] hover:text-[var(--text-primary)]
                    transition-colors duration-150"
         aria-expanded={isExpanded}
         aria-controls="backlinks-list"
@@ -80,14 +80,14 @@ export function BacklinksPanel({ pageId }: BacklinksPanelProps) {
               {[1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className="h-8 animate-pulse rounded bg-[var(--color-bg-secondary)]"
+                  className="h-8 animate-pulse rounded bg-[var(--bg-secondary)]"
                 />
               ))}
             </div>
           )}
 
           {!isLoading && backlinks.length === 0 && (
-            <p className="py-2 text-sm text-[var(--color-text-secondary)]">
+            <p className="py-2 text-sm text-[var(--text-secondary)]">
               No pages link to this page yet.
             </p>
           )}
@@ -99,8 +99,8 @@ export function BacklinksPanel({ pageId }: BacklinksPanelProps) {
                 role="listitem"
                 onClick={() => navigateToPage(backlink.pageId)}
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm
-                           text-[var(--color-text-primary)]
-                           hover:bg-[var(--color-bg-secondary)]
+                           text-[var(--text-primary)]
+                           hover:bg-[var(--bg-secondary)]
                            transition-colors duration-100 cursor-pointer text-left"
               >
                 <span className="flex-shrink-0 text-base">

@@ -14,7 +14,7 @@ export default function WorkspaceLayout({
     <QueryProvider>
       <div className="flex h-screen w-screen overflow-hidden">
         <Sidebar />
-        <main className="workspace-main flex-1 min-w-0 w-full max-w-none overflow-y-auto">
+        <main className="workspace-main flex-1 min-w-0 flex flex-col">
           <BreadcrumbsWrapper />
           {children}
         </main>

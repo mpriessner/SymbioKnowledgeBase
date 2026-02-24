@@ -32,13 +32,13 @@ export function LocalGraph({ pageId, depth = 2 }: LocalGraphProps) {
   }, []);
 
   return (
-    <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+    <div className="mt-4 border-t border-[var(--border-default)] pt-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <button
           onClick={toggleExpanded}
           className="flex items-center gap-2 text-sm font-medium
-                     text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]
+                     text-[var(--text-secondary)] hover:text-[var(--text-primary)]
                      transition-colors duration-150"
           aria-expanded={isExpanded}
           aria-controls="local-graph"
@@ -64,7 +64,7 @@ export function LocalGraph({ pageId, depth = 2 }: LocalGraphProps) {
         {isExpanded && (
           <Link
             href="/graph"
-            className="text-xs text-[var(--color-accent)] hover:underline"
+            className="text-xs text-[var(--accent-primary)] hover:underline"
           >
             View full graph
           </Link>
@@ -75,14 +75,14 @@ export function LocalGraph({ pageId, depth = 2 }: LocalGraphProps) {
       {isExpanded && (
         <div id="local-graph" className="mt-3">
           {!hasConnections && nodeCount <= 1 ? (
-            <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)]">
-              <p className="text-sm text-[var(--color-text-secondary)]">
+            <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-[var(--border-default)]">
+              <p className="text-sm text-[var(--text-secondary)]">
                 No connections yet. Add wikilinks to build your graph.
               </p>
             </div>
           ) : (
             <div
-              className="overflow-hidden rounded-lg border border-[var(--color-border)]"
+              className="overflow-hidden rounded-lg border border-[var(--border-default)]"
               style={{ height: 350 }}
             >
               <GraphView

@@ -57,10 +57,10 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
   return (
     <div className={`flex flex-col ${className}`}>
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-default)]">
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+          className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
           aria-expanded={!isCollapsed}
         >
           <svg
@@ -76,7 +76,7 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
           </svg>
           <span>Connections</span>
           {!isCollapsed && hasConnections && (
-            <span className="text-xs text-[var(--color-text-tertiary)]">
+            <span className="text-xs text-[var(--text-tertiary)]">
               ({nodeCount - 1})
             </span>
           )}
@@ -85,7 +85,7 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
         {!isCollapsed && (
           <Link
             href="/graph"
-            className="text-xs text-[var(--color-accent)] hover:underline"
+            className="text-xs text-[var(--accent-primary)] hover:underline"
           >
             Full graph
           </Link>
@@ -97,11 +97,11 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
         <div className="flex-1 min-h-0">
           {isLoading ? (
             <div className="flex h-[200px] items-center justify-center">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-accent)]" />
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]" />
             </div>
           ) : !hasConnections ? (
             <div className="flex h-[200px] items-center justify-center p-4">
-              <p className="text-xs text-center text-[var(--color-text-tertiary)]">
+              <p className="text-xs text-center text-[var(--text-tertiary)]">
                 No connections yet.
                 <br />
                 Add [[wikilinks]] to connect pages.
@@ -113,7 +113,7 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
               <div className="absolute top-2 right-2 z-10 flex flex-col gap-1">
                 <button
                   onClick={handleZoomIn}
-                  className="p-1 rounded bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                   title="Zoom in"
                   aria-label="Zoom in"
                 >
@@ -123,7 +123,7 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
                 </button>
                 <button
                   onClick={handleZoomOut}
-                  className="p-1 rounded bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                   title="Zoom out"
                   aria-label="Zoom out"
                 >
@@ -133,7 +133,7 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
                 </button>
                 <button
                   onClick={handleZoomFit}
-                  className="p-1 rounded bg-[var(--color-bg-secondary)] hover:bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                   title="Fit to view"
                   aria-label="Fit to view"
                 >
