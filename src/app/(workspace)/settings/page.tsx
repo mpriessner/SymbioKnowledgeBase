@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import ApiKeyManager from "@/components/settings/ApiKeyManager";
 import { TeamManagement } from "@/components/settings/TeamManagement";
+import { AccountProfileSection } from "@/components/settings/AccountProfileSection";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -14,14 +15,18 @@ export default function SettingsPage() {
       </h1>
 
       <div className="mt-8">
+        <AccountProfileSection />
+      </div>
+
+      <div className="mt-12 border-t border-[var(--border-default)] pt-12">
         <ApiKeyManager />
       </div>
 
-      <div className="mt-12">
+      <div className="mt-12 border-t border-[var(--border-default)] pt-12">
         <TeamManagement />
       </div>
 
-      <div className="mt-12">
+      <div className="mt-12 border-t border-[var(--border-default)] pt-12">
         <p className="text-[var(--text-secondary)]">
           Additional settings sections:
         </p>
