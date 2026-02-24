@@ -2,9 +2,9 @@
 
 import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { usePathname } from "next/navigation";
-import { X, Sparkles, Trash2, PanelRight, MessageSquare, Check, FileText } from "lucide-react";
+import { X, Sparkles, Minus, Maximize2, Minimize2, PanelRight, MessageSquare, Check, FileText } from "lucide-react";
 import { ChatMessages } from "./ChatMessages";
-import { ChatInput } from "./ChatInput";
+import { ChatInput, type ChatInputRef } from "./ChatInput";
 import { AIWelcomeScreen } from "./AIWelcomeScreen";
 import { useAIChat } from "@/hooks/useAIChat";
 import { usePage } from "@/hooks/usePages";
@@ -13,10 +13,12 @@ import type { PageContext } from "@/types/ai";
 export type ChatMode = "floating" | "sidebar";
 
 const CONTEXT_ENABLED_KEY = "symbio-ai-context-enabled";
+const EXPANDED_STORAGE_KEY = "symbio-ai-chat-expanded";
 
 interface AIChatPopupProps {
   isOpen: boolean;
   onClose: () => void;
+  onMinimize: () => void;
   mode: ChatMode;
   onModeChange: (mode: ChatMode) => void;
 }
@@ -25,12 +27,20 @@ interface AIChatPopupProps {
  * AI Chat Popup Window.
  *
  * Supports two display modes:
- * - Floating: Fixed position popup (400x500px) in bottom-right corner
+ * - Floating: Fixed position popup (400x500px or 600x700px expanded) in bottom-right corner
  * - Sidebar: Docked to right edge, full viewport height (380px width)
+ *
+ * Header controls (left to right):
+ * - New Chat button: Clears history, shows welcome
+ * - Title: "Symbio AI"
+ * - Mode toggle: Switch between floating/sidebar
+ * - Minimize: Collapse to just the button
+ * - Expand/Collapse: Toggle between normal and large size (floating mode only)
+ * - Close: Close the popup
  *
  * Wires together ChatMessages, ChatInput, and useAIChat hook.
  */
-export function AIChatPopup({ isOpen, onClose, mode, onModeChange }: AIChatPopupProps) {
+export function AIChatPopup({ isOpen, onClose, onMinimize, mode, onModeChange }: AIChatPopupProps) {
   const {
     messages,
     isLoading,
@@ -44,13 +54,21 @@ export function AIChatPopup({ isOpen, onClose, mode, onModeChange }: AIChatPopup
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [suggestionValue, setSuggestionValue] = useState<string | undefined>(undefined);
   const modeMenuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<ChatInputRef>(null);
   
-  // Context awareness state - initialize from localStorage
+  // Expanded state with lazy initialization from localStorage
+  const [isExpanded, setIsExpanded] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(EXPANDED_STORAGE_KEY) === "true";
+  });
+  
+  // Context awareness state with lazy initialization
   const [contextEnabled, setContextEnabled] = useState(() => {
     if (typeof window === "undefined") return true;
     const stored = localStorage.getItem(CONTEXT_ENABLED_KEY);
     return stored === null ? true : stored === "true";
   });
+  
   const pathname = usePathname();
   
   // Extract page ID from pathname (e.g., /pages/abc123 → abc123)
@@ -118,11 +136,13 @@ export function AIChatPopup({ isOpen, onClose, mode, onModeChange }: AIChatPopup
     [sendMessage, clearError, pageContext]
   );
 
-  const handleClearHistory = useCallback(() => {
-    if (messages.length > 0) {
-      clearHistory();
-    }
-  }, [messages.length, clearHistory]);
+  const handleNewChat = useCallback(() => {
+    clearHistory();
+    // Focus input after clearing
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  }, [clearHistory]);
 
   const handleModeSelect = useCallback(
     (newMode: ChatMode) => {
@@ -131,6 +151,14 @@ export function AIChatPopup({ isOpen, onClose, mode, onModeChange }: AIChatPopup
     },
     [onModeChange]
   );
+
+  const handleToggleExpand = useCallback(() => {
+    setIsExpanded((prev) => {
+      const newValue = !prev;
+      localStorage.setItem(EXPANDED_STORAGE_KEY, String(newValue));
+      return newValue;
+    });
+  }, []);
 
   const handleSelectSuggestion = useCallback((prompt: string) => {
     setSuggestionValue(prompt);
@@ -143,6 +171,11 @@ export function AIChatPopup({ isOpen, onClose, mode, onModeChange }: AIChatPopup
   if (!isOpen) return null;
 
   const isSidebar = mode === "sidebar";
+
+  // Size classes for floating mode based on expanded state
+  const floatingSizeClasses = isExpanded
+    ? "w-[600px] h-[700px] max-w-[80vw] max-h-[80vh]"
+    : "w-[400px] h-[500px]";
 
   return (
     <div
@@ -161,20 +194,39 @@ export function AIChatPopup({ isOpen, onClose, mode, onModeChange }: AIChatPopup
         ${
           isSidebar
             ? "top-0 right-0 w-[380px] h-screen rounded-none border-r-0 border-t-0 border-b-0 border-l-[var(--border-default)]"
-            : "bottom-20 right-6 w-[400px] h-[500px] rounded-xl animate-in fade-in slide-in-from-bottom-4 duration-200"
+            : `bottom-20 right-6 ${floatingSizeClasses} rounded-xl animate-in fade-in slide-in-from-bottom-4 duration-200`
         }
       `}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-default)] bg-[var(--bg-secondary)]">
-        <div className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--accent-primary)] text-white">
-            <Sparkles className="h-4 w-4" />
-          </div>
+      <div className="flex items-center px-4 py-3 border-b border-[var(--border-default)] bg-[var(--bg-secondary)]">
+        {/* Left: New Chat button */}
+        <button
+          onClick={handleNewChat}
+          aria-label="New chat"
+          title="New chat"
+          className="
+            rounded-md p-1.5
+            text-[var(--text-secondary)]
+            hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]
+            transition-colors duration-150
+            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]
+          "
+        >
+          <Sparkles className="h-4 w-4" />
+        </button>
+
+        {/* Title */}
+        <div className="flex items-center gap-2 ml-2">
           <span className="font-semibold text-[var(--text-primary)]">
             Symbio AI
           </span>
         </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Right: Mode toggle, Minimize, Expand, Close buttons */}
         <div className="flex items-center gap-1">
           {/* Mode toggle dropdown */}
           <div className="relative" ref={modeMenuRef}>
@@ -240,27 +292,50 @@ export function AIChatPopup({ isOpen, onClose, mode, onModeChange }: AIChatPopup
               </div>
             )}
           </div>
-          {/* Clear history button */}
+
+          {/* Minimize button */}
           <button
-            onClick={handleClearHistory}
-            disabled={messages.length === 0}
-            aria-label="Clear chat history"
-            title="Clear chat history"
+            onClick={onMinimize}
+            aria-label="Minimize"
+            title="Minimize"
             className="
               rounded-md p-1.5
               text-[var(--text-secondary)]
               hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]
               transition-colors duration-150
               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]
-              disabled:opacity-50 disabled:cursor-not-allowed
             "
           >
-            <Trash2 className="h-4 w-4" />
+            <Minus className="h-4 w-4" />
           </button>
+
+          {/* Expand/Collapse button (only in floating mode) */}
+          {!isSidebar && (
+            <button
+              onClick={handleToggleExpand}
+              aria-label={isExpanded ? "Collapse" : "Expand"}
+              title={isExpanded ? "Collapse" : "Expand"}
+              className="
+                rounded-md p-1.5
+                text-[var(--text-secondary)]
+                hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]
+                transition-colors duration-150
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]
+              "
+            >
+              {isExpanded ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
+            </button>
+          )}
+
           {/* Close button */}
           <button
             onClick={onClose}
-            aria-label="Close chat"
+            aria-label="Close"
+            title="Close"
             className="
               rounded-md p-1.5
               text-[var(--text-secondary)]
@@ -332,6 +407,7 @@ export function AIChatPopup({ isOpen, onClose, mode, onModeChange }: AIChatPopup
 
       {/* Input Area */}
       <ChatInput
+        ref={inputRef}
         onSend={handleSend}
         onCancel={cancelRequest}
         isLoading={isLoading}

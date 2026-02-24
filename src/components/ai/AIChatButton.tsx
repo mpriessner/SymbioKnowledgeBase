@@ -3,97 +3,110 @@
 import { useState, useEffect, useCallback } from "react";
 import { Sparkles, MessageCircle } from "lucide-react";
 import { AIChatPopup, ChatMode } from "./AIChatPopup";
+import { useHydrated } from "@/hooks/useHydrated";
 
 const STORAGE_KEY = "symbio-ai-chat-open";
 const MODE_STORAGE_KEY = "symbio-ai-chat-mode";
 const CHAT_HISTORY_KEY = "skb-ai-chat-history";
 
 /**
+ * Check for messages in localStorage.
+ * Defined as a standalone function to avoid hook ordering issues.
+ */
+function checkStorageForMessages(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const stored = localStorage.getItem(CHAT_HISTORY_KEY);
+    if (stored) {
+      const messages = JSON.parse(stored);
+      return Array.isArray(messages) && messages.length > 0;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return false;
+}
+
+/**
  * Floating AI Chat Button with popup.
  *
  * Renders a circular button in the bottom-right corner that toggles
  * the AI chat popup. Open/closed state and display mode persist in localStorage.
- * Supports minimize behavior - when minimized, only the button is visible.
+ * Supports minimize behavior - when minimized, only the button is visible
+ * with an optional indicator when chat has content.
  */
 export function AIChatButton() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [chatMode, setChatMode] = useState<ChatMode>("floating");
-  const [mounted, setMounted] = useState(false);
-  const [hasMessages, setHasMessages] = useState(false);
+  // Use hydration-safe hook instead of mounted state
+  const hydrated = useHydrated();
+  
+  // Use lazy initialization for state that reads from localStorage
+  const [isOpen, setIsOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(STORAGE_KEY) === "true";
+  });
+  
+  const [chatMode, setChatMode] = useState<ChatMode>(() => {
+    if (typeof window === "undefined") return "floating";
+    const stored = localStorage.getItem(MODE_STORAGE_KEY) as ChatMode;
+    return stored === "floating" || stored === "sidebar" ? stored : "floating";
+  });
+  
+  const [hasMessages, setHasMessages] = useState(() => checkStorageForMessages());
 
-  // Check for messages in localStorage
-  const checkForMessages = useCallback(() => {
-    try {
-      const stored = localStorage.getItem(CHAT_HISTORY_KEY);
-      if (stored) {
-        const messages = JSON.parse(stored);
-        setHasMessages(Array.isArray(messages) && messages.length > 0);
-      } else {
-        setHasMessages(false);
-      }
-    } catch {
-      setHasMessages(false);
-    }
+  // Re-check for messages function
+  const refreshMessageIndicator = useCallback(() => {
+    setHasMessages(checkStorageForMessages());
   }, []);
-
-  // Load persisted state on mount
-  useEffect(() => {
-    setMounted(true);
-    const storedOpen = localStorage.getItem(STORAGE_KEY);
-    if (storedOpen === "true") {
-      setIsOpen(true);
-    }
-    const storedMode = localStorage.getItem(MODE_STORAGE_KEY) as ChatMode;
-    if (storedMode === "floating" || storedMode === "sidebar") {
-      setChatMode(storedMode);
-    }
-    // Check if there are existing messages
-    checkForMessages();
-  }, [checkForMessages]);
 
   // Listen for storage changes (to detect when messages are cleared/added)
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === CHAT_HISTORY_KEY) {
-        checkForMessages();
+        refreshMessageIndicator();
       }
     };
     window.addEventListener("storage", handleStorageChange);
     return () => window.removeEventListener("storage", handleStorageChange);
-  }, [checkForMessages]);
+  }, [refreshMessageIndicator]);
 
   // Persist open state changes
   useEffect(() => {
-    if (mounted) {
+    if (hydrated) {
       localStorage.setItem(STORAGE_KEY, String(isOpen));
     }
-  }, [isOpen, mounted]);
+  }, [isOpen, hydrated]);
 
   // Persist mode changes
   useEffect(() => {
-    if (mounted) {
+    if (hydrated) {
       localStorage.setItem(MODE_STORAGE_KEY, chatMode);
     }
-  }, [chatMode, mounted]);
+  }, [chatMode, hydrated]);
 
   const toggleOpen = useCallback(() => {
     setIsOpen((prev) => !prev);
     // Re-check messages when opening
-    checkForMessages();
-  }, [checkForMessages]);
+    refreshMessageIndicator();
+  }, [refreshMessageIndicator]);
 
   const handleClose = useCallback(() => {
     setIsOpen(false);
     // Re-check messages to show indicator
-    checkForMessages();
-  }, [checkForMessages]);
+    refreshMessageIndicator();
+  }, [refreshMessageIndicator]);
+
+  const handleMinimize = useCallback(() => {
+    setIsOpen(false);
+    // Re-check messages to show indicator
+    refreshMessageIndicator();
+  }, [refreshMessageIndicator]);
 
   const handleModeChange = useCallback((mode: ChatMode) => {
     setChatMode(mode);
   }, []);
 
   // Prevent hydration mismatch
-  if (!mounted) return null;
+  if (!hydrated) return null;
 
   return (
     <>
@@ -133,6 +146,7 @@ export function AIChatButton() {
       <AIChatPopup
         isOpen={isOpen}
         onClose={handleClose}
+        onMinimize={handleMinimize}
         mode={chatMode}
         onModeChange={handleModeChange}
       />
