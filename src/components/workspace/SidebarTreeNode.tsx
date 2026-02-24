@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useCreatePage } from "@/hooks/usePages";
+import { Tooltip } from "@/components/ui/Tooltip";
 import type { PageTreeNode } from "@/types/page";
 
 interface SidebarTreeNodeProps {
@@ -27,6 +28,16 @@ export function SidebarTreeNode({
   const pathname = usePathname();
   const createPage = useCreatePage();
   const [isHovered, setIsHovered] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const titleRef = useRef<HTMLSpanElement>(null);
+
+  // Check if title is truncated
+  useEffect(() => {
+    const el = titleRef.current;
+    if (el) {
+      setIsTruncated(el.scrollWidth > el.clientWidth);
+    }
+  }, [node.title]);
 
   const isActive = pathname === `/pages/${node.id}`;
   const hasChildren = node.children.length > 0;
@@ -124,8 +135,12 @@ export function SidebarTreeNode({
           )}
         </span>
 
-        {/* Page title */}
-        <span className="flex-1 truncate text-sm leading-none">{node.title}</span>
+        {/* Page title with tooltip for truncated text */}
+        <Tooltip content={isTruncated ? node.title : ""} placement="right">
+          <span ref={titleRef} className="flex-1 truncate text-sm leading-none">
+            {node.title}
+          </span>
+        </Tooltip>
 
         {/* Create child button (visible on hover) */}
         {isHovered && (

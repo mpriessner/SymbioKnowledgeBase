@@ -1,10 +1,16 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useRef, useEffect } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useRouter, usePathname } from "next/navigation";
 import { useCreatePage } from "@/hooks/usePages";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { MoreHorizontal } from "lucide-react";
+import {
+  PageContextMenu,
+  usePageContextMenu,
+} from "@/components/sidebar/PageContextMenu";
 import type { PageTreeNode } from "@/types/page";
 
 interface DropPosition {
@@ -39,6 +45,17 @@ export function SortableSidebarTreeNode({
   const pathname = usePathname();
   const createPage = useCreatePage();
   const [isHovered, setIsHovered] = useState(false);
+  const [isTruncated, setIsTruncated] = useState(false);
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const { contextMenu, openContextMenu, closeContextMenu } = usePageContextMenu();
+
+  // Check if title is truncated
+  useEffect(() => {
+    const el = titleRef.current;
+    if (el) {
+      setIsTruncated(el.scrollWidth > el.clientWidth);
+    }
+  }, [node.title]);
 
   const {
     attributes,
@@ -94,6 +111,21 @@ export function SortableSidebarTreeNode({
       );
     },
     [createPage, node.id, isExpanded, onToggle, router]
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      openContextMenu(e, node.id, node.title);
+    },
+    [openContextMenu, node.id, node.title]
+  );
+
+  const handleMoreClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      openContextMenu(e, node.id, node.title);
+    },
+    [openContextMenu, node.id, node.title]
   );
 
   return (
@@ -193,8 +225,12 @@ export function SortableSidebarTreeNode({
           )}
         </span>
 
-        {/* Page title */}
-        <span className="flex-1 truncate text-sm leading-none">{node.title}</span>
+        {/* Page title with tooltip for truncated text */}
+        <Tooltip content={isTruncated ? node.title : ""} placement="right">
+          <span ref={titleRef} className="flex-1 truncate text-sm leading-none">
+            {node.title}
+          </span>
+        </Tooltip>
 
         {/* Create child button (visible on hover, hidden during drag) */}
         {isHovered && !activeId && (

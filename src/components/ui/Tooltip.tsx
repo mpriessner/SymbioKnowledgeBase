@@ -33,7 +33,7 @@ export function Tooltip({
       onBlur={() => setVisible(false)}
     >
       {children}
-      {visible && (
+      {visible && content && (
         <div
           role="tooltip"
           className={`absolute z-50 whitespace-nowrap rounded-md bg-[var(--text-primary)]
