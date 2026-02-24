@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { DndSidebarTree } from "@/components/workspace/DndSidebarTree";
 import { WorkspaceDropdown } from "@/components/workspace/WorkspaceDropdown";
-import { SettingsModal } from "@/components/workspace/SettingsModal";
 import { SidebarTeamspaceSection } from "@/components/workspace/SidebarTeamspaceSection";
 import { usePageTree } from "@/hooks/usePageTree";
 import { useCreatePage } from "@/hooks/usePages";
@@ -23,7 +22,6 @@ export function Sidebar() {
   const { isCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
   const { width: sidebarWidth, isResizing, startResize } = useSidebarWidth();
   const { data: teamspaces } = useTeamspaces();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [isMac, setIsMac] = useState(false);
   const createMenuRef = useRef<HTMLDivElement>(null);
@@ -98,7 +96,6 @@ export function Sidebar() {
   const isActive = (path: string) => pathname === path;
 
   return (
-    <>
       <aside
         className="relative flex-shrink-0 border-r border-[var(--border-default)] bg-[var(--sidebar-bg)] flex flex-col h-full overflow-hidden"
         style={{ width: sidebarWidth }}
@@ -119,7 +116,7 @@ export function Sidebar() {
         {/* Workspace Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-2 py-2 border-b border-[var(--border-default)]">
           <div className="flex-1 min-w-0">
-            <WorkspaceDropdown onOpenSettings={() => setIsSettingsOpen(true)} />
+            <WorkspaceDropdown onOpenSettings={() => router.push("/settings")} />
           </div>
           <div className="flex items-center gap-0.5 ml-1">
             {/* Collapse sidebar */}
@@ -278,7 +275,7 @@ export function Sidebar() {
         {/* Sidebar Footer */}
         <div className="flex-shrink-0 border-t border-[var(--border-default)] bg-[var(--sidebar-bg)] px-3 py-2.5 flex items-center justify-between relative z-50">
           <button
-            onClick={() => setIsSettingsOpen(true)}
+            onClick={() => router.push("/settings")}
             className="flex items-center gap-2 text-[var(--sidebar-text-secondary)] hover:text-[var(--sidebar-text)] transition-colors"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -289,12 +286,5 @@ export function Sidebar() {
           </button>
         </div>
       </aside>
-
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
-    </>
   );
 }

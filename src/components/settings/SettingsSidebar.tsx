@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  User, 
-  Settings, 
-  Bell, 
-  Building, 
-  Users, 
-  Shield, 
+import {
+  User,
+  Settings,
+  Bell,
+  Building,
+  Users,
+  Shield,
   Key,
-  type LucideIcon 
+  BrainCircuit,
+  type LucideIcon
 } from "lucide-react";
 
 interface SettingsItem {
@@ -39,6 +40,7 @@ const settingsSections: SettingsSection[] = [
     items: [
       { id: "general", label: "General", icon: Building, href: "/settings/general" },
       { id: "people", label: "People", icon: Users, href: "/settings/people" },
+      { id: "ai-config", label: "AI Configuration", icon: BrainCircuit, href: "/settings/ai-config" },
     ]
   },
   {
