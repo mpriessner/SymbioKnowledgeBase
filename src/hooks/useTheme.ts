@@ -8,6 +8,18 @@ type ResolvedTheme = "light" | "dark";
 const STORAGE_KEY = "symbio-theme";
 
 /**
+ * Get initial theme from localStorage (SSR-safe)
+ */
+function getInitialTheme(): Theme {
+  if (typeof window === "undefined") return "system";
+  const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
+  if (stored && ["light", "dark", "system"].includes(stored)) {
+    return stored;
+  }
+  return "system";
+}
+
+/**
  * Hook for managing the application theme.
  *
  * Provides:
@@ -16,16 +28,8 @@ const STORAGE_KEY = "symbio-theme";
  * - setTheme: Function to change the theme
  */
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>("system");
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
-
-  // Initialize from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored && ["light", "dark", "system"].includes(stored)) {
-      setThemeState(stored);
-    }
-  }, []);
 
   // Resolve theme and apply class
   useEffect(() => {

@@ -144,7 +144,7 @@ export function GraphView({
   }, [width, height]);
 
   // Click handler: navigate to page
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const handleNodeClick = useCallback(
     (node: any) => {
       const typedNode = node as ForceGraphNode | null;
@@ -156,7 +156,7 @@ export function GraphView({
   );
 
   // Hover handler: show/hide tooltip
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const handleNodeHover = useCallback(
     (node: any, _previousNode: any) => {
       const typedNode = node as ForceGraphNode | null;
@@ -182,7 +182,7 @@ export function GraphView({
   const theme = getThemeMode();
 
   // Custom node rendering: circle with size based on linkCount
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const nodeCanvasObject = useCallback(
     (
       nodeObj: any,
@@ -314,7 +314,7 @@ export function GraphView({
 
   return (
     <div ref={containerRef} className="relative h-full w-full">
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      { }
       <ForceGraph2D
         ref={graphRef as any}
         width={dimensions.width}

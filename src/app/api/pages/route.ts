@@ -90,7 +90,8 @@ export const POST = withTenant(
         );
       }
 
-      let { title, parentId, icon, coverUrl } = parsed.data;
+      const { parentId, icon, coverUrl } = parsed.data;
+      let { title } = parsed.data;
 
       // Auto-generate unique name for "Untitled" pages
       if (title === "Untitled") {

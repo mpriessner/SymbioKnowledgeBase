@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useRef, useCallback, useMemo, useState, useEffect } from "react";
+import { Suspense, useRef, useCallback, useMemo, useState } from "react";
 import { GraphView } from "@/components/graph/GraphView";
 import type { GraphRefHandle } from "@/components/graph/GraphView";
 import { Graph3DView } from "@/components/graph/Graph3DView";
@@ -10,10 +10,10 @@ import { useGraphFilters } from "@/hooks/useGraphFilters";
 import { computeGraphMetrics } from "@/lib/graph/metrics";
 
 /**
- * Check if WebGL is supported in the browser.
+ * Check if WebGL is supported in the browser (SSR-safe with lazy init).
  */
-function isWebGLSupported(): boolean {
-  if (typeof window === "undefined") return false;
+function getWebGLSupport(): boolean {
+  if (typeof window === "undefined") return true; // Assume supported on server
   try {
     const canvas = document.createElement("canvas");
     return !!(
@@ -28,13 +28,9 @@ function isWebGLSupported(): boolean {
 function GraphPageContent() {
   const graphRefHandle = useRef<GraphRefHandle | null>(null);
   const [viewMode, setViewMode] = useState<"2d" | "3d">("2d");
-  const [webglSupported, setWebglSupported] = useState(true);
+  const [webglSupported] = useState(getWebGLSupport);
   const [highlightedNodes, setHighlightedNodes] = useState<string[]>([]);
   const [searchMatches, setSearchMatches] = useState<number>(0);
-
-  useEffect(() => {
-    setWebglSupported(isWebGLSupported());
-  }, []);
 
   const { data } = useGraphData();
   const { filters, updateFilter, resetFilters, filteredData, isFiltered } =

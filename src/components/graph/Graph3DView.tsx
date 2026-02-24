@@ -92,7 +92,7 @@ export function Graph3DView({
     return () => window.removeEventListener("resize", updateDimensions);
   }, [width, height]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const handleNodeClick = useCallback(
     (node: any) => {
       const typedNode = node as ForceGraphNode | null;
@@ -106,7 +106,7 @@ export function Graph3DView({
   const theme = getThemeMode();
   const centerId = highlightCenter ? pageId : undefined;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const nodeColor = useCallback(
     (nodeObj: any) => {
       const node = nodeObj as ForceGraphNode;
@@ -115,7 +115,7 @@ export function Graph3DView({
     [theme, centerId]
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const nodeLabel = useCallback(
     (nodeObj: any) => {
       if (!showLabels) return "";

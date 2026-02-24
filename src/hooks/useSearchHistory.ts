@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 interface SearchHistoryItem {
   query: string;
@@ -10,6 +10,22 @@ interface SearchHistoryItem {
 const MAX_HISTORY = 10;
 
 /**
+ * Get initial search history from localStorage (SSR-safe)
+ */
+function getInitialHistory(storageKey: string): SearchHistoryItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      return JSON.parse(stored) as SearchHistoryItem[];
+    }
+  } catch {
+    // Silently ignore localStorage errors
+  }
+  return [];
+}
+
+/**
  * Hook for managing search history in localStorage.
  *
  * History is scoped by tenant ID to support multi-tenant usage.
@@ -17,21 +33,10 @@ const MAX_HISTORY = 10;
  * Excludes duplicate consecutive searches.
  */
 export function useSearchHistory(tenantId: string) {
-  const storageKey = `search_history_${tenantId}`;
-  const [history, setHistory] = useState<SearchHistoryItem[]>([]);
-
-  // Load history from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as SearchHistoryItem[];
-        setHistory(parsed);
-      }
-    } catch {
-      // Silently ignore localStorage errors
-    }
-  }, [storageKey]);
+  const storageKey = useMemo(() => `search_history_${tenantId}`, [tenantId]);
+  const [history, setHistory] = useState<SearchHistoryItem[]>(() => 
+    getInitialHistory(storageKey)
+  );
 
   const addSearch = useCallback(
     (query: string) => {

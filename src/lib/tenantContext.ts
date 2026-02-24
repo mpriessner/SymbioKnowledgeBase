@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveApiKey } from "@/lib/apiAuth";
-import { prisma } from "@/lib/db";
 import { ensureUserExists } from "@/lib/auth/ensureUserExists";
 import type { TenantContext } from "@/types/auth";
 
