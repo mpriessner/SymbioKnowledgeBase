@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import ApiKeyManager from "@/components/settings/ApiKeyManager";
 import { TeamManagement } from "@/components/settings/TeamManagement";
 import { AccountProfileSection } from "@/components/settings/AccountProfileSection";
+import { AccountSecuritySection } from "@/components/settings/AccountSecuritySection";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -16,6 +17,10 @@ export default function SettingsPage() {
 
       <div className="mt-8">
         <AccountProfileSection />
+      </div>
+
+      <div className="mt-12 border-t border-[var(--border-default)] pt-12">
+        <AccountSecuritySection />
       </div>
 
       <div className="mt-12 border-t border-[var(--border-default)] pt-12">
