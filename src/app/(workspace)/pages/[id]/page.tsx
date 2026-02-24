@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, useCallback } from "react";
 import { usePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
 import { PageHeader } from "@/components/workspace/PageHeader";
@@ -10,6 +10,8 @@ import { LocalGraph } from "@/components/graph/LocalGraph";
 import { LocalGraphSidebar } from "@/components/graph/LocalGraphSidebar";
 import { PresenceIndicators } from "@/components/page/PresenceIndicators";
 
+const RIGHT_SIDEBAR_KEY = "symbio-right-sidebar";
+
 interface PageViewProps {
   params: Promise<{ id: string }>;
 }
@@ -18,7 +20,17 @@ export default function PageView({ params }: PageViewProps) {
   const { id } = use(params);
   const { data, isLoading, error } = usePage(id);
   const { addRecentPage } = useRecentPages();
-  const [showRightSidebar, setShowRightSidebar] = useState(true);
+
+  // Default to false (content-first); persist in localStorage
+  const [showRightSidebar, setShowRightSidebar] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(RIGHT_SIDEBAR_KEY) === "true";
+  });
+
+  const toggleRightSidebar = useCallback((value: boolean) => {
+    setShowRightSidebar(value);
+    try { localStorage.setItem(RIGHT_SIDEBAR_KEY, String(value)); } catch {}
+  }, []);
 
   // Record page visit for recent pages list
   const pageData = data?.data;
@@ -106,7 +118,7 @@ export default function PageView({ params }: PageViewProps) {
       >
         {/* Sidebar toggle */}
         <button
-          onClick={() => setShowRightSidebar(!showRightSidebar)}
+          onClick={() => toggleRightSidebar(!showRightSidebar)}
           className="absolute right-[280px] top-4 z-20 hidden lg:flex items-center justify-center w-5 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
           title={showRightSidebar ? "Hide sidebar" : "Show sidebar"}
           style={{ display: showRightSidebar ? "flex" : "none" }}
@@ -134,7 +146,7 @@ export default function PageView({ params }: PageViewProps) {
       {/* Collapsed sidebar toggle button */}
       {!showRightSidebar && (
         <button
-          onClick={() => setShowRightSidebar(true)}
+          onClick={() => toggleRightSidebar(true)}
           className="hidden lg:flex fixed right-0 top-4 z-20 items-center justify-center w-8 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
           title="Show sidebar"
         >
