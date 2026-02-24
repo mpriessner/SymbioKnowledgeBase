@@ -48,8 +48,9 @@ function getSnapshot(): RecentPage[] {
   return cache;
 }
 
+const EMPTY: RecentPage[] = [];
 function getServerSnapshot(): RecentPage[] {
-  return [];
+  return EMPTY;
 }
 
 /**
