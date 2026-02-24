@@ -11,10 +11,10 @@ async function main() {
 
   // 1. Create default tenant
   const tenant = await prisma.tenant.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000001" },
+    where: { id: "00000000-0000-4000-a000-000000000001" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000001",
+      id: "00000000-0000-4000-a000-000000000001",
       name: "Default Workspace",
     },
   });
@@ -31,7 +31,7 @@ async function main() {
     },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000002",
+      id: "00000000-0000-4000-a000-000000000002",
       tenantId: tenant.id,
       email: "admin@symbio.local",
       passwordHash: passwordHash,
@@ -43,10 +43,10 @@ async function main() {
 
   // 3. Create Welcome page
   const welcomePage = await prisma.page.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000010" },
+    where: { id: "00000000-0000-4000-a000-000000000010" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000010",
+      id: "00000000-0000-4000-a000-000000000010",
       tenantId: tenant.id,
       title: "Welcome to SymbioKnowledgeBase",
       icon: "\u{1F44B}",
@@ -57,10 +57,10 @@ async function main() {
 
   // 4. Create welcome blocks
   await prisma.block.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000100" },
+    where: { id: "00000000-0000-4000-a000-000000000100" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000100",
+      id: "00000000-0000-4000-a000-000000000100",
       pageId: welcomePage.id,
       tenantId: tenant.id,
       type: BlockType.HEADING_1,
@@ -72,10 +72,10 @@ async function main() {
   });
 
   await prisma.block.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000101" },
+    where: { id: "00000000-0000-4000-a000-000000000101" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000101",
+      id: "00000000-0000-4000-a000-000000000101",
       pageId: welcomePage.id,
       tenantId: tenant.id,
       type: BlockType.PARAGRAPH,
@@ -87,10 +87,10 @@ async function main() {
   });
 
   await prisma.block.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000102" },
+    where: { id: "00000000-0000-4000-a000-000000000102" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000102",
+      id: "00000000-0000-4000-a000-000000000102",
       pageId: welcomePage.id,
       tenantId: tenant.id,
       type: BlockType.HEADING_2,
@@ -102,10 +102,10 @@ async function main() {
   });
 
   await prisma.block.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000103" },
+    where: { id: "00000000-0000-4000-a000-000000000103" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000103",
+      id: "00000000-0000-4000-a000-000000000103",
       pageId: welcomePage.id,
       tenantId: tenant.id,
       type: BlockType.TODO,
@@ -118,10 +118,10 @@ async function main() {
   });
 
   await prisma.block.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000104" },
+    where: { id: "00000000-0000-4000-a000-000000000104" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000104",
+      id: "00000000-0000-4000-a000-000000000104",
       pageId: welcomePage.id,
       tenantId: tenant.id,
       type: BlockType.TODO,
@@ -134,10 +134,10 @@ async function main() {
   });
 
   await prisma.block.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000105" },
+    where: { id: "00000000-0000-4000-a000-000000000105" },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000105",
+      id: "00000000-0000-4000-a000-000000000105",
       pageId: welcomePage.id,
       tenantId: tenant.id,
       type: BlockType.TODO,

@@ -7,6 +7,9 @@ import {
   type UseQueryOptions,
 } from "@tanstack/react-query";
 import type { Page, CreatePageInput, UpdatePageInput } from "@/types/page";
+import { z } from "zod";
+
+const pageIdSchema = z.string().uuid();
 
 interface ListPagesParams {
   limit?: number;
@@ -49,7 +52,12 @@ async function fetchPages(params: ListPagesParams): Promise<ListPagesResponse> {
 }
 
 async function fetchPage(id: string): Promise<SinglePageResponse> {
-  const response = await fetch(`/api/pages/${id}`);
+  const parsedId = pageIdSchema.safeParse(id);
+  if (!parsedId.success) {
+    throw new Error("Invalid page ID");
+  }
+
+  const response = await fetch(`/api/pages/${parsedId.data}`);
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error?.message || "Failed to fetch page");
@@ -121,10 +129,12 @@ export function usePages(
 }
 
 export function usePage(id: string, options?: Partial<UseQueryOptions<SinglePageResponse>>) {
+  const hasValidPageId = pageIdSchema.safeParse(id).success;
+
   return useQuery({
     queryKey: pageKeys.detail(id),
     queryFn: () => fetchPage(id),
-    enabled: !!id,
+    enabled: hasValidPageId,
     ...options,
   });
 }

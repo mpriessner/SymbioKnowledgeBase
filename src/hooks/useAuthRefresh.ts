@@ -11,6 +11,8 @@ export function useAuthRefresh() {
   const supabase = useSupabaseClient();
 
   useEffect(() => {
+    if (!supabase) return;
+
     const interval = setInterval(async () => {
       const {
         data: { session },

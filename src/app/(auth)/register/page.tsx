@@ -38,6 +38,10 @@ export default function RegisterPage() {
 
     try {
       const supabase = createClient();
+      if (!supabase) {
+        setGeneralError("Authentication service is not configured. Please set up Supabase environment variables.");
+        return;
+      }
 
       // Create Supabase auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({

@@ -7,6 +7,48 @@ import {
 } from "../WikilinkSuggestion";
 
 /**
+ * Custom function to find wikilink suggestion match.
+ * Handles the [[ trigger and ensures the query doesn't include ]] closing brackets.
+ */
+function findWikilinkSuggestionMatch(config: {
+  char: string;
+  $position: { parent: { textContent: string }; parentOffset: number; pos: number };
+}) {
+  const { char, $position } = config;
+  const textBefore = $position.parent.textContent.slice(0, $position.parentOffset);
+
+  // Find the last occurrence of [[
+  const triggerIndex = textBefore.lastIndexOf(char);
+  if (triggerIndex === -1) {
+    return null;
+  }
+
+  // Get the text after [[
+  let query = textBefore.slice(triggerIndex + char.length);
+
+  // If query contains ]], don't show suggestion (wikilink is closed)
+  if (query.includes("]]")) {
+    return null;
+  }
+
+  // Strip pipe and everything after (for display text syntax)
+  const pipeIndex = query.indexOf("|");
+  if (pipeIndex > -1) {
+    query = query.slice(0, pipeIndex);
+  }
+
+  // Calculate the range
+  const from = $position.pos - $position.parentOffset + triggerIndex;
+  const to = $position.pos;
+
+  return {
+    range: { from, to },
+    query: query.trim(),
+    text: textBefore.slice(triggerIndex),
+  };
+}
+
+/**
  * Creates the suggestion plugin configuration for wikilink autocomplete.
  *
  * This plugin:
@@ -24,6 +66,7 @@ export function createWikilinkSuggestion(): Omit<
   return {
     char: "[[",
     allowSpaces: true,
+    findSuggestionMatch: findWikilinkSuggestionMatch,
 
     command: ({ editor, range, props }) => {
       const { id, title } = props as {

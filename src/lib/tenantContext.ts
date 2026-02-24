@@ -37,7 +37,9 @@ export async function getTenantContext(
 ): Promise<TenantContext> {
   // 1. Try API key first (takes precedence)
   const authHeader = request.headers.get("authorization");
-  if (authHeader) {
+  const hasBearerAuthHeader = Boolean(authHeader?.match(/^Bearer\s+/i));
+
+  if (hasBearerAuthHeader && authHeader) {
     const apiKeyContext = await resolveApiKey(authHeader);
     if (apiKeyContext) {
       return apiKeyContext;
@@ -87,7 +89,7 @@ export async function getTenantContext(
     }
   } else {
     // Supabase not configured — use default dev tenant (local dev mode)
-    const defaultTenantId = process.env.DEFAULT_TENANT_ID || "00000000-0000-0000-0000-000000000001";
+    const defaultTenantId = process.env.DEFAULT_TENANT_ID || "00000000-0000-4000-a000-000000000001";
     return {
       tenantId: defaultTenantId,
       userId: "dev-user",

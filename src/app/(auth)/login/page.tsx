@@ -40,6 +40,10 @@ function LoginForm() {
 
     try {
       const supabase = createClient();
+      if (!supabase) {
+        setGeneralError("Authentication service is not configured. Please set up Supabase environment variables.");
+        return;
+      }
       const { error } = await supabase.auth.signInWithPassword({
         email: parsed.data.email,
         password: parsed.data.password,

@@ -66,7 +66,7 @@ export function Sidebar() {
       metaKey: true,
       bubbles: true,
     });
-    window.dispatchEvent(event);
+    document.dispatchEvent(event);
   }, []);
 
   // Collapsed sidebar: narrow strip with toggle button

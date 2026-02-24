@@ -58,6 +58,8 @@ export function getBaseExtensions(
       },
       // Disable built-in code block — we use CodeBlockLowlight instead
       codeBlock: false,
+      // Disable built-in link — we configure our own Link extension below
+      link: false,
     }),
     Link.configure({
       openOnClick: false,

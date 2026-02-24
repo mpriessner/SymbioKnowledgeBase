@@ -5,6 +5,7 @@ interface PageRow {
   id: string;
   tenantId: string;
   parentId: string | null;
+  teamspaceId?: string | null;
   title: string;
   icon: string | null;
   coverUrl: string | null;
@@ -31,7 +32,7 @@ export function buildPageTree(pages: PageRow[]): PageTreeNode[] {
       id: page.id,
       tenantId: page.tenantId,
       parentId: page.parentId,
-      teamspaceId: (page as Record<string, unknown>).teamspaceId as string | null ?? null,
+      teamspaceId: page.teamspaceId ?? null,
       title: page.title,
       icon: page.icon,
       coverUrl: page.coverUrl,
