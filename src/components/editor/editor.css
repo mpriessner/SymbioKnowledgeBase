@@ -6,6 +6,18 @@
   max-width: none;
 }
 
+.tiptap.prose,
+.ProseMirror,
+.ProseMirror.prose {
+  width: 100%;
+  max-width: none !important;
+}
+
+.tiptap.prose > *,
+.ProseMirror.prose > * {
+  max-width: none !important;
+}
+
 /* Placeholder styling */
 .tiptap p.is-editor-empty:first-child::before {
   color: var(--text-tertiary);

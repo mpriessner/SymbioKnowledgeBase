@@ -128,6 +128,16 @@ body {
   padding-right: var(--content-padding);
 }
 
+/* Make prose containers responsive (avoid fixed 65ch width) */
+.prose {
+  width: 100%;
+  max-width: 100% !important;
+}
+
+.prose > * {
+  max-width: 100% !important;
+}
+
 /* Workspace layout should always span the full viewport */
 .workspace-main {
   width: 100%;

@@ -870,21 +870,57 @@ interface DbRow {
   // ── Page Links ─────────────────────────────────────────
 
   const links = [
+    // Welcome hub — links to most top-level pages
     { id: "10000000-0000-4000-a000-000000000001", sourcePageId: PAGE.welcome, targetPageId: PAGE.arch },
     { id: "10000000-0000-4000-a000-000000000002", sourcePageId: PAGE.welcome, targetPageId: PAGE.api },
     { id: "10000000-0000-4000-a000-000000000003", sourcePageId: PAGE.welcome, targetPageId: PAGE.research },
+    { id: "10000000-0000-4000-a000-000000000010", sourcePageId: PAGE.welcome, targetPageId: PAGE.roadmap },
+    { id: "10000000-0000-4000-a000-000000000011", sourcePageId: PAGE.welcome, targetPageId: PAGE.devSetup },
+    { id: "10000000-0000-4000-a000-000000000012", sourcePageId: PAGE.welcome, targetPageId: PAGE.bugTracker },
+
+    // Architecture cluster — dense interconnections
     { id: "10000000-0000-4000-a000-000000000004", sourcePageId: PAGE.arch, targetPageId: PAGE.devSetup },
     { id: "10000000-0000-4000-a000-000000000005", sourcePageId: PAGE.arch, targetPageId: PAGE.dataModels },
     { id: "10000000-0000-4000-a000-000000000006", sourcePageId: PAGE.arch, targetPageId: PAGE.llmGuide },
+    { id: "10000000-0000-4000-a000-000000000013", sourcePageId: PAGE.arch, targetPageId: PAGE.api },
+    { id: "10000000-0000-4000-a000-000000000014", sourcePageId: PAGE.arch, targetPageId: PAGE.designDoc },
+
+    // API Reference — central node many pages reference
     { id: "10000000-0000-4000-a000-000000000007", sourcePageId: PAGE.api, targetPageId: PAGE.llmGuide },
-    { id: "10000000-0000-4000-a000-000000000008", sourcePageId: PAGE.research, targetPageId: PAGE.llmGuide },
-    { id: "10000000-0000-4000-a000-000000000009", sourcePageId: PAGE.roadmap, targetPageId: PAGE.meeting },
-    { id: "10000000-0000-4000-a000-00000000000a", sourcePageId: PAGE.meeting, targetPageId: PAGE.roadmap },
     { id: "10000000-0000-4000-a000-00000000000b", sourcePageId: PAGE.devSetup, targetPageId: PAGE.api },
     { id: "10000000-0000-4000-a000-00000000000c", sourcePageId: PAGE.dataModels, targetPageId: PAGE.api },
     { id: "10000000-0000-4000-a000-00000000000d", sourcePageId: PAGE.llmGuide, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-00000000000e", sourcePageId: PAGE.designDoc, targetPageId: PAGE.arch },
+    { id: "10000000-0000-4000-a000-000000000015", sourcePageId: PAGE.api, targetPageId: PAGE.dataModels },
+    { id: "10000000-0000-4000-a000-000000000016", sourcePageId: PAGE.api, targetPageId: PAGE.devSetup },
+
+    // Research & LLM cluster
+    { id: "10000000-0000-4000-a000-000000000008", sourcePageId: PAGE.research, targetPageId: PAGE.llmGuide },
+    { id: "10000000-0000-4000-a000-000000000017", sourcePageId: PAGE.research, targetPageId: PAGE.dataModels },
+    { id: "10000000-0000-4000-a000-000000000018", sourcePageId: PAGE.research, targetPageId: PAGE.arch },
+    { id: "10000000-0000-4000-a000-000000000019", sourcePageId: PAGE.llmGuide, targetPageId: PAGE.research },
+    { id: "10000000-0000-4000-a000-00000000001a", sourcePageId: PAGE.llmGuide, targetPageId: PAGE.devSetup },
+
+    // Planning cluster — roadmap, meeting, changelog
+    { id: "10000000-0000-4000-a000-000000000009", sourcePageId: PAGE.roadmap, targetPageId: PAGE.meeting },
+    { id: "10000000-0000-4000-a000-00000000000a", sourcePageId: PAGE.meeting, targetPageId: PAGE.roadmap },
     { id: "10000000-0000-4000-a000-00000000000f", sourcePageId: PAGE.changelog, targetPageId: PAGE.roadmap },
+    { id: "10000000-0000-4000-a000-00000000001b", sourcePageId: PAGE.roadmap, targetPageId: PAGE.arch },
+    { id: "10000000-0000-4000-a000-00000000001c", sourcePageId: PAGE.roadmap, targetPageId: PAGE.bugTracker },
+    { id: "10000000-0000-4000-a000-00000000001d", sourcePageId: PAGE.meeting, targetPageId: PAGE.bugTracker },
+    { id: "10000000-0000-4000-a000-00000000001e", sourcePageId: PAGE.meeting, targetPageId: PAGE.arch },
+    { id: "10000000-0000-4000-a000-00000000001f", sourcePageId: PAGE.changelog, targetPageId: PAGE.arch },
+
+    // Design & Bug Tracker cross-links
+    { id: "10000000-0000-4000-a000-00000000000e", sourcePageId: PAGE.designDoc, targetPageId: PAGE.arch },
+    { id: "10000000-0000-4000-a000-000000000020", sourcePageId: PAGE.designDoc, targetPageId: PAGE.devSetup },
+    { id: "10000000-0000-4000-a000-000000000021", sourcePageId: PAGE.designDoc, targetPageId: PAGE.welcome },
+    { id: "10000000-0000-4000-a000-000000000022", sourcePageId: PAGE.bugTracker, targetPageId: PAGE.changelog },
+    { id: "10000000-0000-4000-a000-000000000023", sourcePageId: PAGE.bugTracker, targetPageId: PAGE.arch },
+
+    // Data Models cross-links
+    { id: "10000000-0000-4000-a000-000000000024", sourcePageId: PAGE.dataModels, targetPageId: PAGE.arch },
+    { id: "10000000-0000-4000-a000-000000000025", sourcePageId: PAGE.dataModels, targetPageId: PAGE.devSetup },
+    { id: "10000000-0000-4000-a000-000000000026", sourcePageId: PAGE.devSetup, targetPageId: PAGE.dataModels },
   ];
 
   for (const link of links) {
