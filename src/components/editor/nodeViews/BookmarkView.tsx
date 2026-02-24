@@ -19,7 +19,7 @@ export function BookmarkView({ node, updateAttributes }: NodeViewProps) {
   const image = node.attrs.image as string;
 
   const [isLoading, setIsLoading] = useState(!title && !!url);
-  const [hasError, setHasError] = useState(false);
+  const [_hasError, setHasError] = useState(false);
 
   // Fetch OG metadata if not already present
   useEffect(() => {

@@ -7,7 +7,7 @@ vi.mock("@/lib/search/query", () => ({
 }));
 
 vi.mock("@/lib/auth/withTenant", () => ({
-  withTenant: (handler: Function) => {
+  withTenant: (handler: (req: NextRequest, tenant: { tenantId: string; userId: string }, ctx: { params: Promise<Record<string, string>> }) => unknown) => {
     return (req: NextRequest) => {
       return handler(
         req,

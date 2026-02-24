@@ -56,22 +56,29 @@ export function PropertyCell({ value }: PropertyCellProps) {
         <span className="text-lg">{value.value ? "\u2705" : "\u2B1C"}</span>
       );
 
-    case "URL":
+    case "URL": {
+      // Validate URL before rendering to avoid JSX in try/catch
+      let hostname: string | null = null;
       try {
-        return (
-          <a
-            href={value.value}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--accent-primary)] hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {new URL(value.value).hostname}
-          </a>
-        );
+        hostname = new URL(value.value).hostname;
       } catch {
-        return <span className="text-[var(--text-secondary)]">{value.value}</span>;
+        // Invalid URL, will show raw value
       }
+      
+      return hostname ? (
+        <a
+          href={value.value}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[var(--accent-primary)] hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {hostname}
+        </a>
+      ) : (
+        <span className="text-[var(--text-secondary)]">{value.value}</span>
+      );
+    }
 
     default:
       return <span>-</span>;

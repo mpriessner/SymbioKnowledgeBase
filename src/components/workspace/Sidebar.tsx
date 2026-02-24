@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { DndSidebarTree } from "@/components/workspace/DndSidebarTree";
 import { WorkspaceDropdown } from "@/components/workspace/WorkspaceDropdown";
 import { SidebarTeamspaceSection } from "@/components/workspace/SidebarTeamspaceSection";
 import { usePageTree } from "@/hooks/usePageTree";

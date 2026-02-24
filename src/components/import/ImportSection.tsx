@@ -85,7 +85,7 @@ export function ImportSection() {
             error: err?.error?.message || "Import failed",
           });
         }
-      } catch (err) {
+      } catch {
         importResults.push({
           name: file.name,
           success: false,
