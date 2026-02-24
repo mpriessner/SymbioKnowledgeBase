@@ -11,6 +11,7 @@ import {
   listPagesQuerySchema,
 } from "@/lib/validation/pages";
 import { resolveUnresolvedLinksForNewPage } from "@/lib/wikilinks/resolver";
+import { generateUniqueUntitledTitle } from "@/lib/pages/generateUniqueTitle";
 import type { TenantContext } from "@/types/auth";
 import { serializePage } from "@/lib/pages/serialize";
 
@@ -89,7 +90,12 @@ export const POST = withTenant(
         );
       }
 
-      const { title, parentId, icon, coverUrl } = parsed.data;
+      let { title, parentId, icon, coverUrl } = parsed.data;
+
+      // Auto-generate unique name for "Untitled" pages
+      if (title === "Untitled") {
+        title = await generateUniqueUntitledTitle(context.tenantId);
+      }
 
       // If parentId is provided, verify the parent exists and belongs to this tenant
       if (parentId) {
