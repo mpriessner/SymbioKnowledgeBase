@@ -7,13 +7,23 @@ import { useTheme } from "@/hooks/useTheme";
 import { ExportSection } from "@/components/export/ExportSection";
 import { ImportSection } from "@/components/import/ImportSection";
 import { ApiKeysSection } from "@/components/settings/ApiKeysSection";
+import { AccountProfileSection } from "@/components/settings/AccountProfileSection";
+import { AccountSecuritySection } from "@/components/settings/AccountSecuritySection";
+import { AIConfigSection } from "@/components/settings/AIConfigSection";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type SettingsSection = "account-preferences" | "workspace-general" | "workspace-import-export" | "workspace-api-keys";
+type SettingsSection =
+  | "account-preferences"
+  | "account-profile"
+  | "account-security"
+  | "workspace-general"
+  | "workspace-import-export"
+  | "workspace-api-keys"
+  | "workspace-ai-config";
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("account-preferences");
@@ -90,6 +100,26 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             >
               Preferences
             </button>
+            <button
+              onClick={() => setActiveSection("account-profile")}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                activeSection === "account-profile"
+                  ? "bg-[var(--bg-hover)] text-[var(--text-primary)] font-medium"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              My Profile
+            </button>
+            <button
+              onClick={() => setActiveSection("account-security")}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                activeSection === "account-security"
+                  ? "bg-[var(--bg-hover)] text-[var(--text-primary)] font-medium"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              Security
+            </button>
           </div>
 
           {/* Workspace section */}
@@ -126,6 +156,16 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               }`}
             >
               API Keys
+            </button>
+            <button
+              onClick={() => setActiveSection("workspace-ai-config")}
+              className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                activeSection === "workspace-ai-config"
+                  ? "bg-[var(--bg-hover)] text-[var(--text-primary)] font-medium"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              AI Configuration
             </button>
           </div>
         </aside>
@@ -283,6 +323,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             </div>
           )}
 
+          {activeSection === "account-profile" && (
+            <AccountProfileSection />
+          )}
+
+          {activeSection === "account-security" && (
+            <AccountSecuritySection />
+          )}
+
           {activeSection === "workspace-general" && (
             <div>
               <h1 className="text-2xl font-semibold text-[var(--text-primary)] mb-6">
@@ -348,6 +396,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </h1>
               <ApiKeysSection />
             </div>
+          )}
+
+          {activeSection === "workspace-ai-config" && (
+            <AIConfigSection />
           )}
         </main>
       </div>

@@ -4,6 +4,27 @@ import { useState, useCallback, useRef } from "react";
 import type { ChatMessage, SendMessageOptions, ChatState } from "@/types/ai";
 
 const STORAGE_KEY = "skb-ai-chat-history";
+const AI_CONFIG_KEY = "skb-ai-config";
+
+interface AIConfig {
+  provider: "openai" | "anthropic" | "google";
+  openaiKey?: string;
+  anthropicKey?: string;
+  googleKey?: string;
+  openaiModel: string;
+  anthropicModel: string;
+  googleModel: string;
+}
+
+function loadAIConfig(): AIConfig | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(AI_CONFIG_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -82,6 +103,20 @@ export function useAIChat() {
           content: m.content,
         }));
 
+        // Load AI config for provider/key/model
+        const aiConfig = loadAIConfig();
+        const provider = aiConfig?.provider || "openai";
+        const apiKeyMap = {
+          openai: aiConfig?.openaiKey,
+          anthropic: aiConfig?.anthropicKey,
+          google: aiConfig?.googleKey,
+        };
+        const modelMap = {
+          openai: aiConfig?.openaiModel || "gpt-4o-mini",
+          anthropic: aiConfig?.anthropicModel || "claude-sonnet-4-20250514",
+          google: aiConfig?.googleModel || "gemini-2.0-flash",
+        };
+
         const response = await fetch("/api/ai/chat", {
           method: "POST",
           headers: {
@@ -89,10 +124,10 @@ export function useAIChat() {
           },
           body: JSON.stringify({
             messages: apiMessages,
-            context: {
-              pageContent: options?.pageContext,
-              selectedText: options?.selectedText,
-            },
+            context: options?.pageContext || options?.selectedText || undefined,
+            model: modelMap[provider],
+            provider,
+            apiKey: apiKeyMap[provider],
             stream: true,
           }),
           signal: abortControllerRef.current.signal,
@@ -100,8 +135,12 @@ export function useAIChat() {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
+          const errorMsg =
+            errorData.error?.message ||
+            errorData.error ||
+            `Request failed with status ${response.status}`;
           throw new Error(
-            errorData.error || `Request failed with status ${response.status}`
+            typeof errorMsg === "string" ? errorMsg : `Request failed with status ${response.status}`
           );
         }
 
