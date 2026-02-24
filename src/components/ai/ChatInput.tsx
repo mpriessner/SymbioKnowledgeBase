@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle, type KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, forwardRef, useImperativeHandle, type KeyboardEvent } from "react";
 import { Send, Square, Loader2 } from "lucide-react";
 
 interface ChatInputProps {
@@ -31,21 +31,30 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(function ChatI
 ) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Track the last external value we've processed to detect new injections
+  const [lastProcessedExternal, setLastProcessedExternal] = useState<string | undefined>(undefined);
 
   // Expose focus method via ref
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
   }));
 
-  // Handle external value changes (e.g., from suggestion cards)
-  useEffect(() => {
-    if (externalValue !== undefined && externalValue !== value) {
-      setValue(externalValue);
+  // Handle external value injection (e.g., from suggestion cards)
+  // React 18+ pattern: update state during render when props change
+  // This avoids the cascading render warning from useEffect setState
+  const hasNewExternalValue = externalValue !== undefined && externalValue !== lastProcessedExternal;
+  if (hasNewExternalValue) {
+    setValue(externalValue);
+    setLastProcessedExternal(externalValue);
+  }
+
+  // Focus and notify after external value injection (side effects go in effect)
+  useLayoutEffect(() => {
+    if (hasNewExternalValue) {
       onExternalValueChange?.();
-      // Focus the textarea after setting value
-      setTimeout(() => textareaRef.current?.focus(), 0);
+      textareaRef.current?.focus();
     }
-  }, [externalValue, onExternalValueChange]); // intentionally exclude value to avoid loops
+  }, [hasNewExternalValue, onExternalValueChange]);
 
   // Auto-resize textarea
   const adjustHeight = useCallback(() => {
