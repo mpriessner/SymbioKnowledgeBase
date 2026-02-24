@@ -10,6 +10,7 @@ import { usePageTree } from "@/hooks/usePageTree";
 import { useCreatePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
 import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
+import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { useTeamspaces } from "@/hooks/useTeamspaces";
 import type { PageTreeNode } from "@/types/page";
 
@@ -20,6 +21,7 @@ export function Sidebar() {
   const createPage = useCreatePage();
   const { recentPages } = useRecentPages();
   const { isCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
+  const { width: sidebarWidth, isResizing, startResize } = useSidebarWidth();
   const { data: teamspaces } = useTeamspaces();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
@@ -97,7 +99,23 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="w-64 flex-shrink-0 border-r border-[var(--border-default)] bg-[var(--sidebar-bg)] flex flex-col h-full overflow-hidden">
+      <aside
+        className="relative flex-shrink-0 border-r border-[var(--border-default)] bg-[var(--sidebar-bg)] flex flex-col h-full overflow-hidden"
+        style={{ width: sidebarWidth }}
+      >
+        {/* Resize Handle */}
+        <div
+          className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-50 transition-colors ${
+            isResizing
+              ? "bg-[var(--accent-primary)]"
+              : "hover:bg-[var(--border-default)]"
+          }`}
+          onMouseDown={startResize}
+          style={{ touchAction: "none" }}
+        >
+          {/* Invisible wider hit area */}
+          <div className="absolute -left-1 -right-1 top-0 bottom-0" />
+        </div>
         {/* Workspace Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-2 py-2 border-b border-[var(--border-default)]">
           <div className="flex-1 min-w-0">
