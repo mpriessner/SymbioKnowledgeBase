@@ -36,7 +36,11 @@ export const presenceKeys = {
 export function usePresence(pageId: string, isEditing = false) {
   const queryClient = useQueryClient();
   const isEditingRef = useRef(isEditing);
-  isEditingRef.current = isEditing;
+
+  // Update ref in useEffect to avoid accessing refs during render
+  useEffect(() => {
+    isEditingRef.current = isEditing;
+  }, [isEditing]);
 
   const doHeartbeat = useCallback(() => {
     sendHeartbeat(pageId, isEditingRef.current).catch(() => {

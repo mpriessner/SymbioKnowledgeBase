@@ -17,7 +17,11 @@ export function useInfiniteScroll(
   options: IntersectionObserverInit = {}
 ): void {
   const callbackRef = useRef(onIntersect);
-  callbackRef.current = onIntersect;
+
+  // Update ref in useEffect to avoid accessing refs during render
+  useEffect(() => {
+    callbackRef.current = onIntersect;
+  });
 
   useEffect(() => {
     const target = targetRef.current;
