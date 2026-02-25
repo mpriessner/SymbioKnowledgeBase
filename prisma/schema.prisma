@@ -84,6 +84,18 @@ enum SubscriptionBehavior {
   SUGGEST
 }
 
+enum Permission {
+  FULL_ACCESS
+  CAN_EDIT
+  CAN_COMMENT
+  CAN_VIEW
+}
+
+enum GeneralAccess {
+  INVITED_ONLY
+  ANYONE_WITH_LINK
+}
+
 // ─── Tenants ─────────────────────────────────────────────────────────
 
 model Tenant {
@@ -111,6 +123,7 @@ model Tenant {
   documentSubscriptions  DocumentSubscription[]
   fileAttachments        FileAttachment[]
   pageFavorites          PageFavorite[]
+  pageShares             PageShare[]
 
   @@map("tenants")
 }
@@ -175,9 +188,10 @@ model Page {
   icon         String?
   coverUrl     String?   @map("cover_url")
   position     Int       @default(0)
-  spaceType    SpaceType @default(PRIVATE) @map("space_type")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  spaceType      SpaceType     @default(PRIVATE) @map("space_type")
+  generalAccess  GeneralAccess @default(INVITED_ONLY) @map("general_access")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
   // Relations
   tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -196,6 +210,7 @@ model Page {
   documentSubscriptions DocumentSubscription[]
   fileAttachments       FileAttachment[]
   favorites             PageFavorite[]
+  shares                PageShare[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_pages_tenant_id_id")
@@ -576,4 +591,26 @@ model PageFavorite {
   @@index([userId, tenantId], map: "idx_page_favorites_user_tenant")
 
   @@map("page_favorites")
+}
+
+// ─── Page Shares (per-user page permissions) ────────────────────────
+
+model PageShare {
+  id         String     @id @default(uuid())
+  pageId     String     @map("page_id")
+  userId     String     @map("user_id")
+  tenantId   String     @map("tenant_id")
+  permission Permission @default(CAN_VIEW)
+  sharedBy   String     @map("shared_by")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, userId], map: "uq_page_shares_page_user")
+  @@index([userId, tenantId], map: "idx_page_shares_user_tenant")
+
+  @@map("page_shares")
 }

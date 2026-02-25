@@ -6,6 +6,7 @@ import { useUpdatePage } from "@/hooks/usePages";
 import { EmojiPicker } from "@/components/workspace/EmojiPicker";
 import { CoverImageManager } from "@/components/workspace/CoverImageManager";
 import { FavoriteButton } from "@/components/page/FavoriteButton";
+import { ShareButton } from "@/components/page/ShareButton";
 import type { Page } from "@/types/page";
 
 interface PageHeaderProps {
@@ -119,6 +120,7 @@ export function PageHeader({ page }: PageHeaderProps) {
           <Download className="h-4 w-4" />
         </button>
         <FavoriteButton pageId={page.id} />
+        <ShareButton pageId={page.id} pageTitle={page.title} />
       </div>
 
       {/* Cover Image Area */}
