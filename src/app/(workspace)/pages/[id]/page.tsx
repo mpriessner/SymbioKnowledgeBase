@@ -76,9 +76,9 @@ export default function PageView({ params }: PageViewProps) {
   const page = data.data;
 
   return (
-    <div className="flex flex-1 w-full h-full min-h-0">
+    <div className="relative flex-1 w-full h-full min-h-0">
       {/* Main content */}
-      <div className="flex-1 min-w-0 overflow-y-auto relative" ref={scrollContainerRef}>
+      <div className="w-full h-full overflow-y-auto relative" ref={scrollContainerRef}>
         <PageHeader page={page} />
 
         {/* Presence Indicators */}
@@ -103,28 +103,19 @@ export default function PageView({ params }: PageViewProps) {
         <TableOfContents editor={editor} scrollContainerRef={scrollContainerRef} />
       </div>
 
-      {/* Right Sidebar with LocalGraph */}
+      {/* Right Sidebar with LocalGraph — overlay positioned */}
       <div
         className={`
           hidden lg:flex flex-col
+          absolute top-0 right-0 h-full
           border-l border-[var(--border-default)]
           bg-[var(--bg-secondary)]
+          overflow-y-auto
           transition-all duration-200
-          ${showRightSidebar ? "w-[280px]" : "w-0 overflow-hidden"}
+          z-30
+          ${showRightSidebar ? "w-[280px] sidebar-overlay-shadow" : "w-0 overflow-hidden"}
         `}
       >
-        {/* Sidebar toggle */}
-        <button
-          onClick={() => setShowRightSidebar(!showRightSidebar)}
-          className="absolute right-[280px] top-4 z-20 hidden lg:flex items-center justify-center w-5 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
-          title={showRightSidebar ? "Hide sidebar" : "Show sidebar"}
-          style={{ display: showRightSidebar ? "flex" : "none" }}
-        >
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-
         {showRightSidebar && (
           <>
             {/* LocalGraph in sidebar */}
@@ -136,11 +127,21 @@ export default function PageView({ params }: PageViewProps) {
         )}
       </div>
 
-      {/* Collapsed sidebar toggle button */}
-      {!showRightSidebar && (
+      {/* Sidebar toggle button — positioned below the Export button */}
+      {showRightSidebar ? (
+        <button
+          onClick={() => setShowRightSidebar(false)}
+          className="absolute right-[280px] top-12 z-30 hidden lg:flex items-center justify-center w-5 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          title="Hide sidebar"
+        >
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      ) : (
         <button
           onClick={() => setShowRightSidebar(true)}
-          className="hidden lg:flex fixed right-0 top-4 z-20 items-center justify-center w-8 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
+          className="hidden lg:flex fixed right-0 top-12 z-30 items-center justify-center w-8 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
           title="Show sidebar"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

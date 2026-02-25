@@ -151,6 +151,14 @@ body {
   max-width: 100% !important;
 }
 
+/* Sidebar overlay shadow (theme-aware) */
+.sidebar-overlay-shadow {
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.08);
+}
+.dark .sidebar-overlay-shadow {
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.25);
+}
+
 /* ── Selection ────────────────────────────────────────── */
 ::selection {
   background: var(--accent-bg);
