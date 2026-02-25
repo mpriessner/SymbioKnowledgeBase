@@ -98,10 +98,10 @@ export default function PageView({ params }: PageViewProps) {
         <div className="w-full content-pad pb-8">
           <LocalGraph pageId={page.id} />
         </div>
-
-        {/* Table of Contents scroll indicator bars */}
-        <TableOfContents editor={editor} scrollContainerRef={scrollContainerRef} />
       </div>
+
+      {/* Table of Contents — outside scroll container so it stays fixed on scroll */}
+      <TableOfContents editor={editor} scrollContainerRef={scrollContainerRef} />
 
       {/* Right Sidebar with LocalGraph — overlay positioned */}
       <div
