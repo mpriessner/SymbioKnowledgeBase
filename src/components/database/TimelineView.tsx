@@ -6,6 +6,8 @@ import { Plus } from "lucide-react";
 import { useDatabaseRows } from "@/hooks/useDatabaseRows";
 import { useTableFilters } from "@/hooks/useTableFilters";
 import { FilterBar } from "./FilterBar";
+import { PropertyEditor } from "./PropertyEditor";
+import { PropertyCell } from "./PropertyCell";
 import { TimelineBar } from "./TimelineBar";
 import { TimeAxis } from "./TimeAxis";
 import {
@@ -23,6 +25,8 @@ import type {
   DatabaseSchema,
   ViewConfig,
   RowProperties,
+  PropertyValue,
+  Column,
 } from "@/types/database";
 
 interface TimelineViewProps {
@@ -72,6 +76,51 @@ export function TimelineView({
     x: number;
     y: number;
   } | null>(null);
+  const [editingSidebar, setEditingSidebar] = useState<{
+    rowId: string;
+    field: string; // "__title__" or columnId
+  } | null>(null);
+
+  // Non-date columns for sidebar property display
+  const sidebarColumns = useMemo(
+    () => schema.columns.filter((c) => c.type !== "TITLE" && c.type !== "DATE"),
+    [schema.columns]
+  );
+
+  const handleSidebarSave = useCallback(
+    (rowId: string, columnId: string, value: PropertyValue) => {
+      const row = rows.find((r) => r.id === rowId);
+      if (!row) return;
+      updateRow.mutate({
+        rowId,
+        properties: { ...row.properties, [columnId]: value },
+      });
+      setEditingSidebar(null);
+    },
+    [rows, updateRow]
+  );
+
+  const handleTitleSave = useCallback(
+    (rowId: string, newTitle: string) => {
+      const row = rows.find((r) => r.id === rowId);
+      if (!row) return;
+      const titleColumnId = Object.entries(row.properties).find(
+        ([, v]) => v.type === "TITLE"
+      )?.[0];
+      if (!titleColumnId) return;
+      if (newTitle !== getTitle(row)) {
+        updateRow.mutate({
+          rowId,
+          properties: {
+            ...row.properties,
+            [titleColumnId]: { type: "TITLE", value: newTitle },
+          },
+        });
+      }
+      setEditingSidebar(null);
+    },
+    [rows, updateRow]
+  );
 
   const {
     filters,
@@ -381,10 +430,12 @@ export function TimelineView({
             {rowsWithDates.map((row) => (
               <div
                 key={row.id}
-                className="flex items-center px-2 text-xs text-[var(--text-primary)] truncate
+                className="flex items-center gap-1 px-2 text-xs text-[var(--text-primary)]
                   border-b border-[var(--border-default)] cursor-pointer hover:bg-[var(--bg-hover)]"
                 style={{ height: LANE_HEIGHT }}
-                onClick={() => handleRowClick(row)}
+                onClick={() => {
+                  if (!editingSidebar) handleRowClick(row);
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setContextMenu({
@@ -395,7 +446,59 @@ export function TimelineView({
                   });
                 }}
               >
-                {getTitle(row)}
+                {editingSidebar?.rowId === row.id && editingSidebar.field === "__title__" ? (
+                  <input
+                    autoFocus
+                    defaultValue={getTitle(row)}
+                    className="flex-1 min-w-0 text-xs bg-transparent border border-[var(--border-strong)]
+                      rounded px-1 outline-none focus:ring-1 focus:ring-[var(--accent-primary)]"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleTitleSave(row.id, e.currentTarget.value);
+                      else if (e.key === "Escape") setEditingSidebar(null);
+                    }}
+                    onBlur={(e) => handleTitleSave(row.id, e.currentTarget.value)}
+                  />
+                ) : (
+                  <span
+                    className="flex-1 min-w-0 truncate"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingSidebar({ rowId: row.id, field: "__title__" });
+                    }}
+                  >
+                    {getTitle(row)}
+                  </span>
+                )}
+                {/* First sidebar property badge */}
+                {sidebarColumns.length > 0 && (() => {
+                  const col = sidebarColumns[0];
+                  const val = row.properties[col.id];
+                  if (!val) return null;
+                  if (editingSidebar?.rowId === row.id && editingSidebar.field === col.id) {
+                    return (
+                      <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <PropertyEditor
+                          column={col}
+                          value={val}
+                          onSave={(v) => handleSidebarSave(row.id, col.id, v)}
+                          onCancel={() => setEditingSidebar(null)}
+                        />
+                      </div>
+                    );
+                  }
+                  return (
+                    <span
+                      className="flex-shrink-0 text-[10px] text-[var(--text-secondary)] cursor-text"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingSidebar({ rowId: row.id, field: col.id });
+                      }}
+                    >
+                      <PropertyCell value={val} />
+                    </span>
+                  );
+                })()}
               </div>
             ))}
             {/* Add row button */}
