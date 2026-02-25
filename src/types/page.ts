@@ -1,8 +1,11 @@
+export type SpaceType = "PRIVATE" | "TEAM" | "AGENT";
+
 export interface Page {
   id: string;
   tenantId: string;
   parentId: string | null;
   teamspaceId: string | null;
+  spaceType: SpaceType;
   title: string;
   icon: string | null;
   coverUrl: string | null;

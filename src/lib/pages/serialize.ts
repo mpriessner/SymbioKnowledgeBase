@@ -1,4 +1,4 @@
-import type { Page } from "@/types/page";
+import type { Page, SpaceType } from "@/types/page";
 
 /**
  * Serializes a Prisma Page record to the API response format.
@@ -9,6 +9,7 @@ export function serializePage(page: {
   tenantId: string;
   parentId: string | null;
   teamspaceId?: string | null;
+  spaceType?: string;
   title: string;
   icon: string | null;
   coverUrl: string | null;
@@ -21,6 +22,7 @@ export function serializePage(page: {
     tenantId: page.tenantId,
     parentId: page.parentId,
     teamspaceId: page.teamspaceId ?? null,
+    spaceType: (page.spaceType as SpaceType) ?? "PRIVATE",
     title: page.title,
     icon: page.icon,
     coverUrl: page.coverUrl,

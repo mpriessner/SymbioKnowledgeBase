@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { PrismaClient, BlockType } from "../src/generated/prisma/client";
+import { PrismaClient, BlockType, SpaceType, TeamspaceRole } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
@@ -7,6 +7,14 @@ const prisma = new PrismaClient({ adapter });
 
 // Use the existing tenant and user
 const TENANT_ID = "00000000-0000-4000-a000-000000000001";
+const ADMIN_USER_ID = "00000000-0000-4000-a000-000000000002";
+const DEV_USER_ID = "dev-user";
+
+// Teamspace IDs
+const TEAMSPACE = {
+  engineering: "e0000000-0000-4000-a000-000000000001",
+  product:     "e0000000-0000-4000-a000-000000000002",
+};
 
 // Fixed UUIDs for idempotent seeding (valid UUID v4: pos 13=4, pos 17=a)
 const PAGE = {
@@ -41,6 +49,22 @@ const PAGE = {
   dbMigration:    "d0000000-0000-4000-a000-00000000001f",
   accessibility:  "d0000000-0000-4000-a000-000000000020",
   mobileDesign:   "d0000000-0000-4000-a000-000000000021",
+  // ── Agent pages (spaceType: AGENT) ──
+  agentDbAccess:      "d0000000-0000-4000-a000-000000000030",
+  agentEquipOps:      "d0000000-0000-4000-a000-000000000031",
+  agentQrCodes:       "d0000000-0000-4000-a000-000000000032",
+  agentOrgInstructions:"d0000000-0000-4000-a000-000000000033",
+  agentApiIntegrations:"d0000000-0000-4000-a000-000000000034",
+  agentSafetyProto:   "d0000000-0000-4000-a000-000000000035",
+  // ── Team pages (spaceType: TEAM, linked to teamspaces) ──
+  teamEngStandards:   "d0000000-0000-4000-a000-000000000040",
+  teamEngRunbooks:    "d0000000-0000-4000-a000-000000000041",
+  teamEngIncidents:   "d0000000-0000-4000-a000-000000000042",
+  teamEngOnCall:      "d0000000-0000-4000-a000-000000000043",
+  teamProdRoadmap:    "d0000000-0000-4000-a000-000000000050",
+  teamProdMetrics:    "d0000000-0000-4000-a000-000000000051",
+  teamProdUserRes:    "d0000000-0000-4000-a000-000000000052",
+  teamProdSpecs:      "d0000000-0000-4000-a000-000000000053",
 };
 
 const DB = {
@@ -111,6 +135,55 @@ function doc(...content: unknown[]) {
 
 async function main() {
   console.log("Seeding demo data...\n");
+
+  // ── Dev-mode user (for local dev without Supabase) ───────
+  await prisma.user.upsert({
+    where: { id: DEV_USER_ID },
+    update: {},
+    create: {
+      id: DEV_USER_ID,
+      tenantId: TENANT_ID,
+      email: "dev@symbio.local",
+      name: "Dev User",
+      passwordHash: "not-a-real-hash",
+      role: "ADMIN",
+    },
+  });
+  console.log("  Created dev-user for local development mode");
+
+  // ── Teamspaces ───────────────────────────────────────────
+  // TODO: The logic for sharing different pages in the teams section
+  // needs to be defined later. Currently these are dummy teamspaces.
+  // Future work: role-based access control, invite flows, cross-team sharing.
+
+  const teamspaces = [
+    { id: TEAMSPACE.engineering, name: "Engineering", icon: "\u{1F528}" },
+    { id: TEAMSPACE.product,     name: "Product",     icon: "\u{1F4CB}" },
+  ];
+
+  for (const ts of teamspaces) {
+    await prisma.teamspace.upsert({
+      where: { id: ts.id },
+      update: { name: ts.name, icon: ts.icon },
+      create: { id: ts.id, tenantId: TENANT_ID, name: ts.name, icon: ts.icon },
+    });
+    console.log(`  Teamspace: ${ts.icon} ${ts.name}`);
+  }
+
+  // ── Teamspace Members ─────────────────────────────────────
+  // Add both the seeded admin user AND the dev-mode fallback user
+  // so teamspaces appear in the sidebar regardless of auth mode.
+  const memberUserIds = [ADMIN_USER_ID, DEV_USER_ID];
+  for (const ts of teamspaces) {
+    for (const uid of memberUserIds) {
+      await prisma.teamspaceMember.upsert({
+        where: { teamspaceId_userId: { teamspaceId: ts.id, userId: uid } },
+        update: { role: TeamspaceRole.OWNER },
+        create: { teamspaceId: ts.id, userId: uid, role: TeamspaceRole.OWNER },
+      });
+    }
+  }
+  console.log(`  Added ${memberUserIds.length} users as OWNER of ${teamspaces.length} teamspaces`);
 
   // ── Pages ──────────────────────────────────────────────
 
@@ -326,12 +399,144 @@ async function main() {
       position: 1,
       parentId: PAGE.designDoc,
     },
+    // ── Agent pages — AI agent knowledge base ──
+    // These pages contain organizational information that agents can search:
+    // equipment operation manuals, database access instructions, QR code procedures, etc.
+    {
+      id: PAGE.agentDbAccess,
+      title: "Database Access Instructions",
+      icon: "\u{1F5C4}\u{FE0F}",
+      position: 0,
+      parentId: null,
+      spaceType: SpaceType.AGENT,
+    },
+    {
+      id: PAGE.agentEquipOps,
+      title: "Equipment Operation Manuals",
+      icon: "\u{2699}\u{FE0F}",
+      position: 1,
+      parentId: null,
+      spaceType: SpaceType.AGENT,
+    },
+    {
+      id: PAGE.agentQrCodes,
+      title: "QR Code Procedures",
+      icon: "\u{1F4F7}",
+      position: 2,
+      parentId: null,
+      spaceType: SpaceType.AGENT,
+    },
+    {
+      id: PAGE.agentOrgInstructions,
+      title: "Organization Policies & Instructions",
+      icon: "\u{1F4D1}",
+      position: 3,
+      parentId: null,
+      spaceType: SpaceType.AGENT,
+    },
+    {
+      id: PAGE.agentApiIntegrations,
+      title: "External API Integrations",
+      icon: "\u{1F517}",
+      position: 4,
+      parentId: null,
+      spaceType: SpaceType.AGENT,
+    },
+    {
+      id: PAGE.agentSafetyProto,
+      title: "Safety Protocols & Compliance",
+      icon: "\u{1F6E1}\u{FE0F}",
+      position: 5,
+      parentId: null,
+      spaceType: SpaceType.AGENT,
+    },
+    // ── Team pages — Engineering teamspace ──
+    {
+      id: PAGE.teamEngStandards,
+      title: "Engineering Standards",
+      icon: "\u{1F4D0}",
+      position: 0,
+      parentId: null,
+      spaceType: SpaceType.TEAM,
+      teamspaceId: TEAMSPACE.engineering,
+    },
+    {
+      id: PAGE.teamEngRunbooks,
+      title: "Runbooks & Playbooks",
+      icon: "\u{1F4D6}",
+      position: 1,
+      parentId: null,
+      spaceType: SpaceType.TEAM,
+      teamspaceId: TEAMSPACE.engineering,
+    },
+    {
+      id: PAGE.teamEngIncidents,
+      title: "Incident Response Log",
+      icon: "\u{1F6A8}",
+      position: 2,
+      parentId: null,
+      spaceType: SpaceType.TEAM,
+      teamspaceId: TEAMSPACE.engineering,
+    },
+    {
+      id: PAGE.teamEngOnCall,
+      title: "On-Call Schedule",
+      icon: "\u{1F4DE}",
+      position: 3,
+      parentId: null,
+      spaceType: SpaceType.TEAM,
+      teamspaceId: TEAMSPACE.engineering,
+    },
+    // ── Team pages — Product teamspace ──
+    {
+      id: PAGE.teamProdRoadmap,
+      title: "Product Strategy & Roadmap",
+      icon: "\u{1F5FA}\u{FE0F}",
+      position: 0,
+      parentId: null,
+      spaceType: SpaceType.TEAM,
+      teamspaceId: TEAMSPACE.product,
+    },
+    {
+      id: PAGE.teamProdMetrics,
+      title: "Key Metrics & KPIs",
+      icon: "\u{1F4C8}",
+      position: 1,
+      parentId: null,
+      spaceType: SpaceType.TEAM,
+      teamspaceId: TEAMSPACE.product,
+    },
+    {
+      id: PAGE.teamProdUserRes,
+      title: "User Research Findings",
+      icon: "\u{1F50E}",
+      position: 2,
+      parentId: null,
+      spaceType: SpaceType.TEAM,
+      teamspaceId: TEAMSPACE.product,
+    },
+    {
+      id: PAGE.teamProdSpecs,
+      title: "Feature Specifications",
+      icon: "\u{1F4DD}",
+      position: 3,
+      parentId: null,
+      spaceType: SpaceType.TEAM,
+      teamspaceId: TEAMSPACE.product,
+    },
   ];
 
   for (const p of pages) {
     await prisma.page.upsert({
       where: { id: p.id },
-      update: { title: p.title, icon: p.icon, position: p.position, parentId: p.parentId },
+      update: {
+        title: p.title,
+        icon: p.icon,
+        position: p.position,
+        parentId: p.parentId,
+        spaceType: (p as { spaceType?: string }).spaceType as "PRIVATE" | "TEAM" | "AGENT" | undefined,
+        teamspaceId: (p as { teamspaceId?: string }).teamspaceId,
+      },
       create: { id: p.id, tenantId: TENANT_ID, ...p },
     });
     console.log(`  Page: ${p.icon} ${p.title}`);
@@ -1781,6 +1986,440 @@ xl: 1280px   /* Desktop */`),
           { text: "Touch-friendly page tree", checked: false },
           { text: "Responsive settings layout", checked: true },
           { text: "Graph touch gestures", checked: false },
+        ),
+      ),
+    },
+
+    // ─── Agent: Database Access Instructions ───
+    {
+      id: "b0000000-0000-4000-a030-000000000001",
+      pageId: PAGE.agentDbAccess,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Database Access Instructions. Connection strings and credentials for production and staging databases.",
+      content: doc(
+        heading(1, "Database Access Instructions"),
+        paragraph(text("Connection details and access patterns for all organizational databases.")),
+        heading(2, "PostgreSQL (Primary)"),
+        codeBlock("bash",
+`# Production (read-only replica for agents)
+host: db-prod-ro.internal.corp
+port: 5432
+database: symbio_prod
+user: agent_readonly
+# Credentials stored in Vault at secret/data/db/prod-readonly`),
+        heading(2, "Redis (Cache Layer)"),
+        codeBlock("bash",
+`host: redis.internal.corp
+port: 6379
+db: 0
+# Credentials in Vault at secret/data/redis/agent`),
+        heading(2, "Access Policies"),
+        bulletList(
+          "Agents have READ-ONLY access to production databases",
+          "Write operations require approval through the change management system",
+          "All queries must include a timeout of 30 seconds maximum",
+          "Rate limit: 100 queries per minute per agent"
+        ),
+      ),
+    },
+
+    // ─── Agent: Equipment Operation Manuals ───
+    {
+      id: "b0000000-0000-4000-a031-000000000001",
+      pageId: PAGE.agentEquipOps,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Equipment Operation Manuals. Instructions for operating lab and manufacturing equipment.",
+      content: doc(
+        heading(1, "Equipment Operation Manuals"),
+        paragraph(text("Standard operating procedures for all lab and manufacturing equipment.")),
+        heading(2, "Centrifuge (Model XR-500)"),
+        orderedList(
+          "Verify rotor is properly seated and balanced",
+          "Set speed (RPM) and duration via touch panel",
+          "Close lid firmly until audible click",
+          "Press START — do not open during operation",
+          "Wait for full stop before opening lid"
+        ),
+        heading(2, "Spectrophotometer (UV-2600)"),
+        orderedList(
+          "Power on and allow 15-minute warm-up",
+          "Run baseline calibration with blank cuvette",
+          "Insert sample cuvette in correct orientation",
+          "Select wavelength range and scan mode",
+          "Export results to shared network drive"
+        ),
+        heading(2, "3D Printer (Formlabs Form 4)"),
+        bulletList(
+          "Always check resin level before starting a print",
+          "Calibrate build platform monthly",
+          "Post-processing: wash in IPA for 10 minutes, then UV cure",
+          "Log all print jobs in the equipment tracker database"
+        ),
+      ),
+    },
+
+    // ─── Agent: QR Code Procedures ───
+    {
+      id: "b0000000-0000-4000-a032-000000000001",
+      pageId: PAGE.agentQrCodes,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "QR Code Procedures. Instructions for reading and processing QR codes on equipment and assets.",
+      content: doc(
+        heading(1, "QR Code Procedures"),
+        paragraph(text("QR codes are used to identify equipment, track assets, and trigger automated workflows.")),
+        heading(2, "QR Code Format"),
+        codeBlock("json",
+`{
+  "type": "EQUIPMENT" | "ASSET" | "LOCATION" | "PROCEDURE",
+  "id": "uuid-v4",
+  "version": 1,
+  "url": "https://app.symbio.local/scan/{id}"
+}`),
+        heading(2, "Scanning Workflow"),
+        orderedList(
+          "Agent scans QR code via camera or image input",
+          "Parse JSON payload from QR data",
+          "Look up entity by type and id in the asset database",
+          "Execute the associated procedure or return entity details",
+          "Log scan event with timestamp and agent ID"
+        ),
+        heading(2, "Error Handling"),
+        bulletList(
+          "Invalid QR format: Return error with expected format",
+          "Unknown entity ID: Flag for manual review",
+          "Expired QR code (version mismatch): Prompt for re-scan after update"
+        ),
+      ),
+    },
+
+    // ─── Agent: Organization Policies ───
+    {
+      id: "b0000000-0000-4000-a033-000000000001",
+      pageId: PAGE.agentOrgInstructions,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Organization Policies & Instructions. General guidelines for agent behavior within the organization.",
+      content: doc(
+        heading(1, "Organization Policies & Instructions"),
+        paragraph(text("General guidelines and policies that all AI agents must follow when operating within the organization.")),
+        heading(2, "Communication Standards"),
+        bulletList(
+          "Always identify yourself as an AI agent when interacting with external parties",
+          "Use formal language in customer-facing communications",
+          "Escalate to human supervisor for decisions exceeding $1,000 impact",
+          "Log all external communications in the audit trail"
+        ),
+        heading(2, "Data Handling"),
+        bulletList(
+          "PII data must never leave the internal network",
+          "Anonymize data before using it in reports or analytics",
+          "Follow GDPR guidelines for EU customer data",
+          "Retention: Delete temporary data after 24 hours"
+        ),
+        heading(2, "Working Hours"),
+        paragraph(text("Agents operate 24/7 but must respect the on-call escalation schedule for human handoffs between 22:00-07:00 local time.")),
+      ),
+    },
+
+    // ─── Agent: External API Integrations ───
+    {
+      id: "b0000000-0000-4000-a034-000000000001",
+      pageId: PAGE.agentApiIntegrations,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "External API Integrations. Endpoints and authentication for third-party services the agent can use.",
+      content: doc(
+        heading(1, "External API Integrations"),
+        paragraph(text("Approved third-party APIs and integration patterns for AI agents.")),
+        heading(2, "Slack Notifications"),
+        codeBlock("bash",
+`POST https://hooks.slack.com/services/T00/B00/xxx
+Content-Type: application/json
+# Token stored in Vault at secret/data/slack/webhook`),
+        heading(2, "Jira Ticket Creation"),
+        codeBlock("bash",
+`POST https://corp.atlassian.net/rest/api/3/issue
+Authorization: Bearer <jira-api-token>
+# Token in Vault at secret/data/jira/agent-token`),
+        heading(2, "Weather API (for facility operations)"),
+        codeBlock("bash",
+`GET https://api.openweathermap.org/data/2.5/weather?q=Munich&appid=<key>
+# Key in Vault at secret/data/weather/api-key`),
+        heading(2, "Rate Limits"),
+        bulletList(
+          "Slack: 1 message per second",
+          "Jira: 50 requests per minute",
+          "Weather: 60 calls per minute (free tier)"
+        ),
+      ),
+    },
+
+    // ─── Agent: Safety Protocols ───
+    {
+      id: "b0000000-0000-4000-a035-000000000001",
+      pageId: PAGE.agentSafetyProto,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Safety Protocols & Compliance. Safety requirements for agent operations in lab and manufacturing environments.",
+      content: doc(
+        heading(1, "Safety Protocols & Compliance"),
+        paragraph(text("Critical safety requirements that agents must enforce when operating in lab and manufacturing environments.")),
+        heading(2, "Emergency Procedures"),
+        orderedList(
+          "Detect abnormal sensor readings (temperature > 80C, pressure > 150 PSI)",
+          "Immediately trigger equipment shutdown via SCADA API",
+          "Send emergency alert to on-call engineering team",
+          "Log incident with full sensor data snapshot",
+          "Do NOT attempt to restart equipment — wait for human confirmation"
+        ),
+        heading(2, "Chemical Handling"),
+        bulletList(
+          "Always verify Material Safety Data Sheet (MSDS) before processing chemical-related tasks",
+          "Never recommend mixing chemicals without MSDS cross-reference",
+          "Flag expired chemicals for disposal (check expiry_date field)"
+        ),
+        heading(2, "Compliance Checklist"),
+        taskList(
+          { text: "ISO 9001 quality management procedures loaded", checked: true },
+          { text: "OSHA workplace safety guidelines indexed", checked: true },
+          { text: "EPA environmental compliance rules loaded", checked: false },
+          { text: "GMP manufacturing standards indexed", checked: false },
+        ),
+      ),
+    },
+
+    // ─── Team: Engineering Standards ───
+    {
+      id: "b0000000-0000-4000-a040-000000000001",
+      pageId: PAGE.teamEngStandards,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Engineering Standards. Code quality, review, and deployment standards for the engineering team.",
+      content: doc(
+        heading(1, "Engineering Standards"),
+        paragraph(text("Shared standards and best practices for the engineering team.")),
+        heading(2, "Code Review Requirements"),
+        bulletList(
+          "All PRs require at least 1 approval from a senior engineer",
+          "Critical path changes (auth, payments, data) need 2 approvals",
+          "Max PR size: 400 lines changed (excluding generated files)",
+          "Review turnaround SLA: 24 hours on business days"
+        ),
+        heading(2, "Testing Requirements"),
+        bulletList(
+          "Unit test coverage minimum: 80%",
+          "Integration tests required for all API endpoints",
+          "E2E tests for critical user flows (login, checkout, data export)",
+          "Performance benchmarks for queries exceeding 100ms"
+        ),
+        heading(2, "Deployment Checklist"),
+        taskList(
+          { text: "All CI checks passing", checked: false },
+          { text: "Changelog updated", checked: false },
+          { text: "Feature flags configured for gradual rollout", checked: false },
+          { text: "Monitoring dashboards reviewed", checked: false },
+          { text: "Rollback plan documented", checked: false },
+        ),
+      ),
+    },
+
+    // ─── Team: Runbooks & Playbooks ───
+    {
+      id: "b0000000-0000-4000-a041-000000000001",
+      pageId: PAGE.teamEngRunbooks,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Runbooks & Playbooks. Standard procedures for common operational tasks.",
+      content: doc(
+        heading(1, "Runbooks & Playbooks"),
+        paragraph(text("Step-by-step procedures for common operational tasks and incident response.")),
+        heading(2, "Database Migration Runbook"),
+        orderedList(
+          "Create migration branch from main",
+          "Run prisma migrate dev to generate migration",
+          "Review generated SQL in prisma/migrations/",
+          "Test migration on staging environment",
+          "Deploy to production during maintenance window",
+          "Verify migration with automated health checks"
+        ),
+        heading(2, "Production Hotfix Runbook"),
+        orderedList(
+          "Create hotfix branch from production tag",
+          "Apply minimal fix with test coverage",
+          "Get expedited review from on-call engineer",
+          "Deploy to staging for 15-minute soak test",
+          "Deploy to production with monitoring",
+          "Backport fix to main branch"
+        ),
+      ),
+    },
+
+    // ─── Team: Incident Response Log ───
+    {
+      id: "b0000000-0000-4000-a042-000000000001",
+      pageId: PAGE.teamEngIncidents,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Incident Response Log. Record of past incidents and post-mortems.",
+      content: doc(
+        heading(1, "Incident Response Log"),
+        paragraph(text("Historical record of production incidents, their root causes, and remediation actions.")),
+        heading(2, "INC-2026-003: Database Connection Pool Exhaustion"),
+        bulletList(
+          "Date: 2026-02-10",
+          "Duration: 45 minutes",
+          "Impact: 30% of API requests returning 503",
+          "Root Cause: Connection leak in background job worker",
+          "Fix: Added connection pool monitoring and auto-recovery"
+        ),
+        heading(2, "INC-2026-002: Search Index Corruption"),
+        bulletList(
+          "Date: 2026-01-28",
+          "Duration: 2 hours",
+          "Impact: Search returned stale results",
+          "Root Cause: Failed index rebuild during deployment",
+          "Fix: Added index integrity check to deployment pipeline"
+        ),
+      ),
+    },
+
+    // ─── Team: On-Call Schedule ───
+    {
+      id: "b0000000-0000-4000-a043-000000000001",
+      pageId: PAGE.teamEngOnCall,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "On-Call Schedule. Weekly rotation for engineering on-call duties.",
+      content: doc(
+        heading(1, "On-Call Schedule"),
+        paragraph(text("Weekly on-call rotation for production support. On-call engineer is the first responder for all P0/P1 alerts.")),
+        heading(2, "Current Rotation"),
+        bulletList(
+          "Week of Feb 24: Alice Chen",
+          "Week of Mar 3: Bob Martinez",
+          "Week of Mar 10: Carol Park",
+          "Week of Mar 17: David Kim"
+        ),
+        heading(2, "Escalation Path"),
+        orderedList(
+          "On-call engineer (Slack + PagerDuty)",
+          "Engineering lead (after 30 minutes)",
+          "VP Engineering (after 1 hour for P0)",
+          "CTO (after 2 hours for customer-facing P0)"
+        ),
+      ),
+    },
+
+    // ─── Team: Product Strategy & Roadmap ───
+    {
+      id: "b0000000-0000-4000-a050-000000000001",
+      pageId: PAGE.teamProdRoadmap,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Product Strategy & Roadmap. Strategic direction and quarterly roadmap for the product team.",
+      content: doc(
+        heading(1, "Product Strategy & Roadmap"),
+        paragraph(text("Strategic goals and quarterly roadmap for the product team.")),
+        heading(2, "Q1 2026 Priorities"),
+        orderedList(
+          "Launch AI agent knowledge base (in progress)",
+          "Implement team collaboration features",
+          "Build API marketplace for third-party integrations",
+          "Improve onboarding flow — target: 50% reduction in time-to-value"
+        ),
+        heading(2, "Q2 2026 Planning"),
+        bulletList(
+          "Mobile app MVP (iOS + Android)",
+          "Enterprise SSO integration (SAML 2.0)",
+          "Advanced permissions and role-based access",
+          "Analytics dashboard for workspace insights"
+        ),
+      ),
+    },
+
+    // ─── Team: Key Metrics & KPIs ───
+    {
+      id: "b0000000-0000-4000-a051-000000000001",
+      pageId: PAGE.teamProdMetrics,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Key Metrics & KPIs. Product metrics the team tracks weekly.",
+      content: doc(
+        heading(1, "Key Metrics & KPIs"),
+        paragraph(text("Core product metrics tracked weekly by the product team.")),
+        heading(2, "North Star Metric"),
+        paragraph(text("Weekly Active Knowledge Contributors (WAKC): Users who create or meaningfully edit at least one page per week.")),
+        heading(2, "Supporting Metrics"),
+        bulletList(
+          "DAU/MAU ratio: 42% (target: 50%)",
+          "Pages created per user per week: 3.2",
+          "Average session duration: 14 minutes",
+          "API calls per workspace per day: 1,200",
+          "Knowledge graph density (edges/nodes): 4.5"
+        ),
+        heading(2, "Retention"),
+        bulletList(
+          "Week 1 retention: 68%",
+          "Week 4 retention: 45%",
+          "Week 12 retention: 32%"
+        ),
+      ),
+    },
+
+    // ─── Team: User Research Findings ───
+    {
+      id: "b0000000-0000-4000-a052-000000000001",
+      pageId: PAGE.teamProdUserRes,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "User Research Findings. Insights from user interviews and usability tests.",
+      content: doc(
+        heading(1, "User Research Findings"),
+        paragraph(text("Synthesized insights from recent user interviews and usability testing sessions.")),
+        heading(2, "Key Insights (Feb 2026)"),
+        bulletList(
+          "Users love the knowledge graph but find initial setup overwhelming",
+          "Teams want shared templates for common page types",
+          "API users want webhooks for real-time change notifications",
+          "Mobile users need offline access for field work"
+        ),
+        heading(2, "Pain Points"),
+        bulletList(
+          "Search ranking needs improvement — relevant results not always first",
+          "Bulk import from Notion/Confluence requested by 7/10 enterprise leads",
+          "Permission model too simple for large teams (need page-level ACLs)"
+        ),
+      ),
+    },
+
+    // ─── Team: Feature Specifications ───
+    {
+      id: "b0000000-0000-4000-a053-000000000001",
+      pageId: PAGE.teamProdSpecs,
+      type: BlockType.DOCUMENT,
+      position: 0,
+      plainText: "Feature Specifications. Detailed specs for upcoming features.",
+      content: doc(
+        heading(1, "Feature Specifications"),
+        paragraph(text("Detailed specifications for features currently in development or planned.")),
+        heading(2, "Spec: Webhooks for Page Changes"),
+        bulletList(
+          "Trigger events: page.created, page.updated, page.deleted, page.moved",
+          "Payload: JSON with page ID, title, changed fields, actor",
+          "Authentication: HMAC-SHA256 signature verification",
+          "Retry policy: 3 attempts with exponential backoff",
+          "Status: In Development — ETA: March 2026"
+        ),
+        heading(2, "Spec: Bulk Import from Notion"),
+        bulletList(
+          "Accept Notion export ZIP file (HTML format)",
+          "Parse page hierarchy from folder structure",
+          "Convert HTML to TipTap JSON blocks",
+          "Preserve internal links as wikilinks",
+          "Status: Planning — ETA: Q2 2026"
         ),
       ),
     },
