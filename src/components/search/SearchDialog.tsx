@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useSearch } from "@/hooks/useSearch";
@@ -39,13 +39,44 @@ export function SearchDialog({
 
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+
+  // Track previous values for "adjust state during render" pattern
+  // (React-approved way to sync state with props without useEffect)
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  const [prevResultsLength, setPrevResultsLength] = useState(0);
+
   const debouncedQuery = useDebounce(query, DEBOUNCE_MS);
 
   const { data, isLoading, isFetching } = useSearch(debouncedQuery, {
     enabled: isOpen && debouncedQuery.length > 0,
   });
 
-  const results = data?.data ?? [];
+  const results = useMemo(() => data?.data ?? [], [data?.data]);
+
+  // Adjust state during render: reset when dialog opens
+  // (This is the React-approved pattern for deriving state from props)
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) {
+      setQuery("");
+      setSelectedIndex(0);
+      setPrevResultsLength(0);
+    }
+  }
+
+  // Adjust state during render: reset index when results change
+  if (results.length !== prevResultsLength) {
+    setPrevResultsLength(results.length);
+    if (results.length > 0 && selectedIndex >= results.length) {
+      setSelectedIndex(0);
+    }
+  }
+
+  // Clamp selectedIndex to valid range (derived state, no setState needed)
+  const safeSelectedIndex = useMemo(() => {
+    if (results.length === 0) return 0;
+    return Math.min(selectedIndex, results.length - 1);
+  }, [selectedIndex, results.length]);
 
   // Auto-focus input when dialog opens
   useEffect(() => {
@@ -56,19 +87,6 @@ export function SearchDialog({
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
-
-  // Reset state when dialog opens/closes
-  useEffect(() => {
-    if (!isOpen) {
-      setQuery("");
-      setSelectedIndex(0);
-    }
-  }, [isOpen]);
-
-  // Reset selected index when results change
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [results.length]);
 
   // Navigate to selected result
   const selectResult = useCallback(
@@ -99,8 +117,8 @@ export function SearchDialog({
 
         case "Enter":
           e.preventDefault();
-          if (results[selectedIndex]) {
-            selectResult(results[selectedIndex].pageId);
+          if (results[safeSelectedIndex]) {
+            selectResult(results[safeSelectedIndex].pageId);
           }
           break;
 
@@ -110,7 +128,7 @@ export function SearchDialog({
           break;
       }
     },
-    [results, selectedIndex, selectResult, onClose]
+    [results, safeSelectedIndex, selectResult, onClose]
   );
 
   if (!isOpen) return null;
@@ -164,7 +182,7 @@ export function SearchDialog({
           results={results}
           isLoading={isLoading && debouncedQuery.length > 0}
           query={debouncedQuery}
-          selectedIndex={selectedIndex}
+          selectedIndex={safeSelectedIndex}
           onSelect={selectResult}
           onHover={setSelectedIndex}
         />
