@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { MoreHorizontal, Trash2, Pencil, ExternalLink } from "lucide-react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { MoreHorizontal, Trash2, Pencil, ExternalLink, GripVertical } from "lucide-react";
 import { PropertyCell } from "./PropertyCell";
 import { PropertyEditor } from "./PropertyEditor";
 import { Modal } from "@/components/ui/Modal";
@@ -17,6 +19,7 @@ interface ListRowProps {
   isSelected: boolean;
   hasCheckbox: boolean;
   checkboxValue: boolean;
+  sortable?: boolean;
   onClick: () => void;
   onCheckboxToggle?: (checked: boolean) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -33,6 +36,7 @@ export function ListRow({
   isSelected,
   hasCheckbox,
   checkboxValue,
+  sortable,
   onClick,
   onCheckboxToggle,
   onContextMenu,
@@ -44,6 +48,23 @@ export function ListRow({
   const [editingField, setEditingField] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: rowId, disabled: !sortable });
+
+  const sortStyle = sortable
+    ? {
+        transform: CSS.Translate.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }
+    : undefined;
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -125,14 +146,32 @@ export function ListRow({
 
   return (
     <div
+      ref={setNodeRef}
+      style={sortStyle}
       onClick={() => {
         if (!editingField) onClick();
       }}
       onContextMenu={onContextMenu}
       className={`group flex items-center gap-2 px-3 h-9 cursor-pointer border-b border-[var(--border-default)] transition-colors
-        ${isSelected ? "bg-[var(--accent-primary)]/5" : "hover:bg-[var(--bg-hover)]"}`}
+        ${isSelected ? "bg-[var(--accent-primary)]/5" : "hover:bg-[var(--bg-hover)]"}
+        ${isDragging ? "z-50 shadow-md bg-[var(--bg-primary)]" : ""}`}
       data-testid={`list-row-${rowId}`}
     >
+      {/* Drag handle */}
+      {sortable && (
+        <button
+          {...listeners}
+          {...attributes}
+          className="flex-shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100
+            text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]
+            cursor-grab active:cursor-grabbing transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="w-3.5 h-3.5" />
+        </button>
+      )}
+
       {/* Checkbox */}
       {hasCheckbox && (
         <button

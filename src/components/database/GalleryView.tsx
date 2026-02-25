@@ -3,6 +3,15 @@
 import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useDatabaseRows } from "@/hooks/useDatabaseRows";
 import { useTableFilters } from "@/hooks/useTableFilters";
 import { FilterBar } from "./FilterBar";
@@ -147,6 +156,57 @@ export function GalleryView({
     });
   }, [schema.columns, createRow]);
 
+  // DnD setup
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    })
+  );
+
+  const sortedRows = useMemo(() => {
+    const typed = filteredRows as DbRowWithPage[];
+    return [...typed].sort((a, b) => {
+      const posA = a.properties.__position;
+      const posB = b.properties.__position;
+      const numA = posA?.type === "NUMBER" ? (posA.value as number) : Infinity;
+      const numB = posB?.type === "NUMBER" ? (posB.value as number) : Infinity;
+      return numA - numB;
+    });
+  }, [filteredRows]);
+
+  const sortedRowIds = useMemo(() => sortedRows.map((r) => r.id), [sortedRows]);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const oldIndex = sortedRows.findIndex((r) => r.id === active.id);
+      const newIndex = sortedRows.findIndex((r) => r.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      // Recompute positions for affected rows
+      const reordered = [...sortedRows];
+      const [moved] = reordered.splice(oldIndex, 1);
+      reordered.splice(newIndex, 0, moved);
+
+      reordered.forEach((row, idx) => {
+        const currentPos = row.properties.__position;
+        const currentNum = currentPos?.type === "NUMBER" ? (currentPos.value as number) : -1;
+        if (currentNum !== idx) {
+          updateRow.mutate({
+            rowId: row.id,
+            properties: {
+              ...row.properties,
+              __position: { type: "NUMBER", value: idx },
+            },
+          });
+        }
+      });
+    },
+    [sortedRows, updateRow]
+  );
+
   function getTitle(row: DbRowWithPage): string {
     for (const val of Object.values(row.properties)) {
       if (val.type === "TITLE") return val.value as string;
@@ -233,44 +293,53 @@ export function GalleryView({
           )}
         </div>
       ) : (
-        <div
-          className={`grid ${GRID_COLS[cardSize]} gap-4 transition-all duration-200`}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-          {(filteredRows as DbRowWithPage[]).map((row) => (
-            <GalleryCard
-              key={row.id}
-              rowId={row.id}
-              title={getTitle(row)}
-              properties={row.properties}
-              coverImageUrl={getCoverUrl(row)}
-              visibleColumns={visibleColumns}
-              showCover={coverColumnId !== null}
-              onClick={() => handleCardClick(row)}
-              onUpdateRow={(rowId, properties) => updateRow.mutate({ rowId, properties })}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setContextMenu({
-                  rowId: row.id,
-                  title: getTitle(row),
-                  x: e.clientX,
-                  y: e.clientY,
-                });
-              }}
-            />
-          ))}
+          <SortableContext items={sortedRowIds} strategy={rectSortingStrategy}>
+            <div
+              className={`grid ${GRID_COLS[cardSize]} gap-4 transition-all duration-200`}
+            >
+              {sortedRows.map((row) => (
+                <GalleryCard
+                  key={row.id}
+                  rowId={row.id}
+                  title={getTitle(row)}
+                  properties={row.properties}
+                  coverImageUrl={getCoverUrl(row)}
+                  visibleColumns={visibleColumns}
+                  showCover={coverColumnId !== null}
+                  sortable
+                  onClick={() => handleCardClick(row)}
+                  onUpdateRow={(rowId, properties) => updateRow.mutate({ rowId, properties })}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({
+                      rowId: row.id,
+                      title: getTitle(row),
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
+                />
+              ))}
 
-          {/* Add card */}
-          <button
-            onClick={handleAddRow}
-            disabled={createRow.isPending}
-            className="rounded-lg border-2 border-dashed border-[var(--border-default)]
-              flex items-center justify-center min-h-[120px]
-              text-[var(--text-secondary)] hover:text-[var(--text-primary)]
-              hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-        </div>
+              {/* Add card */}
+              <button
+                onClick={handleAddRow}
+                disabled={createRow.isPending}
+                className="rounded-lg border-2 border-dashed border-[var(--border-default)]
+                  flex items-center justify-center min-h-[120px]
+                  text-[var(--text-secondary)] hover:text-[var(--text-primary)]
+                  hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
+              >
+                <Plus className="w-5 h-5" />
+              </button>
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {contextMenu && (

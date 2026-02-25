@@ -3,6 +3,15 @@
 import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useDatabaseRows } from "@/hooks/useDatabaseRows";
 import { useTableFilters } from "@/hooks/useTableFilters";
 import { FilterBar } from "./FilterBar";
@@ -127,6 +136,58 @@ export function ListView({
     });
   }, [schema.columns, createRow]);
 
+  // DnD setup
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    })
+  );
+
+  const sortedFilteredRows = useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      const props = a.properties as RowProperties;
+      const propsB = b.properties as RowProperties;
+      const posA = props.__position;
+      const posB = propsB.__position;
+      const numA = posA?.type === "NUMBER" ? (posA.value as number) : Infinity;
+      const numB = posB?.type === "NUMBER" ? (posB.value as number) : Infinity;
+      return numA - numB;
+    });
+  }, [filteredRows]);
+
+  const sortedRowIds = useMemo(() => sortedFilteredRows.map((r) => r.id), [sortedFilteredRows]);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const oldIndex = sortedFilteredRows.findIndex((r) => r.id === active.id);
+      const newIndex = sortedFilteredRows.findIndex((r) => r.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const reordered = [...sortedFilteredRows];
+      const [moved] = reordered.splice(oldIndex, 1);
+      reordered.splice(newIndex, 0, moved);
+
+      reordered.forEach((row, idx) => {
+        const props = row.properties as RowProperties;
+        const currentPos = props.__position;
+        const currentNum = currentPos?.type === "NUMBER" ? (currentPos.value as number) : -1;
+        if (currentNum !== idx) {
+          updateRow.mutate({
+            rowId: row.id,
+            properties: {
+              ...props,
+              __position: { type: "NUMBER", value: idx },
+            },
+          });
+        }
+      });
+    },
+    [sortedFilteredRows, updateRow]
+  );
+
   // Keyboard navigation
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -182,11 +243,13 @@ export function ListView({
     ? schema.columns.find((c) => c.id === groupByColumnId)
     : null;
 
-  const groups: [string, typeof filteredRows][] = groupByColumn?.options
+  const isGrouped = !!groupByColumn?.options;
+
+  const groups: [string, typeof filteredRows][] = isGrouped
     ? Array.from(
-        groupRowsByColumn(filteredRows, groupByColumnId!, groupByColumn.options).entries()
+        groupRowsByColumn(filteredRows, groupByColumnId!, groupByColumn!.options!).entries()
       )
-    : [["", filteredRows]];
+    : [["", sortedFilteredRows]];
 
   return (
     <div onKeyDown={handleKeyDown} tabIndex={0} className="outline-none">
@@ -221,7 +284,7 @@ export function ListView({
               ? "No items match the current filter."
               : "No items yet. Click + to add your first item."}
           </div>
-        ) : (
+        ) : isGrouped ? (
           groups.map(([groupLabel, groupRows]) => (
             <div key={groupLabel}>
               {groupLabel && (
@@ -268,6 +331,53 @@ export function ListView({
               })}
             </div>
           ))
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={sortedRowIds} strategy={verticalListSortingStrategy}>
+              {sortedFilteredRows.map((row) => {
+                const checkboxValue =
+                  checkboxColumn && row.properties[checkboxColumn.id]?.type === "CHECKBOX"
+                    ? (row.properties[checkboxColumn.id].value as boolean)
+                    : false;
+
+                return (
+                  <ListRow
+                    key={row.id}
+                    rowId={row.id}
+                    title={getTitle(row)}
+                    pageId={row.pageId}
+                    properties={row.properties as RowProperties}
+                    visibleColumns={visibleColumns}
+                    isSelected={selectedRowId === row.id}
+                    hasCheckbox={!!checkboxColumn}
+                    checkboxValue={checkboxValue}
+                    sortable
+                    onClick={() => handleRowClick(row)}
+                    onCheckboxToggle={(checked) =>
+                      handleCheckboxToggle(row.id, checked)
+                    }
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        rowId: row.id,
+                        title: getTitle(row),
+                        x: e.clientX,
+                        y: e.clientY,
+                      });
+                    }}
+                    onUpdateRow={(rowId, properties) =>
+                      updateRow.mutate({ rowId, properties })
+                    }
+                    onDelete={(rowId) => deleteRow.mutate(rowId)}
+                  />
+                );
+              })}
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 

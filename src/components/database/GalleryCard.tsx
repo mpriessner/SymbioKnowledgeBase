@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { GripVertical } from "lucide-react";
 import { CardCover } from "./CardCover";
 import { PropertyCell } from "./PropertyCell";
 import { PropertyEditor } from "./PropertyEditor";
@@ -13,6 +16,7 @@ interface GalleryCardProps {
   coverImageUrl: string | null;
   visibleColumns: Column[];
   showCover: boolean;
+  sortable?: boolean;
   onClick: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   onUpdateRow?: (rowId: string, properties: RowProperties) => void;
@@ -25,12 +29,30 @@ export function GalleryCard({
   coverImageUrl,
   visibleColumns,
   showCover,
+  sortable,
   onClick,
   onContextMenu,
   onUpdateRow,
 }: GalleryCardProps) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: rowId, disabled: !sortable });
+
+  const sortStyle = sortable
+    ? {
+        transform: CSS.Translate.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }
+    : undefined;
 
   useEffect(() => {
     if (editingField === "__title__" && titleInputRef.current) {
@@ -72,6 +94,8 @@ export function GalleryCard({
 
   return (
     <div
+      ref={setNodeRef}
+      style={sortStyle}
       onClick={() => {
         if (!editingField) onClick();
       }}
@@ -80,12 +104,27 @@ export function GalleryCard({
       onKeyDown={(e) => {
         if (e.key === "Enter" && !editingField) onClick();
       }}
-      className="group rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)]
+      className={`group relative rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)]
         overflow-hidden cursor-pointer shadow-sm
         hover:shadow-md hover:scale-[1.02] transition-all duration-150
-        focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]"
+        focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]
+        ${isDragging ? "z-50 shadow-lg" : ""}`}
       data-testid={`gallery-card-${rowId}`}
     >
+      {/* Drag handle */}
+      {sortable && (
+        <button
+          {...listeners}
+          {...attributes}
+          className="absolute top-2 left-2 z-10 p-0.5 rounded opacity-0 group-hover:opacity-100
+            bg-[var(--bg-primary)]/80 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]
+            cursor-grab active:cursor-grabbing transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="w-3.5 h-3.5" />
+        </button>
+      )}
       {/* Cover */}
       {showCover && (
         <CardCover imageUrl={coverImageUrl} title={title} height={160} />
