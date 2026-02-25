@@ -95,3 +95,31 @@
   outline: 2px solid var(--accent-primary);
   outline-offset: -2px;
 }
+
+/* Checkmark scale-in animation */
+
+.ws-dropdown-item svg:last-child {
+  animation: ws-checkmark-in 200ms ease-out;
+}
+
+@keyframes ws-checkmark-in {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* Disabled state for items (during switching) */
+
+.ws-dropdown-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Dark theme: avatar muted slightly */
+
+.dark .ws-avatar-circle {
+  filter: saturate(0.85);
+}

@@ -7,11 +7,13 @@ import { useUser } from "@/components/providers/SupabaseProvider";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { WorkspaceAvatar } from "./WorkspaceAvatar";
 import { WorkspaceCreateDialog } from "./WorkspaceCreateDialog";
+import { InviteMembersDialog } from "./InviteMembersDialog";
 import "./workspace-dropdown.css";
 
 export function WorkspaceDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -177,7 +179,8 @@ export function WorkspaceDropdown() {
                 </button>
                 <button
                   onClick={() => {
-                    // Placeholder — will open InviteMembersDialog in SKB-23.3
+                    setIsOpen(false);
+                    setShowInviteDialog(true);
                   }}
                   role="menuitem"
                   className="ws-header-button"
@@ -274,6 +277,13 @@ export function WorkspaceDropdown() {
         onClose={() => setShowCreateDialog(false)}
         onCreate={handleCreateWorkspace}
         isCreating={isCreating}
+      />
+
+      {/* Invite members dialog */}
+      <InviteMembersDialog
+        isOpen={showInviteDialog}
+        onClose={() => setShowInviteDialog(false)}
+        workspaceName={workspaceName}
       />
     </>
   );
