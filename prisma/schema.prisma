@@ -95,6 +95,7 @@ model Tenant {
 
   // Relations
   users                  User[]
+  members                TenantMember[]
   pages                  Page[]
   blocks                 Block[]
   pageLinks              PageLink[]
@@ -111,6 +112,22 @@ model Tenant {
   fileAttachments        FileAttachment[]
 
   @@map("tenants")
+}
+
+// ─── Tenant Members (workspace memberships) ─────────────────────────
+
+model TenantMember {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")       // Supabase auth user ID
+  tenantId  String   @map("tenant_id")
+  role      String   @default("owner")     // "owner" | "admin" | "member"
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId], map: "uq_tenant_members_user_tenant")
+  @@index([userId], map: "idx_tenant_members_user_id")
+  @@map("tenant_members")
 }
 
 // ─── Users ───────────────────────────────────────────────────────────

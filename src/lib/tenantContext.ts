@@ -80,8 +80,25 @@ export async function getTenantContext(
       // Look up or auto-create the Prisma user record (handles cross-app SSO)
       const dbUser = await ensureUserExists(user);
 
+      // Check for active workspace cookie override
+      const activeCookie = request.cookies.get("skb_active_workspace")?.value;
+      let tenantId = dbUser.tenantId;
+
+      if (activeCookie && activeCookie !== dbUser.tenantId) {
+        // Verify user has access to the requested workspace
+        const { prisma: db } = await import("@/lib/db");
+        const membership = await db.tenantMember.findUnique({
+          where: {
+            userId_tenantId: { userId: dbUser.id, tenantId: activeCookie },
+          },
+        });
+        if (membership) {
+          tenantId = activeCookie;
+        }
+      }
+
       return {
-        tenantId: dbUser.tenantId,
+        tenantId,
         userId: dbUser.id,
         role: dbUser.role,
       };
