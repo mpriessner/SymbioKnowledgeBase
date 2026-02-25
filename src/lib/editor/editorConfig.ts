@@ -12,6 +12,7 @@ import { ConfiguredImage } from "@/components/editor/extensions/imageBlock";
 import { Bookmark } from "@/components/editor/extensions/bookmark";
 import { WikilinkExtension } from "@/components/editor/extensions/WikilinkExtension";
 import { createWikilinkSuggestion } from "@/components/editor/extensions/wikilinkSuggestionPlugin";
+import { HeadingIdExtension } from "@/components/editor/extensions/headingId";
 import type { Extensions } from "@tiptap/react";
 
 // Default placeholder text for empty editor
@@ -96,5 +97,6 @@ export function getBaseExtensions(
     WikilinkExtension.configure({
       suggestion: createWikilinkSuggestion(),
     }),
+    HeadingIdExtension,
   ];
 }

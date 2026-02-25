@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import type { JSONContent } from "@tiptap/react";
+import type { JSONContent, Editor } from "@tiptap/react";
 import { getBaseExtensions } from "@/lib/editor/editorConfig";
 import { usePageBlocks } from "@/hooks/useBlockEditor";
 import { useAutoSave } from "@/hooks/useAutoSave";
@@ -15,6 +15,7 @@ import "@/components/editor/editor.css";
 interface BlockEditorProps {
   pageId: string;
   editable?: boolean;
+  onEditorReady?: (editor: Editor) => void;
 }
 
 interface MenuState {
@@ -24,7 +25,9 @@ interface MenuState {
   y: number;
 }
 
-export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
+export function BlockEditor({ pageId, editable = true, onEditorReady }: BlockEditorProps) {
+  const onEditorReadyRef = useRef(onEditorReady);
+  onEditorReadyRef.current = onEditorReady;
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [menuState, setMenuState] = useState<MenuState>({
     isOpen: false,
@@ -96,6 +99,13 @@ export function BlockEditor({ pageId, editable = true }: BlockEditorProps) {
       }
     }
   }, [editor, documentContent]);
+
+  // Notify parent when editor instance is ready
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) {
+      onEditorReadyRef.current?.(editor);
+    }
+  }, [editor]);
 
   // Auto-save hook
   const handleStatusChange = useCallback((status: SaveStatus) => {

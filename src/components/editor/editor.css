@@ -254,6 +254,13 @@
   display: block;
 }
 
+/* Offset for sticky header when scrolling to anchor */
+.tiptap h1[id],
+.tiptap h2[id],
+.tiptap h3[id] {
+  scroll-margin-top: 80px;
+}
+
 /* Callout content spacing */
 .callout-content p:first-child {
   margin-top: 0;
