@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
 import { AskAIDialog } from "@/components/ai/AskAIDialog";
+import { MeetingNotesGenerator } from "@/components/ai/MeetingNotesGenerator";
 import { DEFAULT_COLUMNS } from "@/types/database";
 import type { DatabaseViewType, DatabaseSchema, RowProperties } from "@/types/database";
 import { parseCSVToDatabase } from "@/lib/import/csv-import";
@@ -43,6 +44,7 @@ export function PageCreationMenu({ pageId, onAction }: PageCreationMenuProps) {
   const { addToast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
   const [showAskAI, setShowAskAI] = useState(false);
+  const [showMeetingNotes, setShowMeetingNotes] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleCreateDatabaseView = useCallback(
@@ -277,12 +279,27 @@ export function PageCreationMenu({ pageId, onAction }: PageCreationMenuProps) {
   );
 
   const handleMeetingNotes = useCallback(() => {
-    addToast("AI Meeting Notes — coming soon (SKB-21.8)", "info");
-  }, [addToast]);
+    setShowMeetingNotes(true);
+  }, []);
 
   const handleDatabase = useCallback(() => {
     handleCreateDatabaseView("table");
   }, [handleCreateDatabaseView]);
+
+  // If Meeting Notes is open, show only that
+  if (showMeetingNotes) {
+    return (
+      <div className="content-pad py-8">
+        <div className="max-w-2xl mx-auto">
+          <MeetingNotesGenerator
+            pageId={pageId}
+            onComplete={handleAIComplete}
+            onCancel={() => setShowMeetingNotes(false)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   // If Ask AI dialog is open, show only that
   if (showAskAI) {
