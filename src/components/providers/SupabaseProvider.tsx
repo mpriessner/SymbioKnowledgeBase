@@ -29,18 +29,21 @@ const DEV_USER = {
   created_at: new Date().toISOString(),
 } as unknown as User;
 
+// Compute initial state once at module level to avoid repeated createClient calls
+// This is safe because createClient returns null or a singleton
+const initialClient = createClient();
+const hasSupabase = initialClient !== null;
+
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
-  const [supabase] = useState(() => createClient());
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Use module-level computed values for initial state
+  // This eliminates setState-in-useEffect and avoids multiple createClient calls
+  const [supabase] = useState<SupabaseClient | null>(() => initialClient);
+  const [user, setUser] = useState<User | null>(() => hasSupabase ? null : DEV_USER);
+  const [isLoading, setIsLoading] = useState(() => hasSupabase);
 
   useEffect(() => {
-    // If Supabase is not configured, use mock dev user
-    if (!supabase) {
-      setUser(DEV_USER);
-      setIsLoading(false);
-      return;
-    }
+    // Skip if Supabase is not configured - DEV_USER already set via lazy init
+    if (!supabase) return;
 
     // Get initial user
     supabase.auth.getUser().then(({ data }) => {
