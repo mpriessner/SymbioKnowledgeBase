@@ -6,6 +6,7 @@ import { BoardView } from "./BoardView";
 import { ListView } from "./ListView";
 import { CalendarView } from "./CalendarView";
 import { GalleryView } from "./GalleryView";
+import { TimelineView } from "./TimelineView";
 import { useDatabaseView } from "@/hooks/useDatabaseView";
 import type {
   DatabaseSchema,
@@ -18,17 +19,6 @@ interface DatabaseViewContainerProps {
   schema: DatabaseSchema;
   defaultView?: DatabaseViewType;
   viewConfig?: ViewConfig | null;
-}
-
-function ViewPlaceholder({ viewType }: { viewType: string }) {
-  return (
-    <div className="flex items-center justify-center py-16 text-sm text-[var(--text-secondary)]">
-      <div className="text-center">
-        <p className="font-medium capitalize">{viewType} View</p>
-        <p className="mt-1 text-[var(--text-tertiary)]">Coming soon</p>
-      </div>
-    </div>
-  );
 }
 
 export function DatabaseViewContainer({
@@ -83,7 +73,14 @@ export function DatabaseViewContainer({
             onViewConfigChange={updateViewConfig}
           />
         )}
-        {activeView === "timeline" && <ViewPlaceholder viewType="timeline" />}
+        {activeView === "timeline" && (
+          <TimelineView
+            databaseId={databaseId}
+            schema={schema}
+            viewConfig={viewConfig}
+            onViewConfigChange={updateViewConfig}
+          />
+        )}
       </div>
     </div>
   );
