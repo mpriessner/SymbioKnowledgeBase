@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback, useSyncExternalStore } from "react";
 import { Toggle } from "@/components/ui/Toggle";
 import { Mail, Bell, Volume2, FileText, MessageSquare, Calendar } from "lucide-react";
 
@@ -33,6 +33,62 @@ const DEFAULT_SETTINGS: NotificationSettings = {
     playSounds: true,
   },
 };
+
+/**
+ * Safely loads notification settings from localStorage.
+ * Returns DEFAULT_SETTINGS if localStorage is unavailable (SSR) or parsing fails.
+ */
+function getStoredSettings(): NotificationSettings {
+  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return { ...DEFAULT_SETTINGS, ...parsed };
+    }
+  } catch (error) {
+    console.error("Failed to load notification settings:", error);
+  }
+  return DEFAULT_SETTINGS;
+}
+
+/**
+ * Subscribe to localStorage changes (storage event from other tabs)
+ */
+function subscribeToStorage(callback: () => void): () => void {
+  const handleStorageChange = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY) {
+      callback();
+    }
+  };
+  window.addEventListener("storage", handleStorageChange);
+  return () => window.removeEventListener("storage", handleStorageChange);
+}
+
+/**
+ * Custom hook for syncing notification settings with localStorage
+ * Uses useSyncExternalStore for proper React 18+ external state management
+ */
+function useNotificationSettings() {
+  // Use useSyncExternalStore for localStorage - the React 18+ recommended approach
+  const settings = useSyncExternalStore(
+    subscribeToStorage,
+    getStoredSettings,
+    () => DEFAULT_SETTINGS // Server snapshot
+  );
+
+  const updateSettings = useCallback((newSettings: NotificationSettings) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+      // Dispatch a custom event to trigger re-render in the same tab
+      window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
+    } catch (error) {
+      console.error("Failed to save notification settings:", error);
+    }
+  }, []);
+
+  return [settings, updateSettings] as const;
+}
 
 interface ToggleRowProps {
   icon: React.ReactNode;
@@ -91,50 +147,34 @@ function NotificationGroup({ title, icon, children }: NotificationGroupProps) {
 }
 
 export function NotificationsSection() {
-  const [settings, setSettings] = useState<NotificationSettings>(DEFAULT_SETTINGS);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [settings, updateSettings] = useNotificationSettings();
+  // Track if component is mounted (for hydration skeleton)
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Load settings from localStorage on mount
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed });
-      }
-    } catch (error) {
-      console.error("Failed to load notification settings:", error);
-    }
-    setIsLoaded(true);
-  }, []);
+  // Mark as mounted after first render - safe because it's in a callback
+  if (typeof window !== "undefined" && !isMounted) {
+    // Use queueMicrotask to defer state update and avoid render-time setState
+    queueMicrotask(() => setIsMounted(true));
+  }
 
-  // Save settings to localStorage whenever they change
-  useEffect(() => {
-    if (isLoaded) {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-      } catch (error) {
-        console.error("Failed to save notification settings:", error);
-      }
-    }
-  }, [settings, isLoaded]);
+  const updateEmailSetting = useCallback((key: keyof EmailNotificationSettings, value: boolean) => {
+    const newSettings = {
+      ...settings,
+      email: { ...settings.email, [key]: value },
+    };
+    updateSettings(newSettings);
+  }, [settings, updateSettings]);
 
-  const updateEmailSetting = (key: keyof EmailNotificationSettings, value: boolean) => {
-    setSettings((prev) => ({
-      ...prev,
-      email: { ...prev.email, [key]: value },
-    }));
-  };
-
-  const updateInAppSetting = (key: keyof InAppNotificationSettings, value: boolean) => {
-    setSettings((prev) => ({
-      ...prev,
-      inApp: { ...prev.inApp, [key]: value },
-    }));
-  };
+  const updateInAppSetting = useCallback((key: keyof InAppNotificationSettings, value: boolean) => {
+    const newSettings = {
+      ...settings,
+      inApp: { ...settings.inApp, [key]: value },
+    };
+    updateSettings(newSettings);
+  }, [settings, updateSettings]);
 
   // Show loading skeleton while hydrating
-  if (!isLoaded) {
+  if (!isMounted) {
     return (
       <div className="space-y-6">
         <h2 className="text-xl font-semibold text-[var(--text-primary)]">
