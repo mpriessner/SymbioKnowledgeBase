@@ -8,6 +8,8 @@ import type {
   BacklinkEntry,
   DatabaseDetail,
   GraphNode,
+  LinkEntry,
+  TreeNode,
 } from "../api/client.js";
 
 export function registerTools(server: Server, apiClient: AgentClient) {
@@ -256,6 +258,49 @@ export function registerTools(server: Server, apiClient: AgentClient) {
             },
           },
           required: ["database_id", "row_id"],
+        },
+      },
+      {
+        name: "get_page_tree",
+        description:
+          "Get the full page hierarchy as a nested tree. Shows all pages organized by parent-child relationships.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {},
+        },
+      },
+      {
+        name: "navigate_link",
+        description:
+          "Follow a link from a source page to a target page. Returns the target page's markdown content and its outgoing links for continued traversal.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            from_page_id: {
+              type: "string",
+              description: "Source page ID (UUID)",
+            },
+            link_target: {
+              type: "string",
+              description: "Target page title or ID to navigate to",
+            },
+          },
+          required: ["from_page_id", "link_target"],
+        },
+      },
+      {
+        name: "get_page_context",
+        description:
+          "Get comprehensive context about a page: content, parent, children, outgoing links, and backlinks in one call.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            id_or_title: {
+              type: "string",
+              description: "Page ID (UUID) or exact title",
+            },
+          },
+          required: ["id_or_title"],
         },
       },
     ],
@@ -577,6 +622,149 @@ export function registerTools(server: Server, apiClient: AgentClient) {
                 type: "text" as const,
                 text: `Deleted row ${response.data.id} at ${response.data.deleted_at}`,
               },
+            ],
+          };
+        }
+
+        case "get_page_tree": {
+          const response = await apiClient.getPageTree();
+          const tree = response.data as TreeNode[];
+
+          function formatTree(nodes: TreeNode[], indent = 0): string {
+            return nodes
+              .map((n) => {
+                const prefix = "  ".repeat(indent);
+                const icon = n.icon || "\u{1F4C4}";
+                let line = `${prefix}- ${icon} **${n.title}** (${n.id})`;
+                if (n.children.length > 0) {
+                  line += "\n" + formatTree(n.children, indent + 1);
+                }
+                return line;
+              })
+              .join("\n");
+          }
+
+          if (tree.length === 0) {
+            return {
+              content: [
+                { type: "text" as const, text: "No pages found." },
+              ],
+            };
+          }
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Page Tree:\n\n${formatTree(tree)}`,
+              },
+            ],
+          };
+        }
+
+        case "navigate_link": {
+          const fromPageId = toolArgs.from_page_id as string;
+          const linkTarget = toolArgs.link_target as string;
+
+          // First, check outgoing links from source page
+          const linksResponse = await apiClient.getPageLinks(fromPageId);
+          const outgoingLinks = linksResponse.data as LinkEntry[];
+
+          // Try to find target by title among outgoing links
+          const uuidRegex =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          let targetId: string | undefined;
+
+          if (uuidRegex.test(linkTarget)) {
+            targetId = linkTarget;
+          } else {
+            const match = outgoingLinks.find(
+              (l) => l.title.toLowerCase() === linkTarget.toLowerCase()
+            );
+            if (match) {
+              targetId = match.id;
+            } else {
+              // Fall back to global search
+              const searchResponse = await apiClient.search(linkTarget, 1);
+              if (searchResponse.data.length > 0) {
+                targetId = searchResponse.data[0].page_id;
+              }
+            }
+          }
+
+          if (!targetId) {
+            throw new Error(`Could not resolve link target: ${linkTarget}`);
+          }
+
+          // Read target page
+          const pageResponse = await apiClient.readPage(targetId);
+          const targetPage = pageResponse.data;
+
+          // Get target's outgoing links for continued traversal
+          const targetLinksResponse = await apiClient.getPageLinks(targetId);
+          const targetLinks = targetLinksResponse.data as LinkEntry[];
+
+          const linksText =
+            targetLinks.length > 0
+              ? `\n\n---\nOutgoing links:\n${targetLinks.map((l) => `- ${l.icon || "\u{1F4C4}"} **${l.title}** (${l.id})`).join("\n")}`
+              : "\n\n---\nNo outgoing links.";
+
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `# ${targetPage.title}\n\n${targetPage.markdown}${linksText}\n\nID: ${targetPage.id}`,
+              },
+            ],
+          };
+        }
+
+        case "get_page_context": {
+          const idOrTitle = toolArgs.id_or_title as string;
+          let contextPageId = idOrTitle;
+
+          const uuidRegex =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!uuidRegex.test(idOrTitle)) {
+            const searchResponse = await apiClient.search(idOrTitle, 1);
+            if (searchResponse.data.length === 0) {
+              throw new Error(`Page not found: ${idOrTitle}`);
+            }
+            contextPageId = searchResponse.data[0].page_id;
+          }
+
+          const response = await apiClient.getPageContext(contextPageId);
+          const ctx = response.data;
+
+          const sections = [
+            `# ${ctx.page.title}`,
+            `ID: ${ctx.page.id}`,
+            ctx.parent
+              ? `Parent: ${ctx.parent.title} (${ctx.parent.id})`
+              : "Parent: none (root page)",
+            `\n${ctx.markdown}`,
+          ];
+
+          if (ctx.children.length > 0) {
+            sections.push(
+              `\n## Children (${ctx.children.length})\n${ctx.children.map((c: LinkEntry) => `- ${c.icon || "\u{1F4C4}"} **${c.title}** (${c.id})`).join("\n")}`
+            );
+          }
+
+          if (ctx.outgoing_links.length > 0) {
+            sections.push(
+              `\n## Outgoing Links (${ctx.outgoing_links.length})\n${ctx.outgoing_links.map((l: LinkEntry) => `- ${l.icon || "\u{1F4C4}"} **${l.title}** (${l.id})`).join("\n")}`
+            );
+          }
+
+          if (ctx.backlinks.length > 0) {
+            sections.push(
+              `\n## Backlinks (${ctx.backlinks.length})\n${ctx.backlinks.map((l: LinkEntry) => `- ${l.icon || "\u{1F4C4}"} **${l.title}** (${l.id})`).join("\n")}`
+            );
+          }
+
+          return {
+            content: [
+              { type: "text" as const, text: sections.join("\n") },
             ],
           };
         }

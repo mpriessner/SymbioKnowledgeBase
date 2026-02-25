@@ -82,6 +82,35 @@ export interface DbRowEntry {
   updated_at: string;
 }
 
+export interface TreeNode {
+  id: string;
+  title: string;
+  icon: string | null;
+  children: TreeNode[];
+}
+
+export interface LinkEntry {
+  id: string;
+  title: string;
+  icon: string | null;
+}
+
+export interface PageContext {
+  page: {
+    id: string;
+    title: string;
+    icon: string | null;
+    parent_id: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  markdown: string;
+  parent: LinkEntry | null;
+  children: LinkEntry[];
+  outgoing_links: LinkEntry[];
+  backlinks: LinkEntry[];
+}
+
 export interface AgentClient {
   search(
     query: string,
@@ -133,6 +162,9 @@ export interface AgentClient {
     databaseId: string,
     rowId: string
   ): Promise<ApiResponse<{ id: string; deleted_at: string }>>;
+  getPageTree(): Promise<ApiResponse<TreeNode[]>>;
+  getPageLinks(id: string): Promise<ApiResponse<LinkEntry[]>>;
+  getPageContext(id: string): Promise<ApiResponse<PageContext>>;
 }
 
 export function createAgentClient(
@@ -287,6 +319,18 @@ export function createAgentClient(
         `/databases/${databaseId}/rows/${rowId}`,
         { method: "DELETE" }
       );
+    },
+
+    async getPageTree() {
+      return callAPI<ApiResponse<TreeNode[]>>("/pages/tree");
+    },
+
+    async getPageLinks(id) {
+      return callAPI<ApiResponse<LinkEntry[]>>(`/pages/${id}/links`);
+    },
+
+    async getPageContext(id) {
+      return callAPI<ApiResponse<PageContext>>(`/pages/${id}/context`);
     },
   };
 }
