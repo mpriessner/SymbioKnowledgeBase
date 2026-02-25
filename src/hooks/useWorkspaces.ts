@@ -41,7 +41,8 @@ export function useWorkspaces() {
       return res.json();
     },
     onSuccess: () => {
-      // Reload to pick up new workspace context
+      // Clear all cached data before reload to prevent stale data from previous workspace
+      queryClient.clear();
       window.location.reload();
     },
   });
@@ -60,6 +61,8 @@ export function useWorkspaces() {
       return res.json();
     },
     onSuccess: () => {
+      // Clear all cached data before reload to prevent stale data from previous workspace
+      queryClient.clear();
       window.location.reload();
     },
   });

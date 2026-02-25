@@ -71,14 +71,57 @@ export const POST = withTenant(async (req, ctx) => {
     return errorResponse("VALIDATION_ERROR", "Name must be 50 characters or less");
   }
 
-  // Create tenant + membership in a transaction
-  const tenant = await prisma.tenant.create({
-    data: {
-      name,
-      members: {
-        create: { userId, role: "owner" },
+  // Create tenant + membership + welcome page in a transaction
+  const tenant = await prisma.$transaction(async (tx) => {
+    const newTenant = await tx.tenant.create({
+      data: {
+        name,
+        members: {
+          create: { userId, role: "owner" },
+        },
       },
-    },
+    });
+
+    // Create a default welcome page so the workspace isn't empty
+    const welcomePage = await tx.page.create({
+      data: {
+        tenantId: newTenant.id,
+        title: `Welcome to ${name}`,
+        icon: "👋",
+        position: 0,
+      },
+    });
+
+    // Create a DOCUMENT block with welcome content
+    await tx.block.create({
+      data: {
+        tenantId: newTenant.id,
+        pageId: welcomePage.id,
+        type: "DOCUMENT",
+        content: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 1 },
+              content: [{ type: "text", text: `Welcome to ${name}` }],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "This is your new workspace. Start creating pages to organize your knowledge.",
+                },
+              ],
+            },
+          ],
+        },
+        position: 0,
+      },
+    });
+
+    return newTenant;
   });
 
   // Set active workspace cookie
