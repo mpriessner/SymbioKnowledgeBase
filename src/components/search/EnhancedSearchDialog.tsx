@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useReducer } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -14,6 +14,100 @@ import { DateRangePicker } from "./DateRangePicker";
 import { ContentTypeToggles } from "./ContentTypeToggles";
 import { SearchHistory } from "./SearchHistory";
 import type { SearchResultItem, ContentTypeFilter } from "@/types/search";
+
+// Reducer for search state - prevents cascading renders from multiple setState calls
+type SearchState = {
+  query: string;
+  offset: number;
+  allResults: SearchResultItem[];
+  hasMore: boolean;
+  selectedIndex: number;
+  showFilters: boolean;
+  dataVersion: number; // Track data changes for deduplication
+};
+
+type SearchAction =
+  | { type: "SET_QUERY"; query: string }
+  | { type: "APPEND_RESULTS"; data: SearchResultItem[]; pageSize: number }
+  | { type: "SET_RESULTS"; data: SearchResultItem[]; pageSize: number }
+  | { type: "LOAD_MORE"; pageSize: number }
+  | { type: "RESET" }
+  | { type: "SELECT_INDEX"; index: number }
+  | { type: "SELECT_NEXT" }
+  | { type: "SELECT_PREV" }
+  | { type: "TOGGLE_FILTERS" };
+
+function searchReducer(
+  state: SearchState,
+  action: SearchAction
+): SearchState {
+  switch (action.type) {
+    case "SET_QUERY":
+      return {
+        ...state,
+        query: action.query,
+      };
+    case "SET_RESULTS":
+      return {
+        ...state,
+        offset: 0,
+        allResults: action.data,
+        hasMore: action.data.length === action.pageSize,
+        selectedIndex: 0, // Reset selection when results change
+        dataVersion: state.dataVersion + 1,
+      };
+    case "APPEND_RESULTS":
+      return {
+        ...state,
+        allResults: [...state.allResults, ...action.data],
+        hasMore: action.data.length === action.pageSize,
+        dataVersion: state.dataVersion + 1,
+      };
+    case "LOAD_MORE":
+      return {
+        ...state,
+        offset: state.offset + action.pageSize,
+      };
+    case "RESET":
+      return {
+        query: "",
+        offset: 0,
+        allResults: [],
+        hasMore: true,
+        selectedIndex: 0,
+        showFilters: false,
+        dataVersion: state.dataVersion + 1,
+      };
+    case "SELECT_INDEX":
+      return {
+        ...state,
+        selectedIndex: action.index,
+      };
+    case "SELECT_NEXT":
+      return {
+        ...state,
+        selectedIndex:
+          state.selectedIndex >= state.allResults.length - 1
+            ? 0
+            : state.selectedIndex + 1,
+      };
+    case "SELECT_PREV":
+      return {
+        ...state,
+        selectedIndex:
+          state.selectedIndex <= 0
+            ? state.allResults.length - 1
+            : state.selectedIndex - 1,
+      };
+    case "TOGGLE_FILTERS":
+      return {
+        ...state,
+        showFilters: !state.showFilters,
+      };
+    default:
+      return state;
+  }
+}
 
 interface EnhancedSearchDialogProps {
   isOpen: boolean;
@@ -43,19 +137,26 @@ export function EnhancedSearchDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
 
-  const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [showFilters, setShowFilters] = useState(false);
-  const debouncedQuery = useDebounce(query, DEBOUNCE_MS);
-
   const { filters, setFilter, removeFilter, clearFilters } =
     useSearchFilters();
   const { history, addSearch, clearHistory } = useSearchHistory("default");
 
-  // Infinite scroll state
-  const [offset, setOffset] = useState(0);
-  const [allResults, setAllResults] = useState<SearchResultItem[]>([]);
-  const [hasMore, setHasMore] = useState(true);
+  // All search state in a single reducer - prevents cascading renders from multiple setState calls
+  const [searchState, dispatch] = useReducer(searchReducer, {
+    query: "",
+    offset: 0,
+    allResults: [],
+    hasMore: true,
+    selectedIndex: 0,
+    showFilters: false,
+    dataVersion: 0,
+  });
+  const { query, offset, allResults, hasMore, selectedIndex, showFilters } = searchState;
+  const debouncedQuery = useDebounce(query, DEBOUNCE_MS);
+
+  // Track previous query/filters to detect changes
+  const prevQueryRef = useRef(debouncedQuery);
+  const prevFiltersRef = useRef(filters);
 
   const { data, isLoading, isFetching } = useSearch(debouncedQuery, {
     enabled: isOpen && debouncedQuery.length > 0,
@@ -64,29 +165,39 @@ export function EnhancedSearchDialog({
     offset,
   });
 
-  // Update results when new data arrives
-  useEffect(() => {
-    if (data?.data) {
-      if (offset === 0) {
-        setAllResults(data.data);
-      } else {
-        setAllResults((prev) => [...prev, ...data.data]);
-      }
-      setHasMore(data.data.length === RESULTS_PER_PAGE);
-    }
-  }, [data, offset]);
+  // Track processed data to avoid duplicate processing
+  const lastProcessedDataRef = useRef<typeof data>(null);
 
-  // Reset results when query or filters change
+  // Handle data updates and query/filter changes in a single effect
+  // Using refs to track changes avoids cascading setState calls
   useEffect(() => {
-    setOffset(0);
-    setAllResults([]);
-    setHasMore(true);
-  }, [debouncedQuery, filters]);
+    const queryChanged = prevQueryRef.current !== debouncedQuery;
+    const filtersChanged = prevFiltersRef.current !== filters;
+
+    // Reset on query or filter change
+    if (queryChanged || filtersChanged) {
+      dispatch({ type: "RESET" });
+      prevQueryRef.current = debouncedQuery;
+      prevFiltersRef.current = filters;
+      lastProcessedDataRef.current = null;
+      return;
+    }
+
+    // Process new data (only if not already processed)
+    if (data?.data && data !== lastProcessedDataRef.current) {
+      lastProcessedDataRef.current = data;
+      if (offset === 0) {
+        dispatch({ type: "SET_RESULTS", data: data.data, pageSize: RESULTS_PER_PAGE });
+      } else {
+        dispatch({ type: "APPEND_RESULTS", data: data.data, pageSize: RESULTS_PER_PAGE });
+      }
+    }
+  }, [data, debouncedQuery, filters, offset]);
 
   // Infinite scroll: load more when trigger is visible
   useInfiniteScroll(loadMoreTriggerRef, () => {
     if (!isFetching && hasMore) {
-      setOffset((prev) => prev + RESULTS_PER_PAGE);
+      dispatch({ type: "LOAD_MORE", pageSize: RESULTS_PER_PAGE });
     }
   });
 
@@ -100,21 +211,14 @@ export function EnhancedSearchDialog({
     }
   }, [isOpen]);
 
-  // Reset state when dialog closes
+  // Reset state when dialog closes - single dispatch handles all state
   useEffect(() => {
     if (!isOpen) {
-      setQuery("");
-      setSelectedIndex(0);
-      setOffset(0);
-      setAllResults([]);
-      setShowFilters(false);
+      dispatch({ type: "RESET" });
     }
   }, [isOpen]);
 
-  // Reset selected index when results change
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [allResults.length]);
+  // Note: selectedIndex reset on results change is handled by reducer in SET_RESULTS action
 
   const selectResult = useCallback(
     (pageId: string) => {
@@ -132,16 +236,12 @@ export function EnhancedSearchDialog({
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
-          setSelectedIndex((prev) =>
-            prev >= allResults.length - 1 ? 0 : prev + 1
-          );
+          dispatch({ type: "SELECT_NEXT" });
           break;
 
         case "ArrowUp":
           e.preventDefault();
-          setSelectedIndex((prev) =>
-            prev <= 0 ? allResults.length - 1 : prev - 1
-          );
+          dispatch({ type: "SELECT_PREV" });
           break;
 
         case "Enter":
@@ -209,7 +309,7 @@ export function EnhancedSearchDialog({
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => dispatch({ type: "SET_QUERY", query: e.target.value })}
             onKeyDown={handleKeyDown}
             placeholder="Search knowledge base..."
             className="flex-1 bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none"
@@ -222,7 +322,7 @@ export function EnhancedSearchDialog({
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]" />
           )}
           <button
-            onClick={() => setShowFilters((prev) => !prev)}
+            onClick={() => dispatch({ type: "TOGGLE_FILTERS" })}
             className={`flex-shrink-0 p-1 rounded hover:bg-[var(--bg-secondary)] ${showFilters ? "text-[var(--accent-primary)]" : ""}`}
             aria-label="Toggle filters"
             title="Toggle filters"
@@ -300,7 +400,7 @@ export function EnhancedSearchDialog({
             <>
               <SearchHistory
                 history={history}
-                onSelectSearch={(q) => setQuery(q)}
+                onSelectSearch={(q) => dispatch({ type: "SET_QUERY", query: q })}
                 onClearHistory={clearHistory}
               />
               {history.length === 0 && (
@@ -335,7 +435,7 @@ export function EnhancedSearchDialog({
                   result={result}
                   isSelected={index === selectedIndex}
                   onSelect={selectResult}
-                  onHover={() => setSelectedIndex(index)}
+                  onHover={() => dispatch({ type: "SELECT_INDEX", index })}
                 />
               ))}
 
