@@ -10,6 +10,7 @@ import { useRecentPages } from "@/hooks/useRecentPages";
 import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
 import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { useTeamspaces } from "@/hooks/useTeamspaces";
+import { useIsMac } from "@/hooks/useClientValue";
 import type { PageTreeNode } from "@/types/page";
 
 export function Sidebar() {
@@ -22,13 +23,8 @@ export function Sidebar() {
   const { width: sidebarWidth, isResizing, startResize } = useSidebarWidth();
   const { data: teamspaces } = useTeamspaces();
   const [showCreateMenu, setShowCreateMenu] = useState(false);
-  const [isMac, setIsMac] = useState(false);
+  const isMac = useIsMac();
   const createMenuRef = useRef<HTMLDivElement>(null);
-
-  // Detect platform after mount to avoid hydration mismatch
-  useEffect(() => {
-    setIsMac(navigator.platform?.includes("Mac") ?? false);
-  }, []);
 
   // Close create menu on outside click
   useEffect(() => {

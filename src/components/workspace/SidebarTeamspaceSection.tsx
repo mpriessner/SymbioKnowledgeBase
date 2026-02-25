@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { DndSidebarTree } from "@/components/workspace/DndSidebarTree";
+import { useCollapsedState } from "@/hooks/useLocalStorageState";
 import type { PageTreeNode } from "@/types/page";
 
 interface SidebarTeamspaceSectionProps {
@@ -23,25 +24,7 @@ export function SidebarTeamspaceSection({
   error,
   tree,
 }: SidebarTeamspaceSectionProps) {
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    const stored = localStorage.getItem(
-      `sidebar-section-${sectionId}-collapsed`
-    );
-    if (stored !== null) {
-      setCollapsed(stored === "true");
-    }
-  }, [sectionId]);
-
-  const toggleCollapsed = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    localStorage.setItem(
-      `sidebar-section-${sectionId}-collapsed`,
-      String(next)
-    );
-  };
+  const [collapsed, toggleCollapsed] = useCollapsedState(sectionId);
 
   return (
     <div>
