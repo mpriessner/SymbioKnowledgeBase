@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { useSaveDocument } from "@/hooks/useBlockEditor";
 import type { SaveStatus } from "@/types/editor";
@@ -22,13 +22,14 @@ export function useAutoSave({
 }: UseAutoSaveOptions) {
   const saveDocument = useSaveDocument(pageId);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const statusRef = useRef<SaveStatus>("idle");
+  // Use state instead of ref so status changes trigger re-renders
+  const [status, setStatusState] = useState<SaveStatus>("idle");
 
   // Update save status and notify callback
   const setStatus = useCallback(
-    (status: SaveStatus) => {
-      statusRef.current = status;
-      onStatusChange?.(status);
+    (newStatus: SaveStatus) => {
+      setStatusState(newStatus);
+      onStatusChange?.(newStatus);
     },
     [onStatusChange]
   );
@@ -123,6 +124,6 @@ export function useAutoSave({
     saveNow,
     isSaving: saveDocument.isPending,
     isError: saveDocument.isError,
-    status: statusRef.current,
+    status,
   };
 }
