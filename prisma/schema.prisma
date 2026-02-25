@@ -110,6 +110,7 @@ model Tenant {
   documentVersions       DocumentVersion[]
   documentSubscriptions  DocumentSubscription[]
   fileAttachments        FileAttachment[]
+  pageFavorites          PageFavorite[]
 
   @@map("tenants")
 }
@@ -194,6 +195,7 @@ model Page {
   documentVersions      DocumentVersion[]
   documentSubscriptions DocumentSubscription[]
   fileAttachments       FileAttachment[]
+  favorites             PageFavorite[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_pages_tenant_id_id")
@@ -555,4 +557,23 @@ model AuditLog {
   @@index([resource, resourceId], map: "idx_audit_logs_resource")
 
   @@map("audit_logs")
+}
+
+// ─── Page Favorites ─────────────────────────────────────────────────
+
+model PageFavorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  pageId    String   @map("page_id")
+  tenantId  String   @map("tenant_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, pageId], map: "uq_page_favorites_user_page")
+  @@index([userId, tenantId], map: "idx_page_favorites_user_tenant")
+
+  @@map("page_favorites")
 }

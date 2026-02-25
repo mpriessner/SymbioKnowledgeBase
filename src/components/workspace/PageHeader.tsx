@@ -5,6 +5,7 @@ import { Download } from "lucide-react";
 import { useUpdatePage } from "@/hooks/usePages";
 import { EmojiPicker } from "@/components/workspace/EmojiPicker";
 import { CoverImageManager } from "@/components/workspace/CoverImageManager";
+import { FavoriteButton } from "@/components/page/FavoriteButton";
 import type { Page } from "@/types/page";
 
 interface PageHeaderProps {
@@ -107,8 +108,8 @@ export function PageHeader({ page }: PageHeaderProps) {
 
   return (
     <div className="w-full">
-      {/* Export button - top right */}
-      <div className="absolute right-4 top-2 z-10">
+      {/* Action buttons - top right */}
+      <div className="absolute right-4 top-2 z-10 flex items-center gap-1">
         <button
           onClick={handleExportMarkdown}
           className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
@@ -117,6 +118,7 @@ export function PageHeader({ page }: PageHeaderProps) {
         >
           <Download className="h-4 w-4" />
         </button>
+        <FavoriteButton pageId={page.id} />
       </div>
 
       {/* Cover Image Area */}

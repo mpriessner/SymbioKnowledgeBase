@@ -5,6 +5,7 @@ import { Pencil, Copy, Link, Star, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { useDeletePage } from "@/hooks/usePages";
+import { useIsFavorite, useToggleFavorite } from "@/hooks/useFavorites";
 import { useRouter, usePathname } from "next/navigation";
 
 export interface ContextMenuPosition {
@@ -29,13 +30,15 @@ interface MenuItem {
   divider?: boolean;
 }
 
-const menuItems: MenuItem[] = [
-  { icon: Pencil, label: "Rename", action: "rename" },
-  { icon: Copy, label: "Duplicate", action: "duplicate" },
-  { icon: Link, label: "Copy link", action: "copyLink" },
-  { icon: Star, label: "Add to favorites", action: "favorite", divider: true },
-  { icon: Trash2, label: "Delete", action: "delete", danger: true },
-];
+function getMenuItems(isFavorite: boolean): MenuItem[] {
+  return [
+    { icon: Pencil, label: "Rename", action: "rename" },
+    { icon: Copy, label: "Duplicate", action: "duplicate" },
+    { icon: Link, label: "Copy link", action: "copyLink" },
+    { icon: Star, label: isFavorite ? "Remove from favorites" : "Add to favorites", action: "favorite", divider: true },
+    { icon: Trash2, label: "Delete", action: "delete", danger: true },
+  ];
+}
 
 // Calculate adjusted position to keep menu in viewport
 function getAdjustedPosition(
@@ -78,8 +81,12 @@ export function PageContextMenu({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [menuDimensions, setMenuDimensions] = useState({ width: 180, height: 200 });
   const deletePage = useDeletePage();
+  const isFavorite = useIsFavorite(pageId);
+  const toggleFavorite = useToggleFavorite();
   const router = useRouter();
   const pathname = usePathname();
+
+  const menuItems = getMenuItems(isFavorite);
 
   // Measure menu dimensions after render
   useLayoutEffect(() => {
@@ -148,8 +155,7 @@ export function PageContextMenu({
         }
 
         case "favorite":
-          // Placeholder - would toggle favorite status
-          console.log("Toggle favorite:", pageId);
+          toggleFavorite.mutate({ pageId, isFavorite: !isFavorite });
           onClose();
           break;
 
@@ -158,7 +164,7 @@ export function PageContextMenu({
           break;
       }
     },
-    [pageId, onClose, onRename, onDuplicate]
+    [pageId, onClose, onRename, onDuplicate, toggleFavorite, isFavorite]
   );
 
   const handleConfirmDelete = useCallback(async () => {

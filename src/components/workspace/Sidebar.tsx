@@ -7,6 +7,7 @@ import { SidebarTeamspaceSection } from "@/components/workspace/SidebarTeamspace
 import { usePageTree } from "@/hooks/usePageTree";
 import { useCreatePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
+import { useFavoritePages } from "@/hooks/useFavorites";
 import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
 import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { useTeamspaces } from "@/hooks/useTeamspaces";
@@ -19,6 +20,7 @@ export function Sidebar() {
   const { data, isLoading, error } = usePageTree();
   const createPage = useCreatePage();
   const { recentPages } = useRecentPages();
+  const favoritePages = useFavoritePages();
   const { isCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
   const { width: sidebarWidth, isResizing, startResize } = useSidebarWidth();
   const { data: teamspaces } = useTeamspaces();
@@ -236,6 +238,27 @@ export function Sidebar() {
                   >
                     <span className="text-xs flex-shrink-0">{page.icon || "\u{1F4C4}"}</span>
                     <span className="truncate">{page.title || "Untitled"}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Favorites section */}
+          {favoritePages.length > 0 && (
+            <div className="px-2 pt-3 pb-1">
+              <span className="px-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--sidebar-text-secondary)]">
+                Favorites
+              </span>
+              <div className="mt-1 space-y-0.5">
+                {favoritePages.map((fav) => (
+                  <button
+                    key={fav.page_id}
+                    onClick={() => router.push(`/pages/${fav.page_id}`)}
+                    className="w-full flex items-center gap-2 px-2 py-1 rounded text-sm text-[var(--sidebar-text-secondary)] hover:bg-[var(--sidebar-hover)] transition-colors truncate"
+                  >
+                    <span className="text-xs flex-shrink-0">{fav.icon || "\u{2B50}"}</span>
+                    <span className="truncate">{fav.title || "Untitled"}</span>
                   </button>
                 ))}
               </div>
