@@ -1,0 +1,41 @@
+/* Table of Contents indicator strip and bars */
+
+.toc-indicator-strip {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  pointer-events: auto;
+  z-index: 10;
+  opacity: 0.4;
+  transition: opacity 300ms ease;
+  cursor: pointer;
+}
+
+.toc-indicator-strip:hover {
+  opacity: 1;
+}
+
+.indicator-bar {
+  position: absolute;
+  right: 2px;
+  width: 16px;
+  height: 3px;
+  border-radius: 1.5px;
+  background: var(--text-tertiary);
+  opacity: 0.3;
+  transition: background-color 200ms ease, opacity 200ms ease;
+}
+
+.indicator-bar.active {
+  background: var(--text-primary);
+  opacity: 1;
+}
+
+/* Hide on smaller screens */
+@media (max-width: 1023px) {
+  .toc-indicator-strip {
+    display: none;
+  }
+}

@@ -1,6 +1,7 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useState, useRef, useCallback } from "react";
+import type { Editor } from "@tiptap/react";
 import { usePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
 import { PageHeader } from "@/components/workspace/PageHeader";
@@ -9,6 +10,7 @@ import { BacklinksPanel } from "@/components/page/BacklinksPanel";
 import { LocalGraph } from "@/components/graph/LocalGraph";
 import { LocalGraphSidebar } from "@/components/graph/LocalGraphSidebar";
 import { PresenceIndicators } from "@/components/page/PresenceIndicators";
+import { TableOfContents } from "@/components/page/TableOfContents";
 
 interface PageViewProps {
   params: Promise<{ id: string }>;
@@ -19,6 +21,12 @@ export default function PageView({ params }: PageViewProps) {
   const { data, isLoading, error } = usePage(id);
   const { addRecentPage } = useRecentPages();
   const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const handleEditorReady = useCallback((ed: Editor) => {
+    setEditor(ed);
+  }, []);
 
   // Record page visit for recent pages list
   const pageData = data?.data;
@@ -70,7 +78,7 @@ export default function PageView({ params }: PageViewProps) {
   return (
     <div className="flex flex-1 w-full h-full min-h-0">
       {/* Main content */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
+      <div className="flex-1 min-w-0 overflow-y-auto relative" ref={scrollContainerRef}>
         <PageHeader page={page} />
 
         {/* Presence Indicators */}
@@ -79,7 +87,7 @@ export default function PageView({ params }: PageViewProps) {
         </div>
 
         {/* Page Content (creation menu, database view, or block editor) */}
-        <PageContent pageId={page.id} />
+        <PageContent pageId={page.id} onEditorReady={handleEditorReady} />
 
         {/* Backlinks Panel */}
         <div className="w-full content-pad">
@@ -90,6 +98,9 @@ export default function PageView({ params }: PageViewProps) {
         <div className="w-full content-pad pb-8">
           <LocalGraph pageId={page.id} />
         </div>
+
+        {/* Table of Contents scroll indicator bars */}
+        <TableOfContents editor={editor} scrollContainerRef={scrollContainerRef} />
       </div>
 
       {/* Right Sidebar with LocalGraph */}
@@ -119,12 +130,8 @@ export default function PageView({ params }: PageViewProps) {
             {/* LocalGraph in sidebar */}
             <LocalGraphSidebar pageId={page.id} className="border-b border-[var(--border-default)]" />
 
-            {/* Table of Contents placeholder (future enhancement) */}
-            <div className="flex-1 p-3">
-              <p className="text-xs text-[var(--text-tertiary)]">
-                {/* Space for future sidebar content like TOC */}
-              </p>
-            </div>
+            {/* Space for additional sidebar content */}
+            <div className="flex-1 p-3" />
           </>
         )}
       </div>

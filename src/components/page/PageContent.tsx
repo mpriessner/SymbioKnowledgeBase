@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Editor } from "@tiptap/react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { PageCreationMenu } from "@/components/page/PageCreationMenu";
 import { DatabaseViewContainer } from "@/components/database/DatabaseViewContainer";
@@ -10,6 +11,7 @@ import type { DatabaseSchema, DatabaseViewType, ViewConfig } from "@/types/datab
 
 interface PageContentProps {
   pageId: string;
+  onEditorReady?: (editor: Editor) => void;
 }
 
 interface DatabaseForPage {
@@ -25,7 +27,7 @@ interface DatabaseListResponse {
   meta: { total: number };
 }
 
-export function PageContent({ pageId }: PageContentProps) {
+export function PageContent({ pageId, onEditorReady }: PageContentProps) {
   const queryClient = useQueryClient();
 
   // Fetch blocks for this page
@@ -67,7 +69,7 @@ export function PageContent({ pageId }: PageContentProps) {
         </div>
         {/* Also show editor below database for additional page content */}
         <div className="w-full">
-          <BlockEditor pageId={pageId} />
+          <BlockEditor pageId={pageId} onEditorReady={onEditorReady} />
         </div>
       </>
     );
@@ -82,7 +84,7 @@ export function PageContent({ pageId }: PageContentProps) {
         <PageCreationMenu pageId={pageId} onAction={handleCreationAction} />
       )}
       <div className="w-full">
-        <BlockEditor pageId={pageId} />
+        <BlockEditor pageId={pageId} onEditorReady={onEditorReady} />
       </div>
     </>
   );
