@@ -24,6 +24,7 @@ interface BoardColumnProps {
   visibleColumns: Column[];
   onAddRow: () => void;
   onCardClick: (row: DbRowWithPage) => void;
+  onCardContextMenu?: (e: React.MouseEvent, row: DbRowWithPage) => void;
   isOver?: boolean;
 }
 
@@ -34,6 +35,7 @@ export function BoardColumn({
   visibleColumns,
   onAddRow,
   onCardClick,
+  onCardContextMenu,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${columnValue}`,
@@ -95,6 +97,7 @@ export function BoardColumn({
                 properties={row.properties}
                 visibleColumns={visibleColumns}
                 onClick={() => onCardClick(row)}
+                onContextMenu={onCardContextMenu ? (e) => onCardContextMenu(e, row) : undefined}
               />
             ))
           )}

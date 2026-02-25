@@ -15,6 +15,7 @@ interface ListRowProps {
   checkboxValue: boolean;
   onClick: () => void;
   onCheckboxToggle?: (checked: boolean) => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function ListRow({
@@ -27,12 +28,14 @@ export function ListRow({
   checkboxValue,
   onClick,
   onCheckboxToggle,
+  onContextMenu,
 }: ListRowProps) {
   const [showMenu, setShowMenu] = useState(false);
 
   return (
     <div
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className={`group flex items-center gap-2 px-3 h-9 cursor-pointer border-b border-[var(--border-default)] transition-colors
         ${isSelected ? "bg-[var(--accent-primary)]/5" : "hover:bg-[var(--bg-hover)]"}`}
       data-testid={`list-row-${rowId}`}
@@ -73,7 +76,18 @@ export function ListRow({
       <button
         onClick={(e) => {
           e.stopPropagation();
-          setShowMenu(!showMenu);
+          if (onContextMenu) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const syntheticEvent = {
+              ...e,
+              clientX: rect.right,
+              clientY: rect.bottom,
+              preventDefault: () => {},
+            } as React.MouseEvent;
+            onContextMenu(syntheticEvent);
+          } else {
+            setShowMenu(!showMenu);
+          }
         }}
         className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100
           text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-all"

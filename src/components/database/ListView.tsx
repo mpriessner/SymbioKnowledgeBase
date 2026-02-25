@@ -10,6 +10,7 @@ import { ListRow } from "./ListRow";
 import { PropertyVisibilityToggle } from "./PropertyVisibilityToggle";
 import { GroupBySelector } from "./GroupBySelector";
 import { groupRowsByColumn } from "@/lib/database/group-rows";
+import { RowContextMenu } from "./RowContextMenu";
 import type {
   DatabaseSchema,
   ViewConfig,
@@ -31,8 +32,14 @@ export function ListView({
   onViewConfigChange,
 }: ListViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow } = useDatabaseRows(databaseId);
+  const { data, isLoading, createRow, updateRow, deleteRow } = useDatabaseRows(databaseId);
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
+  const [contextMenu, setContextMenu] = useState<{
+    rowId: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const {
     filters,
@@ -242,6 +249,15 @@ export function ListView({
                     onCheckboxToggle={(checked) =>
                       handleCheckboxToggle(row.id, checked)
                     }
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({
+                        rowId: row.id,
+                        title: getTitle(row),
+                        x: e.clientX,
+                        y: e.clientY,
+                      });
+                    }}
                   />
                 );
               })}
@@ -262,6 +278,17 @@ export function ListView({
         <Plus className="w-3.5 h-3.5" />
         {createRow.isPending ? "Creating..." : "Add row"}
       </button>
+
+      {contextMenu && (
+        <RowContextMenu
+          rowId={contextMenu.rowId}
+          rowTitle={contextMenu.title}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onDelete={(rowId) => deleteRow.mutate(rowId)}
+          onClose={() => setContextMenu(null)}
+          isDeleting={deleteRow.isPending}
+        />
+      )}
     </div>
   );
 }

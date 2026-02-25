@@ -23,6 +23,7 @@ interface CalendarDayCellProps {
   maxVisible?: number;
   onAddRow: (date: Date) => void;
   onRowClick: (rowId: string, pageId: string | null) => void;
+  onRowContextMenu?: (e: React.MouseEvent, rowId: string, title: string) => void;
 }
 
 export function CalendarDayCell({
@@ -33,6 +34,7 @@ export function CalendarDayCell({
   maxVisible = 3,
   onAddRow,
   onRowClick,
+  onRowContextMenu,
 }: CalendarDayCellProps) {
   const [expanded, setExpanded] = useState(false);
   const dayKey = dateToKey(date);
@@ -86,6 +88,7 @@ export function CalendarDayCell({
             title={row.title}
             colorDot={row.colorDot}
             onClick={() => onRowClick(row.id, row.pageId)}
+            onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(e, row.id, row.title) : undefined}
           />
         ))}
       </div>

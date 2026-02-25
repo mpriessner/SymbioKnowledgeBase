@@ -18,6 +18,7 @@ import {
 } from "@/lib/database/timeline-utils";
 import { addDays } from "date-fns";
 import { dateToKey } from "@/lib/database/calendar-utils";
+import { RowContextMenu } from "./RowContextMenu";
 import type {
   DatabaseSchema,
   ViewConfig,
@@ -59,12 +60,18 @@ export function TimelineView({
 }: TimelineViewProps) {
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { data, isLoading, createRow, updateRow } =
+  const { data, isLoading, createRow, updateRow, deleteRow } =
     useDatabaseRows(databaseId);
   const rows = useMemo(
     () => (data?.data ?? []) as DbRowWithPage[],
     [data?.data]
   );
+  const [contextMenu, setContextMenu] = useState<{
+    rowId: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const {
     filters,
@@ -378,6 +385,15 @@ export function TimelineView({
                   border-b border-[var(--border-default)] cursor-pointer hover:bg-[var(--bg-hover)]"
                 style={{ height: LANE_HEIGHT }}
                 onClick={() => handleRowClick(row)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({
+                    rowId: row.id,
+                    title: getTitle(row),
+                    x: e.clientX,
+                    y: e.clientY,
+                  });
+                }}
               >
                 {getTitle(row)}
               </div>
@@ -437,6 +453,15 @@ export function TimelineView({
                         onResizeStart={(d) => handleResizeStart(row.id, d)}
                         onResizeEnd={(d) => handleResizeEnd(row.id, d)}
                         onClick={() => handleRowClick(row)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setContextMenu({
+                            rowId: row.id,
+                            title: getTitle(row),
+                            x: e.clientX,
+                            y: e.clientY,
+                          });
+                        }}
                       />
                     </div>
                   );
@@ -474,6 +499,17 @@ export function TimelineView({
             ))}
           </div>
         </div>
+      )}
+
+      {contextMenu && (
+        <RowContextMenu
+          rowId={contextMenu.rowId}
+          rowTitle={contextMenu.title}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onDelete={(rowId) => deleteRow.mutate(rowId)}
+          onClose={() => setContextMenu(null)}
+          isDeleting={deleteRow.isPending}
+        />
       )}
     </div>
   );

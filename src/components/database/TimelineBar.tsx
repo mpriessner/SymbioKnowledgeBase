@@ -13,6 +13,7 @@ interface TimelineBarProps {
   onResizeStart: (daysDelta: number) => void;
   onResizeEnd: (daysDelta: number) => void;
   onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function TimelineBar({
@@ -26,6 +27,7 @@ export function TimelineBar({
   onResizeStart,
   onResizeEnd,
   onClick,
+  onContextMenu,
 }: TimelineBarProps) {
   const barRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<"move" | "resize-left" | "resize-right" | null>(null);
@@ -82,6 +84,7 @@ export function TimelineBar({
         e.stopPropagation();
         onClick();
       }}
+      onContextMenu={onContextMenu}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       data-testid={`timeline-bar-${rowId}`}

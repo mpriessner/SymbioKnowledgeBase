@@ -11,6 +11,7 @@ interface BoardCardProps {
   properties: RowProperties;
   visibleColumns: Column[];
   onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function BoardCard({
@@ -19,6 +20,7 @@ export function BoardCard({
   properties,
   visibleColumns,
   onClick,
+  onContextMenu,
 }: BoardCardProps) {
   const {
     attributes,
@@ -48,6 +50,7 @@ export function BoardCard({
         e.stopPropagation();
         onClick();
       }}
+      onContextMenu={onContextMenu}
       className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)]
         p-3 shadow-sm cursor-grab active:cursor-grabbing
         hover:border-[var(--border-strong)] transition-colors"

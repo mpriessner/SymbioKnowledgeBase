@@ -7,6 +7,7 @@ import { useTableFilters } from "@/hooks/useTableFilters";
 import { PropertyCell } from "./PropertyCell";
 import { PropertyEditor } from "./PropertyEditor";
 import { FilterBar } from "./FilterBar";
+import { RowContextMenu } from "./RowContextMenu";
 import type {
   Column,
   DatabaseSchema,
@@ -26,7 +27,7 @@ interface EditingCell {
 
 export function TableView({ databaseId, schema }: TableViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow } =
+  const { data, isLoading, createRow, updateRow, deleteRow } =
     useDatabaseRows(databaseId);
   // Memoize rows to prevent unnecessary re-renders of callbacks that depend on it
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
@@ -42,6 +43,12 @@ export function TableView({ databaseId, schema }: TableViewProps) {
   } = useTableFilters(rows);
 
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    rowId: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   // Order columns: TITLE first, then the rest
   const orderedColumns = [...schema.columns].sort((a, b) => {
@@ -189,6 +196,18 @@ export function TableView({ databaseId, schema }: TableViewProps) {
             <tr
               key={row.id}
               onClick={() => handleRowClick(row.pageId)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                const titleVal = Object.values(row.properties as RowProperties).find(
+                  (v) => v.type === "TITLE"
+                );
+                setContextMenu({
+                  rowId: row.id,
+                  title: (titleVal?.type === "TITLE" ? titleVal.value : row.page?.title ?? "Untitled") as string,
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
               className="border-b border-[var(--border-default)] cursor-pointer
                          hover:bg-[var(--bg-hover)] transition-colors"
             >
@@ -256,6 +275,17 @@ export function TableView({ databaseId, schema }: TableViewProps) {
       >
         {createRow.isPending ? "Creating..." : "+ Add row"}
       </button>
+
+      {contextMenu && (
+        <RowContextMenu
+          rowId={contextMenu.rowId}
+          rowTitle={contextMenu.title}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onDelete={(rowId) => deleteRow.mutate(rowId)}
+          onClose={() => setContextMenu(null)}
+          isDeleting={deleteRow.isPending}
+        />
+      )}
     </div>
   );
 }

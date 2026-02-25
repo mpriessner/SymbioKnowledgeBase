@@ -31,6 +31,7 @@ import {
   navigateMonth,
   navigateWeek,
 } from "@/lib/database/calendar-utils";
+import { RowContextMenu } from "./RowContextMenu";
 import type {
   DatabaseSchema,
   ViewConfig,
@@ -74,12 +75,18 @@ export function CalendarView({
   onViewConfigChange,
 }: CalendarViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow } =
+  const { data, isLoading, createRow, updateRow, deleteRow } =
     useDatabaseRows(databaseId);
   const rows = useMemo(
     () => (data?.data ?? []) as DbRowWithPage[],
     [data?.data]
   );
+  const [contextMenu, setContextMenu] = useState<{
+    rowId: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const {
     filters,
@@ -396,6 +403,10 @@ export function CalendarView({
                       isCurrentMonth={isCurrentMonth(day, currentDate)}
                       onAddRow={handleAddRow}
                       onRowClick={handleRowClick}
+                      onRowContextMenu={(e, rowId, title) => {
+                        e.preventDefault();
+                        setContextMenu({ rowId, title, x: e.clientX, y: e.clientY });
+                      }}
                     />
                   ))}
                 </div>
@@ -471,6 +482,17 @@ export function CalendarView({
             ))}
           </div>
         </div>
+      )}
+
+      {contextMenu && (
+        <RowContextMenu
+          rowId={contextMenu.rowId}
+          rowTitle={contextMenu.title}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onDelete={(rowId) => deleteRow.mutate(rowId)}
+          onClose={() => setContextMenu(null)}
+          isDeleting={deleteRow.isPending}
+        />
       )}
     </div>
   );

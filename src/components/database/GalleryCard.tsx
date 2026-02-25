@@ -12,6 +12,7 @@ interface GalleryCardProps {
   visibleColumns: Column[];
   showCover: boolean;
   onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function GalleryCard({
@@ -22,10 +23,12 @@ export function GalleryCard({
   visibleColumns,
   showCover,
   onClick,
+  onContextMenu,
 }: GalleryCardProps) {
   return (
     <div
       onClick={onClick}
+      onContextMenu={onContextMenu}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === "Enter") onClick();

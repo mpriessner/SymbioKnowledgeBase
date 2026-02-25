@@ -8,6 +8,7 @@ interface CalendarEventPillProps {
   title: string;
   colorDot?: string | null;
   onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function CalendarEventPill({
@@ -15,6 +16,7 @@ export function CalendarEventPill({
   title,
   colorDot,
   onClick,
+  onContextMenu,
 }: CalendarEventPillProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: rowId,
@@ -30,6 +32,7 @@ export function CalendarEventPill({
         e.stopPropagation();
         onClick();
       }}
+      onContextMenu={onContextMenu}
       className={`flex items-center gap-1 px-1.5 py-0.5 text-[11px] leading-tight rounded cursor-grab
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] transition-colors truncate
         ${isDragging ? "opacity-30" : ""}`}

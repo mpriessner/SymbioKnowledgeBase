@@ -20,6 +20,7 @@ import { BoardColumn } from "./BoardColumn";
 import { BoardCardOverlay } from "./BoardCard";
 import { GroupBySelector } from "./GroupBySelector";
 import { groupRowsByColumn } from "@/lib/database/group-rows";
+import { RowContextMenu } from "./RowContextMenu";
 import type {
   DatabaseSchema,
   ViewConfig,
@@ -49,9 +50,15 @@ export function BoardView({
   onViewConfigChange,
 }: BoardViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow } =
+  const { data, isLoading, createRow, updateRow, deleteRow } =
     useDatabaseRows(databaseId);
   const rows = useMemo(() => (data?.data ?? []) as DbRowWithPage[], [data?.data]);
+  const [contextMenu, setContextMenu] = useState<{
+    rowId: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const {
     filters,
@@ -271,6 +278,15 @@ export function BoardView({
               visibleColumns={visibleColumns}
               onAddRow={() => handleAddRow(columnValue)}
               onCardClick={handleCardClick}
+              onCardContextMenu={(e, row) => {
+                e.preventDefault();
+                setContextMenu({
+                  rowId: row.id,
+                  title: getTitle(row),
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
             />
           ))}
         </div>
@@ -291,6 +307,17 @@ export function BoardView({
         <div className="text-center py-8 text-sm text-[var(--text-secondary)]">
           No items yet. Click + to add one.
         </div>
+      )}
+
+      {contextMenu && (
+        <RowContextMenu
+          rowId={contextMenu.rowId}
+          rowTitle={contextMenu.title}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onDelete={(rowId) => deleteRow.mutate(rowId)}
+          onClose={() => setContextMenu(null)}
+          isDeleting={deleteRow.isPending}
+        />
       )}
     </div>
   );

@@ -9,6 +9,7 @@ import { FilterBar } from "./FilterBar";
 import { GalleryCard } from "./GalleryCard";
 import { CardSizeToggle } from "./CardSizeToggle";
 import { PropertyVisibilityToggle } from "./PropertyVisibilityToggle";
+import { RowContextMenu } from "./RowContextMenu";
 import type {
   DatabaseSchema,
   ViewConfig,
@@ -46,11 +47,17 @@ export function GalleryView({
   onViewConfigChange,
 }: GalleryViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow } = useDatabaseRows(databaseId);
+  const { data, isLoading, createRow, deleteRow } = useDatabaseRows(databaseId);
   const rows = useMemo(
     () => (data?.data ?? []) as DbRowWithPage[],
     [data?.data]
   );
+  const [contextMenu, setContextMenu] = useState<{
+    rowId: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const {
     filters,
@@ -239,6 +246,15 @@ export function GalleryView({
               visibleColumns={visibleColumns}
               showCover={coverColumnId !== null}
               onClick={() => handleCardClick(row)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setContextMenu({
+                  rowId: row.id,
+                  title: getTitle(row),
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
             />
           ))}
 
@@ -254,6 +270,17 @@ export function GalleryView({
             <Plus className="w-5 h-5" />
           </button>
         </div>
+      )}
+
+      {contextMenu && (
+        <RowContextMenu
+          rowId={contextMenu.rowId}
+          rowTitle={contextMenu.title}
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          onDelete={(rowId) => deleteRow.mutate(rowId)}
+          onClose={() => setContextMenu(null)}
+          isDeleting={deleteRow.isPending}
+        />
       )}
     </div>
   );
