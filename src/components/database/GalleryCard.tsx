@@ -1,8 +1,10 @@
 "use client";
 
+import { useState, useRef, useCallback, useEffect } from "react";
 import { CardCover } from "./CardCover";
 import { PropertyCell } from "./PropertyCell";
-import type { Column, RowProperties } from "@/types/database";
+import { PropertyEditor } from "./PropertyEditor";
+import type { Column, RowProperties, PropertyValue } from "@/types/database";
 
 interface GalleryCardProps {
   rowId: string;
@@ -13,6 +15,7 @@ interface GalleryCardProps {
   showCover: boolean;
   onClick: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  onUpdateRow?: (rowId: string, properties: RowProperties) => void;
 }
 
 export function GalleryCard({
@@ -24,14 +27,58 @@ export function GalleryCard({
   showCover,
   onClick,
   onContextMenu,
+  onUpdateRow,
 }: GalleryCardProps) {
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingField === "__title__" && titleInputRef.current) {
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    }
+  }, [editingField]);
+
+  // Find the title column id from properties
+  const titleColumnId = Object.entries(properties).find(
+    ([, v]) => v.type === "TITLE"
+  )?.[0];
+
+  const handleTitleSave = useCallback(
+    (newTitle: string) => {
+      if (!titleColumnId || !onUpdateRow) return;
+      if (newTitle !== title) {
+        onUpdateRow(rowId, {
+          ...properties,
+          [titleColumnId]: { type: "TITLE", value: newTitle },
+        });
+      }
+      setEditingField(null);
+    },
+    [rowId, title, titleColumnId, properties, onUpdateRow]
+  );
+
+  const handlePropertySave = useCallback(
+    (columnId: string, value: PropertyValue) => {
+      if (!onUpdateRow) return;
+      onUpdateRow(rowId, {
+        ...properties,
+        [columnId]: value,
+      });
+      setEditingField(null);
+    },
+    [rowId, properties, onUpdateRow]
+  );
+
   return (
     <div
-      onClick={onClick}
+      onClick={() => {
+        if (!editingField) onClick();
+      }}
       onContextMenu={onContextMenu}
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === "Enter") onClick();
+        if (e.key === "Enter" && !editingField) onClick();
       }}
       className="group rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)]
         overflow-hidden cursor-pointer shadow-sm
@@ -46,9 +93,31 @@ export function GalleryCard({
 
       {/* Content */}
       <div className="p-3">
-        <h3 className="text-sm font-medium text-[var(--text-primary)] line-clamp-2">
-          {title || "Untitled"}
-        </h3>
+        {editingField === "__title__" ? (
+          <input
+            ref={titleInputRef}
+            defaultValue={title}
+            className="w-full text-sm font-medium text-[var(--text-primary)] bg-transparent
+              border border-[var(--border-strong)] rounded px-1 py-0.5 outline-none
+              focus:ring-1 focus:ring-[var(--accent-primary)]"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleTitleSave(e.currentTarget.value);
+              else if (e.key === "Escape") setEditingField(null);
+            }}
+            onBlur={(e) => handleTitleSave(e.currentTarget.value)}
+          />
+        ) : (
+          <h3
+            className="text-sm font-medium text-[var(--text-primary)] line-clamp-2 cursor-text"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onUpdateRow) setEditingField("__title__");
+            }}
+          >
+            {title || "Untitled"}
+          </h3>
+        )}
 
         {/* Property badges */}
         {visibleColumns.length > 0 && (
@@ -56,8 +125,29 @@ export function GalleryCard({
             {visibleColumns.map((col) => {
               const value = properties[col.id];
               if (!value) return null;
+
+              if (editingField === col.id) {
+                return (
+                  <div key={col.id} className="text-xs" onClick={(e) => e.stopPropagation()}>
+                    <PropertyEditor
+                      column={col}
+                      value={value}
+                      onSave={(val) => handlePropertySave(col.id, val)}
+                      onCancel={() => setEditingField(null)}
+                    />
+                  </div>
+                );
+              }
+
               return (
-                <span key={col.id} className="text-xs">
+                <span
+                  key={col.id}
+                  className="text-xs cursor-text"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    if (onUpdateRow) setEditingField(col.id);
+                  }}
+                >
                   <PropertyCell value={value} />
                 </span>
               );

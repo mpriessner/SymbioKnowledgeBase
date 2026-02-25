@@ -47,7 +47,7 @@ export function GalleryView({
   onViewConfigChange,
 }: GalleryViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, deleteRow } = useDatabaseRows(databaseId);
+  const { data, isLoading, createRow, updateRow, deleteRow } = useDatabaseRows(databaseId);
   const rows = useMemo(
     () => (data?.data ?? []) as DbRowWithPage[],
     [data?.data]
@@ -246,6 +246,7 @@ export function GalleryView({
               visibleColumns={visibleColumns}
               showCover={coverColumnId !== null}
               onClick={() => handleCardClick(row)}
+              onUpdateRow={(rowId, properties) => updateRow.mutate({ rowId, properties })}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setContextMenu({
