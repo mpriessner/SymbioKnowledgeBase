@@ -24,11 +24,28 @@ interface Graph3DViewProps {
   showLabels?: boolean;
 }
 
-interface ForceGraphNode extends GraphNode {
+/**
+ * Base node type used by react-force-graph callbacks.
+ * The library adds position (x, y, z) and velocity (vx, vy, vz) properties.
+ */
+type ForceGraphNodeObject = {
+  id?: string | number;
   x?: number;
   y?: number;
   z?: number;
-}
+  vx?: number;
+  vy?: number;
+  vz?: number;
+  fx?: number;
+  fy?: number;
+  fz?: number;
+  // Our custom properties from GraphNode
+  label?: string;
+  icon?: string | null;
+  linkCount?: number;
+  updatedAt?: string;
+  [key: string]: unknown;
+};
 
 function getThemeMode(): ThemeMode {
   if (typeof document !== "undefined") {
@@ -92,12 +109,10 @@ export function Graph3DView({
     return () => window.removeEventListener("resize", updateDimensions);
   }, [width, height]);
 
-   
-  const handleNodeClick = useCallback(
-    (node: any) => {
-      const typedNode = node as ForceGraphNode | null;
-      if (typedNode?.id) {
-        router.push(`/pages/${typedNode.id}`);
+const handleNodeClick = useCallback(
+    (node: ForceGraphNodeObject, _event: MouseEvent) => {
+      if (node?.id) {
+        router.push(`/pages/${node.id}`);
       }
     },
     [router]
@@ -106,21 +121,17 @@ export function Graph3DView({
   const theme = getThemeMode();
   const centerId = highlightCenter ? pageId : undefined;
 
-   
-  const nodeColor = useCallback(
-    (nodeObj: any) => {
-      const node = nodeObj as ForceGraphNode;
-      return getNodeColor(node, theme, centerId);
+const nodeColor = useCallback(
+    (node: ForceGraphNodeObject) => {
+      return getNodeColor(node as GraphNode, theme, centerId);
     },
     [theme, centerId]
   );
 
-   
-  const nodeLabel = useCallback(
-    (nodeObj: any) => {
+const nodeLabel = useCallback(
+    (node: ForceGraphNodeObject): string => {
       if (!showLabels) return "";
-      const node = nodeObj as ForceGraphNode;
-      return node.label;
+      return node.label ?? "";
     },
     [showLabels]
   );
