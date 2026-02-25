@@ -4,6 +4,7 @@ import { withAgentAuth } from "@/lib/agent/auth";
 import type { AgentContext } from "@/lib/agent/auth";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { tiptapToMarkdown, markdownToTiptap } from "@/lib/agent/markdown";
+import { processAgentWikilinks } from "@/lib/agent/wikilinks";
 import { z } from "zod";
 
 const updatePageSchema = z.object({
@@ -123,6 +124,9 @@ export const PUT = withAgentAuth(
           },
         });
       }
+
+      // Process wikilinks — sync PageLink records for [[references]]
+      await processAgentWikilinks(id, ctx.tenantId, tiptap);
 
       // Trigger updatedAt on page
       const updatedPage = await prisma.page.update({

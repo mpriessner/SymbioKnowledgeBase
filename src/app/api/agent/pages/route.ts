@@ -8,6 +8,7 @@ import {
   errorResponse,
 } from "@/lib/apiResponse";
 import { markdownToTiptap } from "@/lib/agent/markdown";
+import { processAgentWikilinks } from "@/lib/agent/wikilinks";
 import { z } from "zod";
 
 const listPagesQuerySchema = z.object({
@@ -164,6 +165,9 @@ export const POST = withAgentAuth(
             position: 0,
           },
         });
+
+        // Process wikilinks — create PageLink records for [[references]]
+        await processAgentWikilinks(page.id, ctx.tenantId, tiptap);
       }
 
       return successResponse(
