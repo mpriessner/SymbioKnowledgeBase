@@ -173,7 +173,7 @@ export function PageContextMenu({
       
       // If we're currently viewing this page, navigate away
       if (pathname === `/pages/${pageId}`) {
-        router.push("/");
+        router.push("/home");
       }
       
       setShowDeleteConfirm(false);
