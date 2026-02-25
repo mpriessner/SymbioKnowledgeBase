@@ -1,6 +1,18 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
+
+const RECENT_PAGES_KEY = "symbio-recent-pages";
+
+/** Clear all client-side cached data before workspace switch/creation reload */
+function clearClientState(queryClient: QueryClient) {
+  queryClient.clear();
+  try {
+    localStorage.removeItem(RECENT_PAGES_KEY);
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 interface Workspace {
   id: string;
@@ -41,8 +53,7 @@ export function useWorkspaces() {
       return res.json();
     },
     onSuccess: () => {
-      // Clear all cached data before reload to prevent stale data from previous workspace
-      queryClient.clear();
+      clearClientState(queryClient);
       window.location.reload();
     },
   });
@@ -61,8 +72,7 @@ export function useWorkspaces() {
       return res.json();
     },
     onSuccess: () => {
-      // Clear all cached data before reload to prevent stale data from previous workspace
-      queryClient.clear();
+      clearClientState(queryClient);
       window.location.reload();
     },
   });
