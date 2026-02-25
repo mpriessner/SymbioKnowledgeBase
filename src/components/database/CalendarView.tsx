@@ -75,7 +75,7 @@ export function CalendarView({
   onViewConfigChange,
 }: CalendarViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow, deleteRow } =
+  const { data, isLoading, isError, refetch, createRow, updateRow, deleteRow } =
     useDatabaseRows(databaseId);
   const rows = useMemo(
     () => (data?.data ?? []) as DbRowWithPage[],
@@ -263,6 +263,21 @@ export function CalendarView({
     );
   }
 
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-sm text-[var(--text-secondary)]">
+        <p>Failed to load data.</p>
+        <button
+          onClick={() => refetch()}
+          className="mt-2 px-3 py-1.5 text-sm rounded border border-[var(--border-default)]
+            hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   if (dateColumns.length === 0) {
     return (
       <div className="flex items-center justify-center py-16 text-sm text-[var(--text-secondary)]">
@@ -366,6 +381,13 @@ export function CalendarView({
           onClearAll={clearFilters}
         />
       </div>
+
+      {/* Empty state */}
+      {rows.length === 0 && (
+        <div className="py-8 text-center text-sm text-[var(--text-secondary)]">
+          No events scheduled. Click a date to add one.
+        </div>
+      )}
 
       {/* Calendar grid */}
       <DndContext

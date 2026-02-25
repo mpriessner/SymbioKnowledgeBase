@@ -27,7 +27,7 @@ interface EditingCell {
 
 export function TableView({ databaseId, schema }: TableViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow, deleteRow } =
+  const { data, isLoading, isError, refetch, createRow, updateRow, deleteRow } =
     useDatabaseRows(databaseId);
   // Memoize rows to prevent unnecessary re-renders of callbacks that depend on it
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
@@ -141,6 +141,21 @@ export function TableView({ databaseId, schema }: TableViewProps) {
     );
   }
 
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-sm text-[var(--text-secondary)]">
+        <p>Failed to load data.</p>
+        <button
+          onClick={() => refetch()}
+          className="mt-2 px-3 py-1.5 text-sm rounded border border-[var(--border-default)]
+            hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto">
       {/* Filter bar */}
@@ -187,7 +202,7 @@ export function TableView({ databaseId, schema }: TableViewProps) {
               >
                 {filters.length > 0
                   ? "No rows match the current filters."
-                  : 'No rows yet. Click "Add row" to create one.'}
+                  : "No rows yet. Click + to add your first row."}
               </td>
             </tr>
           )}

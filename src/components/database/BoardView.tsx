@@ -50,7 +50,7 @@ export function BoardView({
   onViewConfigChange,
 }: BoardViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow, deleteRow } =
+  const { data, isLoading, isError, refetch, createRow, updateRow, deleteRow } =
     useDatabaseRows(databaseId);
   const rows = useMemo(() => (data?.data ?? []) as DbRowWithPage[], [data?.data]);
   const [contextMenu, setContextMenu] = useState<{
@@ -230,6 +230,21 @@ export function BoardView({
     );
   }
 
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-sm text-[var(--text-secondary)]">
+        <p>Failed to load data.</p>
+        <button
+          onClick={() => refetch()}
+          className="mt-2 px-3 py-1.5 text-sm rounded border border-[var(--border-default)]
+            hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   if (selectColumns.length === 0) {
     return (
       <div className="flex items-center justify-center py-16 text-sm text-[var(--text-secondary)]">
@@ -305,7 +320,7 @@ export function BoardView({
       {/* Empty state */}
       {rows.length === 0 && (
         <div className="text-center py-8 text-sm text-[var(--text-secondary)]">
-          No items yet. Click + to add one.
+          No items. Add one to get started.
         </div>
       )}
 

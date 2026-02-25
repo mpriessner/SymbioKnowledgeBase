@@ -41,7 +41,7 @@ export function ListView({
   onViewConfigChange,
 }: ListViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow, deleteRow } = useDatabaseRows(databaseId);
+  const { data, isLoading, isError, refetch, createRow, updateRow, deleteRow } = useDatabaseRows(databaseId);
   const rows = useMemo(() => data?.data ?? [], [data?.data]);
   const [contextMenu, setContextMenu] = useState<{
     rowId: string;
@@ -238,6 +238,21 @@ export function ListView({
     );
   }
 
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-sm text-[var(--text-secondary)]">
+        <p>Failed to load data.</p>
+        <button
+          onClick={() => refetch()}
+          className="mt-2 px-3 py-1.5 text-sm rounded border border-[var(--border-default)]
+            hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   // Optionally group rows
   const groupByColumn = groupByColumnId
     ? schema.columns.find((c) => c.id === groupByColumnId)
@@ -282,7 +297,7 @@ export function ListView({
           <div className="px-3 py-8 text-center text-sm text-[var(--text-secondary)]">
             {filters.length > 0
               ? "No items match the current filter."
-              : "No items yet. Click + to add your first item."}
+              : "Nothing here yet. Add your first item."}
           </div>
         ) : isGrouped ? (
           groups.map(([groupLabel, groupRows]) => (

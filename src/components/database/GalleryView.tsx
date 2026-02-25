@@ -56,7 +56,7 @@ export function GalleryView({
   onViewConfigChange,
 }: GalleryViewProps) {
   const router = useRouter();
-  const { data, isLoading, createRow, updateRow, deleteRow } = useDatabaseRows(databaseId);
+  const { data, isLoading, isError, refetch, createRow, updateRow, deleteRow } = useDatabaseRows(databaseId);
   const rows = useMemo(
     () => (data?.data ?? []) as DbRowWithPage[],
     [data?.data]
@@ -234,6 +234,21 @@ export function GalleryView({
     );
   }
 
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-sm text-[var(--text-secondary)]">
+        <p>Failed to load data.</p>
+        <button
+          onClick={() => refetch()}
+          className="mt-2 px-3 py-1.5 text-sm rounded border border-[var(--border-default)]
+            hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Toolbar */}
@@ -278,7 +293,7 @@ export function GalleryView({
           <p>
             {filters.length > 0
               ? "No items match the current filter."
-              : "No items yet."}
+              : "No cards yet. Click + to add one."}
           </p>
           {filters.length === 0 && (
             <button
