@@ -15,6 +15,7 @@ import {
   FileUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/useToast";
+import { AskAIDialog } from "@/components/ai/AskAIDialog";
 import { DEFAULT_COLUMNS } from "@/types/database";
 import type { DatabaseViewType, DatabaseSchema, RowProperties } from "@/types/database";
 import { parseCSVToDatabase } from "@/lib/import/csv-import";
@@ -41,6 +42,7 @@ export function PageCreationMenu({ pageId, onAction }: PageCreationMenuProps) {
   const router = useRouter();
   const { addToast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
+  const [showAskAI, setShowAskAI] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleCreateDatabaseView = useCallback(
@@ -233,8 +235,46 @@ export function PageCreationMenu({ pageId, onAction }: PageCreationMenuProps) {
   );
 
   const handleAskAI = useCallback(() => {
-    addToast("Ask AI — coming soon (SKB-21.7)", "info");
-  }, [addToast]);
+    setShowAskAI(true);
+  }, []);
+
+  const handleAIComplete = useCallback(
+    async (markdown: string) => {
+      try {
+        // Extract title from first "# heading"
+        const titleMatch = markdown.match(/^#\s+(.+)/m);
+        const title = titleMatch?.[1]?.trim();
+
+        // Update page title if found
+        if (title) {
+          await fetch(`/api/pages/${pageId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title }),
+          });
+        }
+
+        // Save content as a single paragraph block (markdown as text)
+        // The BlockEditor will pick it up and render it
+        await fetch(`/api/pages/${pageId}/blocks`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: {
+              type: "doc",
+              content: markdownToSimpleDoc(markdown),
+            },
+          }),
+        });
+
+        setShowAskAI(false);
+        onAction();
+      } catch (error) {
+        addToast("Failed to save generated content", "error");
+      }
+    },
+    [pageId, addToast, onAction]
+  );
 
   const handleMeetingNotes = useCallback(() => {
     addToast("AI Meeting Notes — coming soon (SKB-21.8)", "info");
@@ -243,6 +283,21 @@ export function PageCreationMenu({ pageId, onAction }: PageCreationMenuProps) {
   const handleDatabase = useCallback(() => {
     handleCreateDatabaseView("table");
   }, [handleCreateDatabaseView]);
+
+  // If Ask AI dialog is open, show only that
+  if (showAskAI) {
+    return (
+      <div className="content-pad py-8">
+        <div className="max-w-2xl mx-auto">
+          <AskAIDialog
+            pageId={pageId}
+            onComplete={handleAIComplete}
+            onCancel={() => setShowAskAI(false)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="content-pad py-8">
@@ -332,4 +387,33 @@ export function PageCreationMenu({ pageId, onAction }: PageCreationMenuProps) {
       </div>
     </div>
   );
+}
+
+/**
+ * Convert markdown text to a simple TipTap doc structure.
+ * Splits by lines and wraps each non-empty line in a paragraph.
+ */
+function markdownToSimpleDoc(
+  markdown: string
+): Array<{ type: string; content?: Array<{ type: string; text: string }> }> {
+  const lines = markdown.split("\n");
+  const nodes: Array<{
+    type: string;
+    content?: Array<{ type: string; text: string }>;
+  }> = [];
+
+  for (const line of lines) {
+    if (line.trim() === "") {
+      nodes.push({ type: "paragraph" });
+    } else {
+      nodes.push({
+        type: "paragraph",
+        content: [{ type: "text", text: line }],
+      });
+    }
+  }
+
+  return nodes.length > 0
+    ? nodes
+    : [{ type: "paragraph" }];
 }
