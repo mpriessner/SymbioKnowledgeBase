@@ -5,6 +5,7 @@ import { TableView } from "./TableView";
 import { BoardView } from "./BoardView";
 import { ListView } from "./ListView";
 import { CalendarView } from "./CalendarView";
+import { GalleryView } from "./GalleryView";
 import { useDatabaseView } from "@/hooks/useDatabaseView";
 import type {
   DatabaseSchema,
@@ -74,7 +75,14 @@ export function DatabaseViewContainer({
             onViewConfigChange={updateViewConfig}
           />
         )}
-        {activeView === "gallery" && <ViewPlaceholder viewType="gallery" />}
+        {activeView === "gallery" && (
+          <GalleryView
+            databaseId={databaseId}
+            schema={schema}
+            viewConfig={viewConfig}
+            onViewConfigChange={updateViewConfig}
+          />
+        )}
         {activeView === "timeline" && <ViewPlaceholder viewType="timeline" />}
       </div>
     </div>
