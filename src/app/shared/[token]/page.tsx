@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { SharedPageContent } from "@/components/shared/SharedPageContent";
 
@@ -6,9 +7,7 @@ interface SharedPageProps {
   params: Promise<{ token: string }>;
 }
 
-export default async function SharedPage({ params }: SharedPageProps) {
-  const { token } = await params;
-
+async function getShareLink(token: string) {
   const shareLink = await prisma.publicShareLink.findUnique({
     where: { token },
     include: {
@@ -30,6 +29,51 @@ export default async function SharedPage({ params }: SharedPageProps) {
     shareLink.revokedAt !== null ||
     shareLink.expiresAt < new Date()
   ) {
+    return null;
+  }
+
+  return shareLink;
+}
+
+export async function generateMetadata({
+  params,
+}: SharedPageProps): Promise<Metadata> {
+  const { token } = await params;
+  const shareLink = await getShareLink(token);
+
+  if (!shareLink) {
+    return { title: "Page not found" };
+  }
+
+  const { page, allowIndexing } = shareLink;
+  const title = page.title || "Untitled";
+
+  // Extract first paragraph text for description
+  const paragraphBlock = page.blocks.find((b) => b.type === "PARAGRAPH");
+  const description = paragraphBlock
+    ? String((paragraphBlock.content as Record<string, unknown>)?.text ?? "")
+        .slice(0, 160)
+    : `Shared page: ${title}`;
+
+  return {
+    title,
+    description,
+    robots: allowIndexing
+      ? { index: true, follow: true }
+      : { index: false, follow: false },
+    openGraph: {
+      title,
+      description,
+      type: "article",
+    },
+  };
+}
+
+export default async function SharedPage({ params }: SharedPageProps) {
+  const { token } = await params;
+  const shareLink = await getShareLink(token);
+
+  if (!shareLink) {
     notFound();
   }
 
@@ -64,6 +108,16 @@ export default async function SharedPage({ params }: SharedPageProps) {
             This page has no content.
           </p>
         )}
+
+        {/* Footer */}
+        <div className="mt-16 pt-6 border-t border-[var(--border-default)]">
+          <p className="text-xs text-[var(--text-tertiary)]">
+            Built with{" "}
+            <span className="font-medium text-[var(--text-secondary)]">
+              SymbioKnowledgeBase
+            </span>
+          </p>
+        </div>
       </div>
     </div>
   );

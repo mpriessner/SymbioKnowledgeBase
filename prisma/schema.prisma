@@ -393,14 +393,17 @@ model TeamspaceMember {
 // ─── Public Share Links ─────────────────────────────────────────
 
 model PublicShareLink {
-  id        String    @id @default(uuid())
-  pageId    String    @map("page_id")
-  tenantId  String    @map("tenant_id")
-  token     String    @unique
-  createdBy String    @map("created_by")
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  id            String    @id @default(uuid())
+  pageId        String    @map("page_id")
+  tenantId      String    @map("tenant_id")
+  token         String    @unique
+  createdBy     String    @map("created_by")
+  allowIndexing Boolean   @default(false) @map("allow_indexing")
+  publishedAt   DateTime? @map("published_at")
+  expiresAt     DateTime  @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   // Relations
   tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ShareDialogInvite } from "./ShareDialogInvite";
 import { ShareDialogMemberList } from "./ShareDialogMemberList";
 import { ShareDialogGeneralAccess } from "./ShareDialogGeneralAccess";
+import { ShareDialogPublish } from "./ShareDialogPublish";
 
 interface ShareDialogProps {
   pageId: string;
@@ -128,8 +129,8 @@ export function ShareDialog({
       )}
 
       {activeTab === "publish" && (
-        <div className="p-4 text-sm text-[var(--text-secondary)]">
-          Publishing is coming soon.
+        <div className="p-4">
+          <ShareDialogPublish pageId={pageId} />
         </div>
       )}
     </div>
