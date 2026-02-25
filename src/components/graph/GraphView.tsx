@@ -15,7 +15,6 @@ import { GraphLegend } from "./GraphLegend";
 import { getNodeColor, getNodeRadius, getEdgeColor } from "@/lib/graph/colorPalette";
 import type { ThemeMode } from "@/lib/graph/colorPalette";
 import type { GraphNode, GraphData } from "@/types/graph";
-import type { ForceGraphMethods } from "react-force-graph-2d";
 
 // Dynamically import ForceGraph2D to avoid SSR issues (uses Canvas/WebGL)
 const ForceGraph2D = dynamic(
@@ -338,7 +337,6 @@ export function GraphView({
     <div ref={containerRef} className="relative h-full w-full">
       { }
       <ForceGraph2D
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-force-graph-2d ref typing is incompatible with strict TS
         ref={graphRef as unknown as React.MutableRefObject<never>}
         width={dimensions.width}
         height={dimensions.height}
