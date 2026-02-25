@@ -1,6 +1,82 @@
 import { z } from "zod";
 
 /**
+ * Supported database view types.
+ */
+export const DATABASE_VIEW_TYPES = [
+  "table",
+  "board",
+  "list",
+  "calendar",
+  "gallery",
+  "timeline",
+] as const;
+
+export type DatabaseViewType = (typeof DATABASE_VIEW_TYPES)[number];
+
+export const DatabaseViewTypeSchema = z.enum(DATABASE_VIEW_TYPES);
+
+/**
+ * Per-view configuration stored in database.viewConfig.
+ */
+export interface ViewConfig {
+  board?: { groupByColumn: string };
+  calendar?: { dateColumn: string };
+  gallery?: {
+    coverColumn: string;
+    cardSize: "small" | "medium" | "large";
+  };
+  timeline?: { startColumn: string; endColumn: string };
+  list?: { visibleProperties: string[]; groupByColumn?: string };
+}
+
+export const ViewConfigSchema = z
+  .object({
+    board: z
+      .object({ groupByColumn: z.string() })
+      .optional(),
+    calendar: z
+      .object({ dateColumn: z.string() })
+      .optional(),
+    gallery: z
+      .object({
+        coverColumn: z.string(),
+        cardSize: z.enum(["small", "medium", "large"]),
+      })
+      .optional(),
+    timeline: z
+      .object({ startColumn: z.string(), endColumn: z.string() })
+      .optional(),
+    list: z
+      .object({
+        visibleProperties: z.array(z.string()),
+        groupByColumn: z.string().optional(),
+      })
+      .optional(),
+  })
+  .optional();
+
+/**
+ * Default columns for a new database.
+ */
+export const DEFAULT_COLUMNS: Column[] = [
+  { id: "col-title", name: "Title", type: "TITLE" },
+  {
+    id: "col-status",
+    name: "Status",
+    type: "SELECT",
+    options: ["Not started", "In progress", "Done"],
+  },
+  {
+    id: "col-priority",
+    name: "Priority",
+    type: "SELECT",
+    options: ["Low", "Medium", "High"],
+  },
+  { id: "col-date", name: "Date", type: "DATE" },
+];
+
+/**
  * Supported property types for database columns.
  */
 export const PropertyType = {
@@ -86,13 +162,17 @@ export type RowProperties = z.infer<typeof RowPropertiesSchema>;
 export const CreateDatabaseSchema = z.object({
   pageId: z.string().uuid(),
   schema: DatabaseSchemaDefinition,
+  defaultView: DatabaseViewTypeSchema.optional(),
+  viewConfig: ViewConfigSchema,
 });
 
 /**
  * API request for updating a database schema.
  */
 export const UpdateDatabaseSchema = z.object({
-  schema: DatabaseSchemaDefinition,
+  schema: DatabaseSchemaDefinition.optional(),
+  defaultView: DatabaseViewTypeSchema.optional(),
+  viewConfig: ViewConfigSchema,
 });
 
 /**

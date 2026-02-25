@@ -270,12 +270,14 @@ model ApiKey {
 // ─── Databases (Notion-style typed tables) ───────────────────────────
 
 model Database {
-  id        String   @id @default(uuid())
-  pageId    String   @map("page_id")
-  tenantId  String   @map("tenant_id")
-  schema    Json     @default("{}") @map("schema")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  pageId      String   @map("page_id")
+  tenantId    String   @map("tenant_id")
+  schema      Json     @default("{}") @map("schema")
+  defaultView String   @default("table") @map("default_view")
+  viewConfig  Json?    @map("view_config")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

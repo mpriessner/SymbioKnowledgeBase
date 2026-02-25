@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import { usePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
 import { PageHeader } from "@/components/workspace/PageHeader";
-import { BlockEditor } from "@/components/editor/BlockEditor";
+import { PageContent } from "@/components/page/PageContent";
 import { BacklinksPanel } from "@/components/page/BacklinksPanel";
 import { LocalGraph } from "@/components/graph/LocalGraph";
 import { LocalGraphSidebar } from "@/components/graph/LocalGraphSidebar";
@@ -78,10 +78,8 @@ export default function PageView({ params }: PageViewProps) {
           <PresenceIndicators pageId={page.id} />
         </div>
 
-        {/* Block Editor */}
-        <div className="w-full">
-          <BlockEditor pageId={page.id} />
-        </div>
+        {/* Page Content (creation menu, database view, or block editor) */}
+        <PageContent pageId={page.id} />
 
         {/* Backlinks Panel */}
         <div className="w-full content-pad">

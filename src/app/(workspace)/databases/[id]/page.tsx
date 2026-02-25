@@ -2,8 +2,8 @@
 
 import { use } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { TableView } from "@/components/database/TableView";
-import type { DatabaseSchema } from "@/types/database";
+import { DatabaseViewContainer } from "@/components/database/DatabaseViewContainer";
+import type { DatabaseSchema, DatabaseViewType, ViewConfig } from "@/types/database";
 
 interface DatabaseViewProps {
   params: Promise<{ id: string }>;
@@ -14,6 +14,8 @@ interface DatabaseResponse {
     id: string;
     pageId: string;
     schema: DatabaseSchema;
+    defaultView: string;
+    viewConfig: ViewConfig | null;
     page: { title: string; icon: string | null };
   };
 }
@@ -70,7 +72,12 @@ export default function DatabaseView({ params }: DatabaseViewProps) {
         {database.schema.columns.length} columns
       </p>
 
-      <TableView databaseId={database.id} schema={database.schema} />
+      <DatabaseViewContainer
+        databaseId={database.id}
+        schema={database.schema}
+        defaultView={database.defaultView as DatabaseViewType}
+        viewConfig={database.viewConfig}
+      />
     </div>
   );
 }

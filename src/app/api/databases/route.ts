@@ -23,7 +23,7 @@ export const POST = withTenant(
         );
       }
 
-      const { pageId, schema } = parseResult.data;
+      const { pageId, schema, defaultView, viewConfig } = parseResult.data;
 
       // Verify the page exists and belongs to this tenant
       const page = await prisma.page.findFirst({
@@ -52,6 +52,8 @@ export const POST = withTenant(
           pageId,
           tenantId: context.tenantId,
           schema: JSON.parse(JSON.stringify(schema)),
+          defaultView: defaultView ?? "table",
+          viewConfig: viewConfig ? JSON.parse(JSON.stringify(viewConfig)) : undefined,
         },
       });
 
@@ -61,6 +63,8 @@ export const POST = withTenant(
           pageId: database.pageId,
           tenantId: database.tenantId,
           schema: database.schema,
+          defaultView: database.defaultView,
+          viewConfig: database.viewConfig,
           createdAt: database.createdAt.toISOString(),
           updatedAt: database.updatedAt.toISOString(),
         },
@@ -78,10 +82,20 @@ export const POST = withTenant(
  * GET /api/databases — List all databases for the tenant
  */
 export const GET = withTenant(
-  async (_req: NextRequest, context: TenantContext) => {
+  async (req: NextRequest, context: TenantContext) => {
     try {
+      const { searchParams } = new URL(req.url);
+      const pageId = searchParams.get("pageId");
+
+      const whereClause: { tenantId: string; pageId?: string } = {
+        tenantId: context.tenantId,
+      };
+      if (pageId) {
+        whereClause.pageId = pageId;
+      }
+
       const databases = await prisma.database.findMany({
-        where: { tenantId: context.tenantId },
+        where: whereClause,
         include: {
           page: { select: { title: true, icon: true } },
           _count: { select: { rows: true } },
@@ -94,6 +108,8 @@ export const GET = withTenant(
         pageId: db.pageId,
         tenantId: db.tenantId,
         schema: db.schema,
+        defaultView: db.defaultView,
+        viewConfig: db.viewConfig,
         page: db.page,
         rowCount: db._count.rows,
         createdAt: db.createdAt.toISOString(),
