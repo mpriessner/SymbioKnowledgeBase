@@ -240,6 +240,7 @@ export function ListView({
                     key={row.id}
                     rowId={row.id}
                     title={getTitle(row)}
+                    pageId={row.pageId}
                     properties={row.properties as RowProperties}
                     visibleColumns={visibleColumns}
                     isSelected={selectedRowId === row.id}
@@ -258,6 +259,10 @@ export function ListView({
                         y: e.clientY,
                       });
                     }}
+                    onUpdateRow={(rowId, properties) =>
+                      updateRow.mutate({ rowId, properties })
+                    }
+                    onDelete={(rowId) => deleteRow.mutate(rowId)}
                   />
                 );
               })}
