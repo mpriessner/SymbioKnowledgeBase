@@ -71,6 +71,7 @@ export function TableOfContents({
         positions={positions}
         activeHeadingId={activeHeadingId}
         onHoverChange={setIsStripHovered}
+        onBarClick={handleHeadingClick}
       />
       {showPanel && (
         <TOCPanel
