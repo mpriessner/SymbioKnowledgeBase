@@ -52,6 +52,36 @@ export interface BacklinkEntry {
   icon: string | null;
 }
 
+export interface DatabaseSummary {
+  id: string;
+  title: string;
+  page_id: string;
+  icon: string | null;
+  column_count: number;
+  row_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatabaseDetail {
+  id: string;
+  title: string;
+  page_id: string;
+  icon: string | null;
+  schema: { columns: Array<{ id: string; name: string; type: string; options?: string[] }> };
+  row_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DbRowEntry {
+  id: string;
+  properties: Record<string, unknown>;
+  page_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AgentClient {
   search(
     query: string,
@@ -83,6 +113,26 @@ export interface AgentClient {
   ): Promise<
     ApiResponse<{ nodes: GraphNode[]; edges: GraphEdge[] }>
   >;
+  listDatabases(): Promise<ApiListResponse<DatabaseSummary>>;
+  readDatabase(id: string): Promise<ApiResponse<DatabaseDetail>>;
+  queryRows(
+    databaseId: string,
+    limit?: number,
+    offset?: number
+  ): Promise<ApiListResponse<DbRowEntry>>;
+  createRow(
+    databaseId: string,
+    properties: Record<string, unknown>
+  ): Promise<ApiResponse<{ id: string; properties: Record<string, unknown>; created_at: string }>>;
+  updateRow(
+    databaseId: string,
+    rowId: string,
+    properties: Record<string, unknown>
+  ): Promise<ApiResponse<{ id: string; properties: Record<string, unknown>; updated_at: string }>>;
+  deleteRow(
+    databaseId: string,
+    rowId: string
+  ): Promise<ApiResponse<{ id: string; deleted_at: string }>>;
 }
 
 export function createAgentClient(
@@ -194,6 +244,49 @@ export function createAgentClient(
       return callAPI<
         ApiResponse<{ nodes: GraphNode[]; edges: GraphEdge[] }>
       >(`/graph?${params}`);
+    },
+
+    async listDatabases() {
+      return callAPI<ApiListResponse<DatabaseSummary>>("/databases");
+    },
+
+    async readDatabase(id) {
+      return callAPI<ApiResponse<DatabaseDetail>>(`/databases/${id}`);
+    },
+
+    async queryRows(databaseId, limit = 50, offset = 0) {
+      const params = new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      });
+      return callAPI<ApiListResponse<DbRowEntry>>(
+        `/databases/${databaseId}/rows?${params}`
+      );
+    },
+
+    async createRow(databaseId, properties) {
+      return callAPI<
+        ApiResponse<{ id: string; properties: Record<string, unknown>; created_at: string }>
+      >(`/databases/${databaseId}/rows`, {
+        method: "POST",
+        body: JSON.stringify({ properties }),
+      });
+    },
+
+    async updateRow(databaseId, rowId, properties) {
+      return callAPI<
+        ApiResponse<{ id: string; properties: Record<string, unknown>; updated_at: string }>
+      >(`/databases/${databaseId}/rows/${rowId}`, {
+        method: "PUT",
+        body: JSON.stringify({ properties }),
+      });
+    },
+
+    async deleteRow(databaseId, rowId) {
+      return callAPI<ApiResponse<{ id: string; deleted_at: string }>>(
+        `/databases/${databaseId}/rows/${rowId}`,
+        { method: "DELETE" }
+      );
     },
   };
 }

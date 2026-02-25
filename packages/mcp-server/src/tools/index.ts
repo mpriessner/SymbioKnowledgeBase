@@ -3,7 +3,12 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { AgentClient, BacklinkEntry, GraphNode } from "../api/client.js";
+import type {
+  AgentClient,
+  BacklinkEntry,
+  DatabaseDetail,
+  GraphNode,
+} from "../api/client.js";
 
 export function registerTools(server: Server, apiClient: AgentClient) {
   // List available tools
@@ -148,6 +153,109 @@ export function registerTools(server: Server, apiClient: AgentClient) {
             },
           },
           required: ["id_or_title"],
+        },
+      },
+      {
+        name: "list_databases",
+        description:
+          "List all databases (structured tables) in the knowledge base.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {},
+        },
+      },
+      {
+        name: "read_database",
+        description:
+          "Get a database's schema (column definitions) and metadata.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            id: {
+              type: "string",
+              description: "Database ID (UUID)",
+            },
+          },
+          required: ["id"],
+        },
+      },
+      {
+        name: "query_rows",
+        description: "Query rows from a database with optional pagination.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            database_id: {
+              type: "string",
+              description: "Database ID (UUID)",
+            },
+            limit: {
+              type: "number",
+              description: "Max rows to return (default 50)",
+            },
+          },
+          required: ["database_id"],
+        },
+      },
+      {
+        name: "create_row",
+        description:
+          "Create a new row in a database. Properties must match the database schema.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            database_id: {
+              type: "string",
+              description: "Database ID (UUID)",
+            },
+            properties: {
+              type: "object",
+              description:
+                'Row properties as { column_id: { type, value } }. E.g. { "col-title": { "type": "TITLE", "value": "Bug fix" } }',
+            },
+          },
+          required: ["database_id", "properties"],
+        },
+      },
+      {
+        name: "update_row",
+        description:
+          "Update a row's properties (partial merge with existing values).",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            database_id: {
+              type: "string",
+              description: "Database ID (UUID)",
+            },
+            row_id: {
+              type: "string",
+              description: "Row ID (UUID)",
+            },
+            properties: {
+              type: "object",
+              description: "Properties to update (partial)",
+            },
+          },
+          required: ["database_id", "row_id", "properties"],
+        },
+      },
+      {
+        name: "delete_row",
+        description: "Delete a row from a database.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            database_id: {
+              type: "string",
+              description: "Database ID (UUID)",
+            },
+            row_id: {
+              type: "string",
+              description: "Row ID (UUID)",
+            },
+          },
+          required: ["database_id", "row_id"],
         },
       },
     ],
@@ -353,6 +461,121 @@ export function registerTools(server: Server, apiClient: AgentClient) {
               {
                 type: "text" as const,
                 text: `${backlinks.length} pages link to this page:\n\n${list}`,
+              },
+            ],
+          };
+        }
+
+        case "list_databases": {
+          const response = await apiClient.listDatabases();
+          if (response.data.length === 0) {
+            return {
+              content: [
+                { type: "text" as const, text: "No databases found." },
+              ],
+            };
+          }
+          const dbList = response.data
+            .map(
+              (db) =>
+                `- **${db.title}** (${db.id})\n  ${db.column_count} columns, ${db.row_count} rows`
+            )
+            .join("\n\n");
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `${response.meta.total} databases:\n\n${dbList}`,
+              },
+            ],
+          };
+        }
+
+        case "read_database": {
+          const dbId = toolArgs.id as string;
+          const response = await apiClient.readDatabase(dbId);
+          const db = response.data as DatabaseDetail;
+          const columns = db.schema.columns
+            .map(
+              (c) =>
+                `  - **${c.name}** (${c.type})${c.options ? ` [${c.options.join(", ")}]` : ""}`
+            )
+            .join("\n");
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Database: **${db.title}** (${db.id})\n${db.row_count} rows\n\nColumns:\n${columns}`,
+              },
+            ],
+          };
+        }
+
+        case "query_rows": {
+          const dbId = toolArgs.database_id as string;
+          const rowLimit = (toolArgs.limit as number) ?? 50;
+          const response = await apiClient.queryRows(dbId, rowLimit);
+          if (response.data.length === 0) {
+            return {
+              content: [
+                { type: "text" as const, text: "No rows found." },
+              ],
+            };
+          }
+          const rowList = response.data
+            .map(
+              (r) =>
+                `Row ${r.id}:\n${JSON.stringify(r.properties, null, 2)}`
+            )
+            .join("\n\n");
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `${response.meta.total} rows (showing ${response.data.length}):\n\n${rowList}`,
+              },
+            ],
+          };
+        }
+
+        case "create_row": {
+          const dbId = toolArgs.database_id as string;
+          const properties = toolArgs.properties as Record<string, unknown>;
+          const response = await apiClient.createRow(dbId, properties);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Created row ${response.data.id} in database ${dbId}`,
+              },
+            ],
+          };
+        }
+
+        case "update_row": {
+          const dbId = toolArgs.database_id as string;
+          const rowId = toolArgs.row_id as string;
+          const properties = toolArgs.properties as Record<string, unknown>;
+          const response = await apiClient.updateRow(dbId, rowId, properties);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Updated row ${response.data.id} at ${response.data.updated_at}`,
+              },
+            ],
+          };
+        }
+
+        case "delete_row": {
+          const dbId = toolArgs.database_id as string;
+          const rowId = toolArgs.row_id as string;
+          const response = await apiClient.deleteRow(dbId, rowId);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Deleted row ${response.data.id} at ${response.data.deleted_at}`,
               },
             ],
           };
