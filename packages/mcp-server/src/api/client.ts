@@ -46,6 +46,12 @@ export interface ApiResponse<T> {
   meta: Record<string, unknown>;
 }
 
+export interface BacklinkEntry {
+  id: string;
+  title: string;
+  icon: string | null;
+}
+
 export interface AgentClient {
   search(
     query: string,
@@ -62,11 +68,15 @@ export interface AgentClient {
     id: string,
     markdown: string
   ): Promise<ApiResponse<{ id: string; updated_at: string }>>;
+  deletePage(
+    id: string
+  ): Promise<ApiResponse<{ id: string; deleted_at: string }>>;
   listPages(
     parentId?: string,
     limit?: number,
     offset?: number
   ): Promise<ApiListResponse<PageSummary>>;
+  getBacklinks(id: string): Promise<ApiResponse<BacklinkEntry[]>>;
   getGraph(
     pageId?: string,
     depth?: number
@@ -153,6 +163,19 @@ export function createAgentClient(
           method: "PUT",
           body: JSON.stringify({ markdown }),
         }
+      );
+    },
+
+    async deletePage(id) {
+      return callAPI<ApiResponse<{ id: string; deleted_at: string }>>(
+        `/pages/${id}`,
+        { method: "DELETE" }
+      );
+    },
+
+    async getBacklinks(id) {
+      return callAPI<ApiResponse<BacklinkEntry[]>>(
+        `/pages/${id}/backlinks`
       );
     },
 

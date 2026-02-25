@@ -14,6 +14,67 @@ const updatePageSchema = z.object({
 type RouteContext = { params: Promise<Record<string, string>> };
 
 /**
+ * DELETE /api/agent/pages/:id — Delete a page
+ */
+export const DELETE = withAgentAuth(
+  async (req: NextRequest, ctx: AgentContext, routeContext: RouteContext) => {
+    try {
+      const { id } = await routeContext.params;
+
+      // Validate UUID
+      if (!z.string().uuid().safeParse(id).success) {
+        return errorResponse(
+          "VALIDATION_ERROR",
+          "Invalid page ID",
+          undefined,
+          400
+        );
+      }
+
+      // Check page exists and belongs to tenant
+      const page = await prisma.page.findFirst({
+        where: { id, tenantId: ctx.tenantId },
+      });
+
+      if (!page) {
+        return errorResponse("NOT_FOUND", "Page not found", undefined, 404);
+      }
+
+      // Transaction: delete links, blocks, orphan children, then page
+      await prisma.$transaction([
+        prisma.pageLink.deleteMany({
+          where: {
+            OR: [{ sourcePageId: id }, { targetPageId: id }],
+            tenantId: ctx.tenantId,
+          },
+        }),
+        prisma.block.deleteMany({
+          where: { pageId: id, tenantId: ctx.tenantId },
+        }),
+        prisma.page.updateMany({
+          where: { parentId: id, tenantId: ctx.tenantId },
+          data: { parentId: null },
+        }),
+        prisma.page.delete({ where: { id } }),
+      ]);
+
+      return successResponse({
+        id,
+        deleted_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("DELETE /api/agent/pages/:id error:", error);
+      return errorResponse(
+        "INTERNAL_ERROR",
+        "Internal server error",
+        undefined,
+        500
+      );
+    }
+  }
+);
+
+/**
  * GET /api/agent/pages/:id — Read page as markdown
  */
 export const GET = withAgentAuth(

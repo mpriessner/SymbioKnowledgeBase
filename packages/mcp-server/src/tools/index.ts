@@ -3,7 +3,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { AgentClient, GraphNode } from "../api/client.js";
+import type { AgentClient, BacklinkEntry, GraphNode } from "../api/client.js";
 
 export function registerTools(server: Server, apiClient: AgentClient) {
   // List available tools
@@ -121,6 +121,33 @@ export function registerTools(server: Server, apiClient: AgentClient) {
               description: "Max results (default 10)",
             },
           },
+        },
+      },
+      {
+        name: "delete_page",
+        description:
+          "Delete a page by ID. Removes associated blocks and links. Child pages become orphans.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            id: { type: "string", description: "Page ID (UUID) to delete" },
+          },
+          required: ["id"],
+        },
+      },
+      {
+        name: "get_backlinks",
+        description:
+          "Get all pages that link TO a given page. Accepts page ID or title.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            id_or_title: {
+              type: "string",
+              description: "Page ID (UUID) or exact title",
+            },
+          },
+          required: ["id_or_title"],
         },
       },
     ],
@@ -270,6 +297,62 @@ export function registerTools(server: Server, apiClient: AgentClient) {
               {
                 type: "text" as const,
                 text: `Recent pages:\n\n${pageList}`,
+              },
+            ],
+          };
+        }
+
+        case "delete_page": {
+          const id = toolArgs.id as string;
+          const response = await apiClient.deletePage(id);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `Deleted page ${response.data.id} at ${response.data.deleted_at}`,
+              },
+            ],
+          };
+        }
+
+        case "get_backlinks": {
+          const idOrTitle = toolArgs.id_or_title as string;
+          let pageId = idOrTitle;
+
+          // If not a UUID, resolve via search
+          const uuidRegex =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!uuidRegex.test(idOrTitle)) {
+            const searchResponse = await apiClient.search(idOrTitle, 1);
+            if (searchResponse.data.length === 0) {
+              throw new Error(`Page not found: ${idOrTitle}`);
+            }
+            pageId = searchResponse.data[0].page_id;
+          }
+
+          const response = await apiClient.getBacklinks(pageId);
+          const backlinks = response.data as BacklinkEntry[];
+          if (backlinks.length === 0) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: "No backlinks found for this page.",
+                },
+              ],
+            };
+          }
+          const list = backlinks
+            .map(
+              (b: BacklinkEntry) =>
+                `- ${b.icon || "\u{1F4C4}"} **${b.title}** (${b.id})`
+            )
+            .join("\n");
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: `${backlinks.length} pages link to this page:\n\n${list}`,
               },
             ],
           };
