@@ -15,6 +15,7 @@ import { GraphLegend } from "./GraphLegend";
 import { getNodeColor, getNodeRadius, getEdgeColor } from "@/lib/graph/colorPalette";
 import type { ThemeMode } from "@/lib/graph/colorPalette";
 import type { GraphNode, GraphData } from "@/types/graph";
+import type { ForceGraphMethods } from "react-force-graph-2d";
 
 // Dynamically import ForceGraph2D to avoid SSR issues (uses Canvas/WebGL)
 const ForceGraph2D = dynamic(
@@ -44,11 +45,29 @@ interface GraphViewProps {
   highlightedNodes?: string[];
 }
 
+/** Extended GraphNode with force-simulation coordinates */
 interface ForceGraphNode extends GraphNode {
   x?: number;
   y?: number;
+  vx?: number;
+  vy?: number;
   fx?: number;
   fy?: number;
+}
+
+/** 
+ * Generic node object type from react-force-graph callbacks.
+ * Uses index signature since force-graph adds arbitrary properties.
+ */
+interface GenericNodeObject {
+  id?: string | number;
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+  fx?: number;
+  fy?: number;
+  [key: string]: unknown;
 }
 
 // Detect theme from document attribute
@@ -80,6 +99,8 @@ export function GraphView({
 }: GraphViewProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
+  // react-force-graph-2d has loose internal typing that conflicts with strict TS
+  // Using GraphRefHandle which matches the methods we actually use
   const graphRef = useRef<GraphRefHandle | null>(null);
 
   // Expose graph ref to parent via callback
@@ -146,10 +167,9 @@ export function GraphView({
   // Click handler: navigate to page
    
   const handleNodeClick = useCallback(
-    (node: any) => {
-      const typedNode = node as ForceGraphNode | null;
-      if (typedNode?.id) {
-        router.push(`/pages/${typedNode.id}`);
+    (node: GenericNodeObject | null) => {
+      if (node?.id) {
+        router.push(`/pages/${node.id}`);
       }
     },
     [router]
@@ -158,9 +178,10 @@ export function GraphView({
   // Hover handler: show/hide tooltip
    
   const handleNodeHover = useCallback(
-    (node: any, _previousNode: any) => {
-      const typedNode = node as ForceGraphNode | null;
-      if (typedNode) {
+    (node: GenericNodeObject | null, _previousNode: GenericNodeObject | null) => {
+      if (node) {
+        // Cast to ForceGraphNode to access our custom properties (via unknown for strict TS)
+        const typedNode = node as unknown as ForceGraphNode;
         // Get mouse position from window event
         const event = window.event as MouseEvent | undefined;
         if (event) {
@@ -185,11 +206,12 @@ export function GraphView({
    
   const nodeCanvasObject = useCallback(
     (
-      nodeObj: any,
+      nodeObj: GenericNodeObject,
       ctx: CanvasRenderingContext2D,
       globalScale: number
     ) => {
-      const node = nodeObj as ForceGraphNode;
+      // Cast to our extended type to access custom properties (via unknown for strict TS)
+      const node = nodeObj as unknown as ForceGraphNode;
       const label = node.label;
       const fontSize = Math.max(12 / globalScale, 3);
       const baseRadius = getNodeRadius(node.linkCount, 3);
@@ -316,7 +338,8 @@ export function GraphView({
     <div ref={containerRef} className="relative h-full w-full">
       { }
       <ForceGraph2D
-        ref={graphRef as any}
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-force-graph-2d ref typing is incompatible with strict TS
+        ref={graphRef as unknown as React.MutableRefObject<never>}
         width={dimensions.width}
         height={dimensions.height}
         graphData={graphData}
