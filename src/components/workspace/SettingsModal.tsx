@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useUser } from "@/components/providers/SupabaseProvider";
 import { useTheme } from "@/hooks/useTheme";
@@ -25,15 +25,16 @@ type SettingsSection =
   | "workspace-api-keys"
   | "workspace-ai-config";
 
+// SSR-safe mounted detection using useSyncExternalStore
+const subscribe = () => () => {};
+const getSnapshot = () => true;
+const getServerSnapshot = () => false;
+
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>("account-preferences");
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const user = useUser();
   const { theme, setTheme } = useTheme();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {

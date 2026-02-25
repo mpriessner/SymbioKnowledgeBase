@@ -43,16 +43,23 @@ export function Dropdown({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [isOpen]);
 
-  // Reset active index when opening
-  useEffect(() => {
-    if (isOpen) setActiveIndex(-1);
-  }, [isOpen]);
+  // Toggle dropdown and reset active index when opening
+  const toggleDropdown = useCallback(() => {
+    setIsOpen((prev) => {
+      if (!prev) {
+        // Opening: reset active index
+        setActiveIndex(-1);
+      }
+      return !prev;
+    });
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (!isOpen && (e.key === "Enter" || e.key === " " || e.key === "ArrowDown")) {
         e.preventDefault();
         setIsOpen(true);
+        setActiveIndex(-1); // Reset active index when opening via keyboard
         return;
       }
 
@@ -103,7 +110,7 @@ export function Dropdown({
         tabIndex={0}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={toggleDropdown}
       >
         {trigger}
       </div>
