@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useCallback,
+  useMemo,
   forwardRef,
   useImperativeHandle,
 } from "react";
@@ -44,7 +45,8 @@ export const WikilinkSuggestion = forwardRef<
     limit: 10,
   });
 
-  const pages = data?.data ?? [];
+  // Memoize pages to prevent unnecessary re-renders of callbacks that depend on it
+  const pages = useMemo(() => data?.data ?? [], [data?.data]);
 
   // Reset selection when results change - adjusting state during render
   // (This is the recommended React pattern instead of useEffect + setState)

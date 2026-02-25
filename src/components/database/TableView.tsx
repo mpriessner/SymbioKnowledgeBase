@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useDatabaseRows } from "@/hooks/useDatabaseRows";
 import { useTableFilters } from "@/hooks/useTableFilters";
@@ -28,7 +28,8 @@ export function TableView({ databaseId, schema }: TableViewProps) {
   const router = useRouter();
   const { data, isLoading, createRow, updateRow } =
     useDatabaseRows(databaseId);
-  const rows = data?.data ?? [];
+  // Memoize rows to prevent unnecessary re-renders of callbacks that depend on it
+  const rows = useMemo(() => data?.data ?? [], [data?.data]);
 
   const {
     filters,
