@@ -21,19 +21,28 @@ export function WikilinkNodeView({ node }: NodeViewProps) {
     displayText: string | null;
   };
 
-  const [exists, setExists] = useState<boolean>(true);
+  // Initialize exists based on pageId presence - no async check needed for null pageId
+  const [exists, setExists] = useState<boolean>(!!pageId);
   const label = displayText || pageName;
 
-  // Check if the target page still exists
+  // Check if the target page still exists (only when pageId is present)
   useEffect(() => {
-    if (!pageId) {
-      setExists(false);
-      return;
-    }
+    // Skip API check if no pageId - initial state already handles this case
+    if (!pageId) return;
 
+    let cancelled = false;
+    
     fetch(`/api/pages/${pageId}`, { method: "HEAD" })
-      .then((res) => setExists(res.ok))
-      .catch(() => setExists(false));
+      .then((res) => {
+        if (!cancelled) setExists(res.ok);
+      })
+      .catch(() => {
+        if (!cancelled) setExists(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [pageId]);
 
   const handleClick = useCallback(

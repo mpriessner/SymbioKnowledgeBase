@@ -35,6 +35,7 @@ export const WikilinkSuggestion = forwardRef<
   WikilinkSuggestionProps
 >(function WikilinkSuggestion({ query, onSelect, onClose }, ref) {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [prevPagesLength, setPrevPagesLength] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
   const { data, isLoading } = usePageSearch(query, {
@@ -45,10 +46,12 @@ export const WikilinkSuggestion = forwardRef<
 
   const pages = data?.data ?? [];
 
-  // Reset selection when results change
-  useEffect(() => {
+  // Reset selection when results change - adjusting state during render
+  // (This is the recommended React pattern instead of useEffect + setState)
+  if (pages.length !== prevPagesLength) {
+    setPrevPagesLength(pages.length);
     setSelectedIndex(0);
-  }, [pages.length]);
+  }
 
   // Scroll selected item into view
   useEffect(() => {
