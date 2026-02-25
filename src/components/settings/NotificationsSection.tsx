@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useSyncExternalStore } from "react";
+import { useState, useCallback, useEffect, useSyncExternalStore } from "react";
 import { Toggle } from "@/components/ui/Toggle";
 import { Mail, Bell, Volume2, FileText, MessageSquare, Calendar } from "lucide-react";
 
@@ -35,21 +35,29 @@ const DEFAULT_SETTINGS: NotificationSettings = {
 };
 
 /**
- * Safely loads notification settings from localStorage.
- * Returns DEFAULT_SETTINGS if localStorage is unavailable (SSR) or parsing fails.
+ * Cached snapshot for useSyncExternalStore.
+ * useSyncExternalStore compares snapshots with Object.is(), so we must
+ * return the same reference when the underlying data hasn't changed.
  */
+let cachedSettings: NotificationSettings = DEFAULT_SETTINGS;
+let cachedRaw: string | null = null;
+
 function getStoredSettings(): NotificationSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return { ...DEFAULT_SETTINGS, ...parsed };
+    if (stored !== cachedRaw) {
+      cachedRaw = stored;
+      if (stored) {
+        cachedSettings = { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+      } else {
+        cachedSettings = DEFAULT_SETTINGS;
+      }
     }
   } catch (error) {
     console.error("Failed to load notification settings:", error);
   }
-  return DEFAULT_SETTINGS;
+  return cachedSettings;
 }
 
 /**
@@ -151,11 +159,10 @@ export function NotificationsSection() {
   // Track if component is mounted (for hydration skeleton)
   const [isMounted, setIsMounted] = useState(false);
 
-  // Mark as mounted after first render - safe because it's in a callback
-  if (typeof window !== "undefined" && !isMounted) {
-    // Use queueMicrotask to defer state update and avoid render-time setState
-    queueMicrotask(() => setIsMounted(true));
-  }
+  // Mark as mounted after first render
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const updateEmailSetting = useCallback((key: keyof EmailNotificationSettings, value: boolean) => {
     const newSettings = {

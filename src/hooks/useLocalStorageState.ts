@@ -9,6 +9,9 @@ import { useSyncExternalStore, useCallback, useMemo } from "react";
 
 type Listener = () => void;
 const listeners = new Map<string, Set<Listener>>();
+// Snapshot cache: prevents useSyncExternalStore infinite loops when
+// getSnapshot returns objects. Object.is() needs stable references.
+const snapshotCache = new Map<string, { raw: string | null; parsed: unknown }>();
 
 function getListeners(key: string): Set<Listener> {
   if (!listeners.has(key)) {
@@ -18,6 +21,8 @@ function getListeners(key: string): Set<Listener> {
 }
 
 function notifyListeners(key: string): void {
+  // Invalidate cache so next getSnapshot reads fresh data
+  snapshotCache.delete(key);
   getListeners(key).forEach((listener) => listener());
 }
 
@@ -50,10 +55,17 @@ export function useLocalStorageState<T>(
     if (typeof window === "undefined") return defaultValue;
     const stored = localStorage.getItem(key);
     if (stored === null) return defaultValue;
+    // Return cached parsed value if raw string unchanged (avoids new object refs)
+    const cached = snapshotCache.get(key);
+    if (cached && cached.raw === stored) return cached.parsed as T;
     try {
-      return JSON.parse(stored) as T;
+      const parsed = JSON.parse(stored) as T;
+      snapshotCache.set(key, { raw: stored, parsed });
+      return parsed;
     } catch {
-      return stored as unknown as T;
+      const fallback = stored as unknown as T;
+      snapshotCache.set(key, { raw: stored, parsed: fallback });
+      return fallback;
     }
   }, [key, defaultValue]);
 

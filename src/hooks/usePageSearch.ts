@@ -45,9 +45,11 @@ export function usePageSearch(
     queryKey: ["pages", "search", debouncedTerm, limit],
     queryFn: async () => {
       const params = new URLSearchParams({
-        search: debouncedTerm,
         limit: String(limit),
       });
+      if (debouncedTerm.length > 0) {
+        params.set("search", debouncedTerm);
+      }
 
       const response = await fetch(`/api/pages?${params.toString()}`);
 
@@ -57,7 +59,7 @@ export function usePageSearch(
 
       return response.json() as Promise<PageSearchResponse>;
     },
-    enabled: enabled && debouncedTerm.length > 0,
+    enabled,
     staleTime: 10_000,
     placeholderData: (prev) => prev,
   });
