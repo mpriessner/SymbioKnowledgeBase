@@ -13,6 +13,8 @@ import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { useTeamspaces } from "@/hooks/useTeamspaces";
 import { useIsMac } from "@/hooks/useClientValue";
 import type { PageTreeNode } from "@/types/page";
+import { DEFAULT_COLUMNS } from "@/types/database";
+import type { DatabaseSchema } from "@/types/database";
 
 export function Sidebar() {
   const router = useRouter();
@@ -25,6 +27,7 @@ export function Sidebar() {
   const { width: sidebarWidth, isResizing, startResize } = useSidebarWidth();
   const { data: teamspaces } = useTeamspaces();
   const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [isCreatingDatabase, setIsCreatingDatabase] = useState(false);
   const isMac = useIsMac();
   const createMenuRef = useRef<HTMLDivElement>(null);
 
@@ -52,10 +55,39 @@ export function Sidebar() {
     );
   }, [createPage, router]);
 
-  const handleNewDatabase = useCallback(() => {
+  const handleNewDatabase = useCallback(async () => {
+    if (isCreatingDatabase) return;
     setShowCreateMenu(false);
-    router.push("/databases");
-  }, [router]);
+    setIsCreatingDatabase(true);
+
+    try {
+      // 1. Create a new page
+      const pageData = await createPage.mutateAsync({ title: "Untitled Database" });
+      const pageId = pageData.data.id;
+
+      // 2. Create a database linked to that page
+      const schema: DatabaseSchema = { columns: DEFAULT_COLUMNS };
+      const dbRes = await fetch("/api/databases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pageId, schema, defaultView: "table" }),
+      });
+
+      if (!dbRes.ok) {
+        const err = await dbRes.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Failed to create database");
+      }
+
+      const dbData = await dbRes.json();
+
+      // 3. Navigate to the new database
+      router.push(`/databases/${dbData.data.id}`);
+    } catch (error) {
+      console.error("Failed to create database:", error);
+    } finally {
+      setIsCreatingDatabase(false);
+    }
+  }, [isCreatingDatabase, createPage, router]);
 
   const handleSearch = useCallback(() => {
     const event = new KeyboardEvent("keydown", {
@@ -132,7 +164,7 @@ export function Sidebar() {
             <div ref={createMenuRef} className="relative">
               <button
                 onClick={() => setShowCreateMenu((prev) => !prev)}
-                disabled={createPage.isPending}
+                disabled={createPage.isPending || isCreatingDatabase}
                 className="w-6 h-6 flex items-center justify-center rounded hover:bg-[var(--sidebar-hover)] transition-colors disabled:opacity-50"
                 aria-label="Create new"
                 title="Create new"
