@@ -103,49 +103,33 @@ export default function PageView({ params }: PageViewProps) {
       {/* Table of Contents — outside scroll container so it stays fixed on scroll */}
       <TableOfContents editor={editor} scrollContainerRef={scrollContainerRef} />
 
-      {/* Right Sidebar with LocalGraph — overlay positioned */}
-      <div
-        className={`
-          hidden lg:flex flex-col
-          absolute top-0 right-0 h-full
-          border-l border-[var(--border-default)]
-          bg-[var(--bg-secondary)]
-          overflow-y-auto
-          transition-all duration-200
-          z-30
-          ${showRightSidebar ? "w-[280px] sidebar-overlay-shadow" : "w-0 overflow-hidden"}
-        `}
-      >
-        {showRightSidebar && (
-          <>
-            {/* LocalGraph in sidebar */}
-            <LocalGraphSidebar pageId={page.id} className="border-b border-[var(--border-default)]" />
-
-            {/* Space for additional sidebar content */}
-            <div className="flex-1 p-3" />
-          </>
-        )}
-      </div>
-
-      {/* Sidebar toggle button — positioned below the Export button */}
-      {showRightSidebar ? (
-        <button
-          onClick={() => setShowRightSidebar(false)}
-          className="absolute right-[280px] top-12 z-30 hidden lg:flex items-center justify-center w-5 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
-          title="Hide sidebar"
+      {/* Compact floating graph window */}
+      {showRightSidebar && (
+        <div
+          className="hidden lg:flex flex-col
+            absolute top-16 right-4 w-72 h-80
+            rounded-xl border border-[var(--border-default)]
+            bg-[var(--bg-secondary)]
+            shadow-xl overflow-hidden
+            transition-all duration-200
+            z-30"
         >
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      ) : (
+          <LocalGraphSidebar
+            pageId={page.id}
+            onClose={() => setShowRightSidebar(false)}
+          />
+        </div>
+      )}
+
+      {/* Graph toggle button (visible when graph is closed) */}
+      {!showRightSidebar && (
         <button
           onClick={() => setShowRightSidebar(true)}
-          className="hidden lg:flex fixed right-0 top-12 z-30 items-center justify-center w-8 h-8 rounded-l bg-[var(--bg-secondary)] border border-r-0 border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
-          title="Show sidebar"
+          className="hidden lg:flex absolute right-4 top-12 z-30 items-center justify-center w-8 h-8 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border-default)] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] shadow-sm transition-colors"
+          title="Show graph"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75H6A2.25 2.25 0 003.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0120.25 6v1.5M20.25 16.5V18A2.25 2.25 0 0118 20.25h-1.5M3.75 16.5V18A2.25 2.25 0 006 20.25h1.5M12 8.25v7.5M8.25 12h7.5" />
           </svg>
         </button>
       )}

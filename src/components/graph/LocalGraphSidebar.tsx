@@ -8,6 +8,8 @@ import { useGraphData } from "@/hooks/useGraphData";
 interface LocalGraphSidebarProps {
   /** The current page ID (highlighted as center node) */
   pageId: string;
+  /** Called when the user clicks the close button */
+  onClose?: () => void;
   /** Custom className for the container */
   className?: string;
 }
@@ -25,7 +27,7 @@ interface LocalGraphSidebarProps {
 const MIN_DEPTH = 1;
 const MAX_DEPTH = 4;
 
-export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarProps) {
+export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGraphSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [depth, setDepth] = useState(1);
   const graphRef = useRef<GraphRefHandle | null>(null);
@@ -94,25 +96,39 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
           )}
         </button>
         
-        {!isCollapsed && (
-          <Link
-            href="/graph"
-            className="text-xs text-[var(--accent-primary)] hover:underline"
-          >
-            Full graph
-          </Link>
-        )}
+        <div className="flex items-center gap-2">
+          {!isCollapsed && (
+            <Link
+              href="/graph"
+              className="text-xs text-[var(--accent-primary)] hover:underline"
+            >
+              Full graph
+            </Link>
+          )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-0.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+              title="Close graph"
+              aria-label="Close graph"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Graph content */}
       {!isCollapsed && (
-        <div className="flex-1 min-h-0">
+        <div className="flex flex-col flex-1 min-h-0">
           {isLoading ? (
-            <div className="flex h-[200px] items-center justify-center">
+            <div className="flex flex-1 items-center justify-center">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]" />
             </div>
           ) : !hasConnections ? (
-            <div className="flex h-[200px] items-center justify-center p-4">
+            <div className="flex flex-1 items-center justify-center p-4">
               <p className="text-xs text-center text-[var(--text-tertiary)]">
                 No connections yet.
                 <br />
@@ -120,7 +136,7 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
               </p>
             </div>
           ) : (
-            <div className="relative">
+            <div className="relative flex-1 min-h-0">
               {/* Depth control (left) */}
               <div className="absolute top-2 left-2 z-10 flex items-center gap-1">
                 <button
@@ -188,11 +204,10 @@ export function LocalGraphSidebar({ pageId, className = "" }: LocalGraphSidebarP
               </div>
 
               {/* Graph */}
-              <div style={{ height: 200 }}>
+              <div className="absolute inset-0">
                 <GraphView
                   pageId={pageId}
                   depth={depth}
-                  height={200}
                   highlightCenter={true}
                   showLabels={true}
                   onGraphRef={handleGraphRef}
