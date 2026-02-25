@@ -3,6 +3,7 @@
 import { ViewSwitcher } from "./ViewSwitcher";
 import { TableView } from "./TableView";
 import { BoardView } from "./BoardView";
+import { ListView } from "./ListView";
 import { useDatabaseView } from "@/hooks/useDatabaseView";
 import type {
   DatabaseSchema,
@@ -56,7 +57,14 @@ export function DatabaseViewContainer({
             onViewConfigChange={updateViewConfig}
           />
         )}
-        {activeView === "list" && <ViewPlaceholder viewType="list" />}
+        {activeView === "list" && (
+          <ListView
+            databaseId={databaseId}
+            schema={schema}
+            viewConfig={viewConfig}
+            onViewConfigChange={updateViewConfig}
+          />
+        )}
         {activeView === "calendar" && <ViewPlaceholder viewType="calendar" />}
         {activeView === "gallery" && <ViewPlaceholder viewType="gallery" />}
         {activeView === "timeline" && <ViewPlaceholder viewType="timeline" />}
