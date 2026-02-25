@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "symbio-recent-pages";
 const MAX_RECENT_PAGES = 5;
@@ -15,6 +15,7 @@ export interface RecentPage {
 // ── Shared in-memory cache so every hook instance sees the same data ───
 let cache: RecentPage[] = [];
 let listeners: Array<() => void> = [];
+let isInitialised = false;
 
 function readFromStorage(): RecentPage[] {
   try {
@@ -44,7 +45,15 @@ function subscribe(listener: () => void) {
   };
 }
 
+/**
+ * Lazy initialisation on first snapshot read.
+ * This avoids the anti-pattern of calling setState inside useEffect.
+ */
 function getSnapshot(): RecentPage[] {
+  if (!isInitialised && typeof window !== "undefined") {
+    cache = readFromStorage();
+    isInitialised = true;
+  }
   return cache;
 }
 
@@ -61,16 +70,6 @@ function getServerSnapshot(): RecentPage[] {
  * Stores the last 5 visited pages in localStorage.
  */
 export function useRecentPages() {
-  // Initialise cache from localStorage once
-  const [initialised, setInitialised] = useState(false);
-  useEffect(() => {
-    if (!initialised) {
-      cache = readFromStorage();
-      listeners.forEach((fn) => fn());
-      setInitialised(true);
-    }
-  }, [initialised]);
-
   const recentPages = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   /**
