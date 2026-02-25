@@ -85,25 +85,38 @@ export function createAgentClient(
   ): Promise<T> {
     const url = `${baseUrl}/api/agent${endpoint}`;
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-        "Content-Type": "application/json",
-        ...(options.headers as Record<string, string>),
-      },
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-    if (!response.ok) {
-      const error = await response
-        .json()
-        .catch(() => ({ error: { message: "Unknown error" } }));
-      throw new Error(
-        `API Error (${response.status}): ${(error as Record<string, Record<string, string>>).error?.message || response.statusText}`
-      );
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          "Content-Type": "application/json",
+          ...(options.headers as Record<string, string>),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response
+          .json()
+          .catch(() => ({ error: { message: "Unknown error" } }));
+        throw new Error(
+          `API Error (${response.status}): ${(error as Record<string, Record<string, string>>).error?.message || response.statusText}`
+        );
+      }
+
+      return response.json() as Promise<T>;
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error(`Request timeout after 10s: ${endpoint}`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return response.json() as Promise<T>;
   }
 
   return {
