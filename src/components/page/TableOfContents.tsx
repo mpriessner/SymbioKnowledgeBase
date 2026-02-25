@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { Editor } from "@tiptap/core";
 import { useTableOfContents } from "@/hooks/useTableOfContents";
 import { useHeadingPositions } from "@/hooks/useHeadingPositions";
@@ -26,6 +26,14 @@ export function TableOfContents({
     scrollContainerRef
   );
   const positions = useHeadingPositions(headings, scrollContainerRef);
+
+  const headingTexts = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const h of headings) {
+      map[h.id] = h.text;
+    }
+    return map;
+  }, [headings]);
 
   const [isStripHovered, setIsStripHovered] = useState(false);
   const [isPanelHovered, setIsPanelHovered] = useState(false);
@@ -69,6 +77,7 @@ export function TableOfContents({
     <>
       <ScrollIndicatorBars
         positions={positions}
+        headingTexts={headingTexts}
         activeHeadingId={activeHeadingId}
         onHoverChange={setIsStripHovered}
         onBarClick={handleHeadingClick}
