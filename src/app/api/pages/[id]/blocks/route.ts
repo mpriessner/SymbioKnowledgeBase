@@ -10,6 +10,7 @@ import {
   triggerPageMentionNotifications,
 } from "@/lib/notifications/triggers";
 import type { TipTapDocument } from "@/lib/wikilinks/types";
+import { syncPageToFilesystem } from "@/lib/sync/SyncService";
 import type { TenantContext } from "@/types/auth";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -153,6 +154,11 @@ export const PUT = withTenant(
         content: block.content as unknown as TipTapDocument,
         authorId: ctx.userId,
       });
+
+      // Sync page to filesystem mirror (fire-and-forget)
+      syncPageToFilesystem(ctx.tenantId, pageId).catch((err) =>
+        console.error("Sync after block save failed:", err)
+      );
 
       return successResponse(block);
     } catch (error) {

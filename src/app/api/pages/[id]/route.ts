@@ -15,6 +15,10 @@ import {
   savePageBlocks,
   markdownToTiptap,
 } from "@/lib/markdown/helpers";
+import {
+  syncPageToFilesystem,
+  deletePageFile,
+} from "@/lib/sync/SyncService";
 import { z } from "zod";
 
 const pageIdSchema = z.string().uuid("Page ID must be a valid UUID");
@@ -126,6 +130,11 @@ export const PUT = withTenant(
           idParsed.data,
           context.tenantId,
           tiptapContent
+        );
+
+        // Sync to filesystem mirror (fire-and-forget)
+        syncPageToFilesystem(context.tenantId, idParsed.data).catch((err) =>
+          console.error("Sync after markdown PUT failed:", err)
         );
 
         return successResponse({ message: "Page updated from markdown" });
@@ -252,6 +261,11 @@ export const PUT = withTenant(
         return page;
       });
 
+      // Sync to filesystem mirror (fire-and-forget)
+      syncPageToFilesystem(context.tenantId, idParsed.data).catch((err) =>
+        console.error("Sync after page update failed:", err)
+      );
+
       return successResponse(serializePage(updatedPage));
     } catch (error) {
       console.error("PUT /api/pages/[id] error:", error);
@@ -287,6 +301,11 @@ export const DELETE = withTenant(
       await prisma.page.delete({
         where: { id: idParsed.data },
       });
+
+      // Remove .md file from filesystem mirror (fire-and-forget)
+      deletePageFile(context.tenantId, idParsed.data).catch((err) =>
+        console.error("Sync delete failed:", err)
+      );
 
       return new Response(null, { status: 204 });
     } catch (error) {
