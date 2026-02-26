@@ -15,9 +15,8 @@ export function markdownToTiptap(markdown: string): DeserializeResult {
   // 1. Parse frontmatter
   const { metadata, content } = parseFrontmatter(markdown);
 
-  // 2. Pre-process wikilinks: convert [[...]] to placeholder
-  // that remark can handle as regular text
-  const processed = preprocessWikilinks(content);
+  // 2. Pre-process custom syntax: wikilinks [[...]] and highlights ==...==
+  const processed = preprocessCustomSyntax(content);
 
   // 3. Parse markdown to AST
   const processor = unified().use(remarkParse).use(remarkGfm);
@@ -45,12 +44,13 @@ interface MdastNode {
 }
 
 /**
- * Pre-process wikilinks by converting them to a format remark can handle.
- * We use a special syntax: `<wikilink:pageName:displayText>` as inline HTML.
+ * Pre-process wikilinks and highlight marks to formats remark can handle.
+ * Wikilinks: [[Page Name]] → <wikilink> HTML placeholder
+ * Highlights: ==text== → <mark> HTML placeholder
  */
-function preprocessWikilinks(content: string): string {
-  // Match [[Page Name]] or [[Page Name|Display Text]]
-  return content.replace(
+function preprocessCustomSyntax(content: string): string {
+  // 1. Wikilinks: [[Page Name]] or [[Page Name|Display Text]]
+  let result = content.replace(
     /\[\[([^\]|]+?)(?:\|([^\]]+?))?\]\]/g,
     (_match, pageName: string, displayText?: string) => {
       const encoded = encodeURIComponent(pageName);
@@ -60,6 +60,17 @@ function preprocessWikilinks(content: string): string {
       return `<wikilink data-page="${encoded}" data-display="${display}"></wikilink>`;
     }
   );
+
+  // 2. Highlights: ==text== → self-closing HTML placeholder
+  result = result.replace(
+    /==((?:(?!==).)+)==/g,
+    (_match, text: string) => {
+      const encoded = encodeURIComponent(text);
+      return `<highlight data-text="${encoded}"></highlight>`;
+    }
+  );
+
+  return result;
 }
 
 /**
@@ -74,9 +85,56 @@ function astToTiptap(node: MdastNode): JSONContent {
 
 function convertChildren(node: MdastNode): JSONContent[] {
   if (!node.children) return [];
-  return node.children
-    .map((child) => convertNode(child))
-    .filter((n): n is JSONContent => n !== null);
+
+  const result: JSONContent[] = [];
+  let i = 0;
+
+  while (i < node.children.length) {
+    const child = node.children[i];
+
+    // Detect toggle pattern: <details>...<summary> HTML node,
+    // followed by content nodes, followed by </details> HTML node.
+    if (
+      child.type === "html" &&
+      child.value?.includes("<details>") &&
+      !child.value?.includes("</details>")
+    ) {
+      const summaryMatch = child.value.match(
+        /<summary>([\s\S]*?)<\/summary>/
+      );
+      const title = summaryMatch?.[1] || "Toggle";
+      const toggleContent: JSONContent[] = [];
+      i++;
+
+      // Collect nodes until </details>
+      while (i < node.children.length) {
+        const inner = node.children[i];
+        if (inner.type === "html" && inner.value?.includes("</details>")) {
+          i++;
+          break;
+        }
+        const converted = convertNode(inner);
+        if (converted) toggleContent.push(converted);
+        i++;
+      }
+
+      result.push({
+        type: "toggle",
+        attrs: { title },
+        content:
+          toggleContent.length > 0
+            ? toggleContent
+            : [{ type: "paragraph", content: [] }],
+      });
+      continue;
+    }
+
+    const converted = convertNode(child);
+    if (converted) result.push(converted);
+    i++;
+  }
+
+  return result;
 }
 
 function convertNode(node: MdastNode): JSONContent | null {
@@ -220,17 +278,44 @@ function convertNode(node: MdastNode): JSONContent | null {
           attrs: { pageName, displayText },
         };
       }
-      // Handle <details> (toggle)
-      if (node.value?.startsWith("<details>")) {
+      // Handle <details> (toggle) — remark splits the HTML block
+      // into: <details>\n<summary>Title</summary> as one HTML node,
+      // then content as regular nodes, then </details> as another HTML node.
+      // We handle the opening tag here; content is collected by the parent
+      // converter via collectToggleContent().
+      if (node.value?.includes("<details>")) {
         const summaryMatch = node.value.match(
-          /<summary>(.*?)<\/summary>/
+          /<summary>([\s\S]*?)<\/summary>/
         );
+        // Check if this is a self-contained toggle (all in one HTML block)
+        const fullMatch = node.value.match(
+          /<details>\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/
+        );
+        if (fullMatch) {
+          const title = fullMatch[1] || "Toggle";
+          const innerMd = fullMatch[2].trim();
+          if (innerMd) {
+            const innerResult = markdownToTiptap(innerMd);
+            return {
+              type: "toggle",
+              attrs: { title },
+              content: innerResult.content.content || [
+                { type: "paragraph", content: [] },
+              ],
+            };
+          }
+          return {
+            type: "toggle",
+            attrs: { title },
+            content: [{ type: "paragraph", content: [] }],
+          };
+        }
         return {
           type: "toggle",
           attrs: {
             title: summaryMatch?.[1] || "Toggle",
           },
-          content: [],
+          content: [], // Will be filled by collectToggleContent
         };
       }
       return null;
@@ -324,6 +409,22 @@ function convertInlineNode(
           {
             type: "wikilink",
             attrs: { pageName, displayText },
+          },
+        ];
+      }
+      // Handle <highlight> placeholder for ==text==
+      const highlightMatch = node.value?.match(
+        /<highlight data-text="([^"]*)">/
+      );
+      if (highlightMatch) {
+        return [
+          {
+            type: "text",
+            text: decodeURIComponent(highlightMatch[1]),
+            marks: [
+              ...(parentMarks || []),
+              { type: "highlight" },
+            ],
           },
         ];
       }

@@ -6,18 +6,30 @@ import type { PageMetadata } from "./types";
 export function generateFrontmatter(metadata: PageMetadata): string {
   const lines: string[] = ["---"];
 
+  if (metadata.id) {
+    lines.push(`id: ${escapeYamlString(metadata.id)}`);
+  }
+
   lines.push(`title: ${escapeYamlString(metadata.title)}`);
 
   if (metadata.icon) {
     lines.push(`icon: ${metadata.icon}`);
   }
 
-  lines.push(`created: ${metadata.created}`);
-  lines.push(`updated: ${metadata.updated}`);
-
   if (metadata.parent) {
     lines.push(`parent: ${metadata.parent}`);
   }
+
+  if (metadata.position !== undefined) {
+    lines.push(`position: ${metadata.position}`);
+  }
+
+  if (metadata.spaceType) {
+    lines.push(`spaceType: ${metadata.spaceType}`);
+  }
+
+  lines.push(`created: ${metadata.created}`);
+  lines.push(`updated: ${metadata.updated}`);
 
   if (metadata.tags && metadata.tags.length > 0) {
     lines.push(
@@ -58,20 +70,29 @@ export function parseFrontmatter(markdown: string): {
     const value = line.slice(colonIndex + 1).trim();
 
     switch (key) {
+      case "id":
+        metadata.id = unescapeYamlString(value);
+        break;
       case "title":
         metadata.title = unescapeYamlString(value);
         break;
       case "icon":
         metadata.icon = value;
         break;
+      case "parent":
+        metadata.parent = value;
+        break;
+      case "position":
+        metadata.position = parseInt(value, 10);
+        break;
+      case "spaceType":
+        metadata.spaceType = value;
+        break;
       case "created":
         metadata.created = value;
         break;
       case "updated":
         metadata.updated = value;
-        break;
-      case "parent":
-        metadata.parent = value;
         break;
       case "tags": {
         const tagsMatch = value.match(/\[(.*?)\]/);

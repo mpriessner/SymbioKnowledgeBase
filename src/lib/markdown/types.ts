@@ -4,11 +4,14 @@ import type { JSONContent } from "@tiptap/core";
  * Page metadata for YAML frontmatter.
  */
 export interface PageMetadata {
+  id?: string; // Page UUID (set by sync, read-only in frontmatter)
   title: string;
   icon?: string | null;
+  parent?: string | null; // Parent page ID
+  position?: number; // Sort position among siblings
+  spaceType?: string; // PRIVATE | TEAMSPACE
   created: string; // ISO 8601
   updated: string; // ISO 8601
-  parent?: string | null; // Parent page ID
   tags?: string[];
 }
 
