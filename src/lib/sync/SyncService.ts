@@ -7,6 +7,7 @@ import { tiptapToMarkdown } from "@/lib/markdown/serializer";
 import { MIRROR_ROOT, META_FILENAME } from "./config";
 import { buildPagePaths, absolutePath } from "./FolderStructure";
 import { syncLock } from "./SyncLock";
+import { hasFileChanged, createConflictBackup } from "./conflict";
 import type { SyncMetadata, SyncPageData } from "./types";
 
 /**
@@ -129,6 +130,23 @@ export async function syncPagesToFilesystem(
 
     const markdown = pageToMarkdownWithSync(page);
     const absPath = absolutePath(MIRROR_ROOT, tenantId, resolved.filePath);
+
+    // Check for conflict: has the file been modified since last sync?
+    const fileChanged = await hasFileChanged(tenantId, page.id);
+    if (fileChanged) {
+      try {
+        const existingContent = await fs.readFile(absPath, "utf-8");
+        await createConflictBackup(
+          tenantId,
+          page.id,
+          resolved.filePath,
+          existingContent,
+          "fs"
+        );
+      } catch {
+        // File may not exist yet — no conflict
+      }
+    }
 
     // Acquire sync lock to prevent FS watcher from echoing
     syncLock.acquire(absPath);
