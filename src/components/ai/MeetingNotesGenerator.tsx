@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Mic, Loader2 } from "lucide-react";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { AudioFileUpload } from "./AudioFileUpload";
 import { TranscriptPreview } from "./TranscriptPreview";
 import { StreamingPreview } from "./StreamingPreview";
 import { useAIPageGeneration } from "@/hooks/useAIPageGeneration";
@@ -53,9 +54,39 @@ export function MeetingNotesGenerator({
   const [transcript, setTranscript] = useState("");
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [transcribeError, setTranscribeError] = useState<string | null>(null);
+  const [isUploadProcessing, setIsUploadProcessing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const uploadSectionRef = useRef<HTMLDivElement>(null);
 
   const { generate, content, isGenerating, error: genError, cancel, reset } =
     useAIPageGeneration();
+
+  const transcribeAudio = useCallback(
+    async (file: Blob, filename: string) => {
+      const txConfig = getTranscriptionConfig();
+      const formData = new FormData();
+      formData.append("file", file, filename);
+      formData.append("provider", txConfig.provider);
+      formData.append("model", txConfig.model);
+      if (txConfig.apiKey) {
+        formData.append("apiKey", txConfig.apiKey);
+      }
+
+      const response = await fetch("/api/ai/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error?.message || "Transcription failed");
+      }
+
+      const data = await response.json();
+      return data.data.text as string;
+    },
+    []
+  );
 
   const handleRecordingComplete = useCallback(
     async (audioBlob: Blob, duration: number) => {
@@ -64,29 +95,8 @@ export function MeetingNotesGenerator({
       setTranscribeError(null);
 
       try {
-        const txConfig = getTranscriptionConfig();
-        const formData = new FormData();
-        formData.append("file", audioBlob, "recording.webm");
-        formData.append("provider", txConfig.provider);
-        formData.append("model", txConfig.model);
-        if (txConfig.apiKey) {
-          formData.append("apiKey", txConfig.apiKey);
-        }
-
-        const response = await fetch("/api/ai/transcribe", {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(
-            errData.error?.message || "Transcription failed"
-          );
-        }
-
-        const data = await response.json();
-        setTranscript(data.data.text);
+        const text = await transcribeAudio(audioBlob, "recording.webm");
+        setTranscript(text);
         setStage("reviewing");
       } catch (err) {
         setTranscribeError(
@@ -95,8 +105,34 @@ export function MeetingNotesGenerator({
         setStage("recording");
       }
     },
-    []
+    [transcribeAudio]
   );
+
+  const handleFileUpload = useCallback(
+    async (file: File) => {
+      setIsUploadProcessing(true);
+      setUploadError(null);
+      setTranscribeError(null);
+
+      try {
+        const text = await transcribeAudio(file, file.name);
+        setTranscript(text);
+        setRecordingDuration(0); // Unknown duration for uploaded files
+        setStage("reviewing");
+      } catch (err) {
+        setUploadError(
+          err instanceof Error ? err.message : "Transcription failed"
+        );
+      } finally {
+        setIsUploadProcessing(false);
+      }
+    },
+    [transcribeAudio]
+  );
+
+  const scrollToUpload = useCallback(() => {
+    uploadSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
 
   const handleGenerateNotes = useCallback(() => {
     setStage("generating");
@@ -142,12 +178,29 @@ export function MeetingNotesGenerator({
           <VoiceRecorder
             onRecordingComplete={handleRecordingComplete}
             onCancel={onCancel}
+            onUploadFallback={scrollToUpload}
           />
+
+          {/* Divider */}
+          <div className="flex items-center gap-2 my-4">
+            <div className="flex-1 h-px bg-[var(--border-default)]" />
+            <span className="text-[10px] text-[var(--text-tertiary)]">or</span>
+            <div className="flex-1 h-px bg-[var(--border-default)]" />
+          </div>
+
+          {/* File upload */}
+          <div ref={uploadSectionRef}>
+            <AudioFileUpload
+              onFileSelected={handleFileUpload}
+              isProcessing={isUploadProcessing}
+              error={uploadError ?? undefined}
+            />
+          </div>
         </>
       )}
 
-      {/* Stage: Transcribing */}
-      {stage === "transcribing" && (
+      {/* Stage: Transcribing (from recording or file upload) */}
+      {(stage === "transcribing" || (stage === "recording" && isUploadProcessing)) && (
         <div className="text-center py-8">
           <Loader2 className="w-6 h-6 mx-auto animate-spin text-[var(--accent-primary)]" />
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
