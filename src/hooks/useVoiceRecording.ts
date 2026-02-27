@@ -4,6 +4,13 @@ import { useState, useRef, useCallback, useEffect } from "react";
 
 export type RecordingState = "idle" | "requesting" | "recording" | "stopped" | "error";
 
+export type MicErrorType =
+  | "permission-denied"
+  | "no-device"
+  | "device-in-use"
+  | "not-supported"
+  | "unknown";
+
 interface UseVoiceRecordingOptions {
   maxDuration?: number; // seconds, default 1800 (30 min)
 }
@@ -14,9 +21,12 @@ interface UseVoiceRecordingReturn {
   audioBlob: Blob | null;
   analyserNode: AnalyserNode | null;
   error: string | null;
+  errorType: MicErrorType | null;
+  permissionState: PermissionState | "unknown";
   startRecording: () => Promise<void>;
   stopRecording: () => void;
   reset: () => void;
+  checkPermission: () => Promise<PermissionState | "unknown">;
 }
 
 export function useVoiceRecording(
@@ -29,6 +39,8 @@ export function useVoiceRecording(
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<MicErrorType | null>(null);
+  const [permissionState, setPermissionState] = useState<PermissionState | "unknown">("unknown");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -56,11 +68,31 @@ export function useVoiceRecording(
   // Cleanup on unmount
   useEffect(() => cleanup, [cleanup]);
 
+  const checkPermission = useCallback(async (): Promise<PermissionState | "unknown"> => {
+    try {
+      const result = await navigator.permissions.query({ name: "microphone" as PermissionName });
+      setPermissionState(result.state);
+      // Listen for changes
+      result.onchange = () => setPermissionState(result.state);
+      return result.state;
+    } catch {
+      // Firefox doesn't support permissions.query for microphone
+      setPermissionState("unknown");
+      return "unknown";
+    }
+  }, []);
+
+  // Check permission on mount
+  useEffect(() => {
+    checkPermission();
+  }, [checkPermission]);
+
   const startRecording = useCallback(async () => {
     if (state === "recording") return;
 
     setState("requesting");
     setError(null);
+    setErrorType(null);
     setAudioBlob(null);
     setDuration(0);
     chunksRef.current = [];
@@ -68,6 +100,7 @@ export function useVoiceRecording(
     // Check browser support
     if (!navigator.mediaDevices?.getUserMedia) {
       setState("error");
+      setErrorType("not-supported");
       setError("Your browser doesn't support audio recording. Try Chrome or Firefox.");
       return;
     }
@@ -82,9 +115,11 @@ export function useVoiceRecording(
         },
       });
       streamRef.current = stream;
+      setPermissionState("granted");
 
       // Set up AudioContext and AnalyserNode for waveform
-      const audioContext = new AudioContext();
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const audioContext = new AudioCtx();
       audioContextRef.current = audioContext;
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
@@ -129,13 +164,33 @@ export function useVoiceRecording(
     } catch (err) {
       cleanup();
       setState("error");
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
-        setError("Microphone access required. Please allow in browser settings.");
+
+      if (err instanceof DOMException) {
+        switch (err.name) {
+          case "NotAllowedError":
+            setErrorType("permission-denied");
+            setPermissionState("denied");
+            setError("Microphone access was denied.");
+            break;
+          case "NotFoundError":
+            setErrorType("no-device");
+            setError("No microphone detected. Connect a microphone and try again.");
+            break;
+          case "NotReadableError":
+          case "AbortError":
+            setErrorType("device-in-use");
+            setError("Microphone is being used by another application. Close it and try again.");
+            break;
+          default:
+            setErrorType("unknown");
+            setError("Failed to start recording. Check your microphone.");
+        }
       } else {
+        setErrorType("unknown");
         setError("Failed to start recording. Check your microphone.");
       }
     }
-  }, [state, maxDuration, cleanup]);
+  }, [state, maxDuration, cleanup, checkPermission]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -149,6 +204,7 @@ export function useVoiceRecording(
     setDuration(0);
     setAudioBlob(null);
     setError(null);
+    setErrorType(null);
     chunksRef.current = [];
   }, [cleanup]);
 
@@ -158,8 +214,11 @@ export function useVoiceRecording(
     audioBlob,
     analyserNode,
     error,
+    errorType,
+    permissionState,
     startRecording,
     stopRecording,
     reset,
+    checkPermission,
   };
 }
