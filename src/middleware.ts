@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
 // Routes that do not require authentication
-const PUBLIC_PATHS = ["/", "/login", "/register", "/shared", "/api/auth"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/shared", "/api/auth", "/auth/callback"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(
