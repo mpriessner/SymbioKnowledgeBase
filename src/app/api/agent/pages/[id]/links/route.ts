@@ -38,7 +38,7 @@ export const GET = withAgentAuth(
         where: { sourcePageId: id, tenantId: ctx.tenantId },
         include: {
           targetPage: {
-            select: { id: true, title: true, icon: true },
+            select: { id: true, title: true, icon: true, oneLiner: true },
           },
         },
       });
@@ -47,6 +47,7 @@ export const GET = withAgentAuth(
         id: link.targetPage.id,
         title: link.targetPage.title,
         icon: link.targetPage.icon,
+        oneLiner: link.targetPage.oneLiner,
       }));
 
       // Sort alphabetically

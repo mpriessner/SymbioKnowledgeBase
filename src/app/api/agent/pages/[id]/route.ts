@@ -5,6 +5,7 @@ import type { AgentContext } from "@/lib/agent/auth";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { tiptapToMarkdown, markdownToTiptap } from "@/lib/agent/markdown";
 import { processAgentWikilinks } from "@/lib/agent/wikilinks";
+import { generatePagePath } from "@/lib/agent/pageTree";
 import { z } from "zod";
 
 const updatePageSchema = z.object({
@@ -75,7 +76,13 @@ export const DELETE = withAgentAuth(
 );
 
 /**
- * GET /api/agent/pages/:id — Read page as markdown
+ * GET /api/agent/pages/:id — Read page with detail
+ *
+ * Returns page markdown content plus enriched metadata:
+ * - summary fields (oneLiner, summary, summaryUpdatedAt)
+ * - breadcrumb path (/Parent/Child/Page)
+ * - outgoing and incoming links with one-liners
+ * - child count
  */
 export const GET = withAgentAuth(
   async (req: NextRequest, ctx: AgentContext, routeContext: RouteContext) => {
@@ -84,32 +91,78 @@ export const GET = withAgentAuth(
 
       const page = await prisma.page.findFirst({
         where: { id, tenantId: ctx.tenantId },
+        include: {
+          _count: {
+            select: { children: true },
+          },
+        },
       });
 
       if (!page) {
         return errorResponse("NOT_FOUND", "Page not found", undefined, 404);
       }
 
-      // Find DOCUMENT block
-      const block = await prisma.block.findFirst({
-        where: {
-          pageId: id,
-          tenantId: ctx.tenantId,
-          type: "DOCUMENT",
-          deletedAt: null,
-        },
-      });
+      // Fetch markdown, links, and path data in parallel
+      const [block, outgoingLinks, incomingLinks, allPages] = await Promise.all([
+        prisma.block.findFirst({
+          where: {
+            pageId: id,
+            tenantId: ctx.tenantId,
+            type: "DOCUMENT",
+            deletedAt: null,
+          },
+        }),
+        prisma.pageLink.findMany({
+          where: { sourcePageId: id, tenantId: ctx.tenantId },
+          include: {
+            targetPage: {
+              select: { id: true, title: true, oneLiner: true },
+            },
+          },
+        }),
+        prisma.pageLink.findMany({
+          where: { targetPageId: id, tenantId: ctx.tenantId },
+          include: {
+            sourcePage: {
+              select: { id: true, title: true, oneLiner: true },
+            },
+          },
+        }),
+        prisma.page.findMany({
+          where: { tenantId: ctx.tenantId },
+          select: { id: true, title: true, parentId: true },
+        }),
+      ]);
 
       let markdown = "";
       if (block) {
         markdown = tiptapToMarkdown(block.content);
       }
 
+      // Build path
+      const pagesById = new Map(allPages.map((p) => [p.id, p]));
+      const pagePath = generatePagePath(id, pagesById);
+
       return successResponse({
         id: page.id,
         title: page.title,
         icon: page.icon,
+        oneLiner: page.oneLiner,
+        summary: page.summary,
+        summaryUpdatedAt: page.summaryUpdatedAt?.toISOString() ?? null,
+        path: pagePath,
         parent_id: page.parentId,
+        childCount: page._count.children,
+        outgoingLinks: outgoingLinks.map((l) => ({
+          pageId: l.targetPage.id,
+          title: l.targetPage.title,
+          oneLiner: l.targetPage.oneLiner,
+        })),
+        incomingLinks: incomingLinks.map((l) => ({
+          pageId: l.sourcePage.id,
+          title: l.sourcePage.title,
+          oneLiner: l.sourcePage.oneLiner,
+        })),
         markdown,
         created_at: page.createdAt.toISOString(),
         updated_at: page.updatedAt.toISOString(),

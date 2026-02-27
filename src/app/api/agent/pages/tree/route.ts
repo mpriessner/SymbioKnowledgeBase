@@ -3,34 +3,43 @@ import { prisma } from "@/lib/db";
 import { withAgentAuth } from "@/lib/agent/auth";
 import type { AgentContext } from "@/lib/agent/auth";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
-
-interface TreeNode {
-  id: string;
-  title: string;
-  icon: string | null;
-  children: TreeNode[];
-}
+import { buildAgentPageTree, computeTreeMeta } from "@/lib/agent/pageTree";
+import type { PageWithCounts } from "@/lib/agent/types";
 
 /**
  * GET /api/agent/pages/tree — Full page hierarchy as a nested tree
+ *
+ * Enhanced with oneLiner, linkCount, childCount, and summaryStale fields.
+ * Use GET /api/agent/pages?format=tree for filter support.
  */
 export const GET = withAgentAuth(
   async (_req: NextRequest, ctx: AgentContext) => {
     try {
-      const pages = await prisma.page.findMany({
+      const pages: PageWithCounts[] = await prisma.page.findMany({
         where: { tenantId: ctx.tenantId },
         orderBy: { position: "asc" },
         select: {
           id: true,
           title: true,
           icon: true,
+          oneLiner: true,
           parentId: true,
           position: true,
+          spaceType: true,
+          updatedAt: true,
+          summaryUpdatedAt: true,
+          _count: {
+            select: {
+              sourceLinks: true,
+              targetLinks: true,
+            },
+          },
         },
       });
 
-      const tree = buildTree(pages);
-      return successResponse(tree);
+      const tree = buildAgentPageTree(pages);
+      const meta = computeTreeMeta(pages);
+      return successResponse({ pages: tree }, meta);
     } catch (error) {
       console.error("GET /api/agent/pages/tree error:", error);
       return errorResponse(
@@ -42,32 +51,3 @@ export const GET = withAgentAuth(
     }
   }
 );
-
-function buildTree(
-  pages: Array<{
-    id: string;
-    title: string;
-    icon: string | null;
-    parentId: string | null;
-  }>
-): TreeNode[] {
-  const map = new Map<string, TreeNode>();
-  const roots: TreeNode[] = [];
-
-  // First pass: create nodes
-  for (const p of pages) {
-    map.set(p.id, { id: p.id, title: p.title, icon: p.icon, children: [] });
-  }
-
-  // Second pass: attach children to parents
-  for (const p of pages) {
-    const node = map.get(p.id)!;
-    if (p.parentId && map.has(p.parentId)) {
-      map.get(p.parentId)!.children.push(node);
-    } else {
-      roots.push(node);
-    }
-  }
-
-  return roots;
-}

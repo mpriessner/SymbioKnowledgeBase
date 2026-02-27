@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { withAgentAuth } from "@/lib/agent/auth";
 import type { AgentContext } from "@/lib/agent/auth";
 import { listResponse, errorResponse } from "@/lib/apiResponse";
+import { generatePagePath } from "@/lib/agent/pageTree";
 import { z } from "zod";
 
 const searchQuerySchema = z.object({
@@ -35,6 +36,7 @@ interface SearchRow {
   page_id: string;
   title: string;
   icon: string | null;
+  one_liner: string | null;
   plain_text: string;
   score: number;
 }
@@ -70,6 +72,7 @@ export const GET = withAgentAuth(
           b.page_id,
           p.title,
           p.icon,
+          p.one_liner,
           b.plain_text,
           ts_rank(b.search_vector, websearch_to_tsquery('english', ${q})) as score
         FROM blocks b
@@ -89,11 +92,25 @@ export const GET = withAgentAuth(
           AND b.search_vector @@ websearch_to_tsquery('english', ${q})
       `;
 
+      // Build page path map for breadcrumb generation
+      const pageIds = [...new Set(results.map((r) => r.page_id))];
+      let pagesById = new Map<string, { title: string; parentId: string | null }>();
+
+      if (pageIds.length > 0) {
+        const allPages = await prisma.page.findMany({
+          where: { tenantId: ctx.tenantId },
+          select: { id: true, title: true, parentId: true },
+        });
+        pagesById = new Map(allPages.map((p) => [p.id, p]));
+      }
+
       const formatted = results.map((r) => ({
         page_id: r.page_id,
         title: r.title,
         icon: r.icon,
-        snippet: extractMarkdownSnippet(r.plain_text || "", q),
+        oneLiner: r.one_liner,
+        path: generatePagePath(r.page_id, pagesById),
+        matchContext: extractMarkdownSnippet(r.plain_text || "", q),
         score: parseFloat(String(r.score)),
       }));
 

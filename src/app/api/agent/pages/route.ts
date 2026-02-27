@@ -9,13 +9,29 @@ import {
 } from "@/lib/apiResponse";
 import { markdownToTiptap } from "@/lib/agent/markdown";
 import { processAgentWikilinks } from "@/lib/agent/wikilinks";
+import {
+  buildAgentPageTree,
+  buildFlatList,
+  computeTreeMeta,
+} from "@/lib/agent/pageTree";
+import type { PageWithCounts } from "@/lib/agent/types";
 import { z } from "zod";
 
 const listPagesQuerySchema = z.object({
+  format: z.enum(["tree", "flat", "list"]).default("list"),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
   parent_id: z.string().uuid().optional(),
   search: z.string().optional(),
+  spaceType: z.string().optional(),
+  staleOnly: z
+    .enum(["true", "false"])
+    .transform((v) => v === "true")
+    .optional(),
+  noSummary: z
+    .enum(["true", "false"])
+    .transform((v) => v === "true")
+    .optional(),
 });
 
 const createPageSchema = z.object({
@@ -26,7 +42,15 @@ const createPageSchema = z.object({
 });
 
 /**
- * GET /api/agent/pages — List pages with pagination
+ * GET /api/agent/pages — List pages with pagination, tree, or flat format
+ *
+ * Query params:
+ *   format=list (default) — paginated list (legacy behavior)
+ *   format=tree — nested tree structure with summaries
+ *   format=flat — flat list in tree order with depth/path
+ *   spaceType=PRIVATE|TEAMSPACE — filter by space type
+ *   staleOnly=true — only pages with stale summaries
+ *   noSummary=true — only pages with null oneLiner
  */
 export const GET = withAgentAuth(
   async (req: NextRequest, ctx: AgentContext) => {
@@ -44,15 +68,19 @@ export const GET = withAgentAuth(
         );
       }
 
-      const { limit, offset, parent_id, search } = parsed.data;
+      const { format, limit, offset, parent_id, search, spaceType, staleOnly, noSummary } =
+        parsed.data;
 
-      const where: {
-        tenantId: string;
-        parentId?: string;
-        title?: { contains: string; mode: "insensitive" };
-      } = { tenantId: ctx.tenantId };
+      // Tree and flat formats: return enriched data with summaries
+      if (format === "tree" || format === "flat") {
+        return handleTreeOrFlat(ctx, format, { spaceType, staleOnly, noSummary, limit, offset });
+      }
+
+      // Legacy list format
+      const where: Record<string, unknown> = { tenantId: ctx.tenantId };
       if (parent_id) where.parentId = parent_id;
       if (search) where.title = { contains: search, mode: "insensitive" };
+      if (spaceType) where.spaceType = spaceType;
 
       const [pages, total] = await Promise.all([
         prisma.page.findMany({
@@ -96,6 +124,79 @@ export const GET = withAgentAuth(
     }
   }
 );
+
+/**
+ * Handle format=tree or format=flat requests.
+ */
+async function handleTreeOrFlat(
+  ctx: AgentContext,
+  format: "tree" | "flat",
+  filters: {
+    spaceType?: string;
+    staleOnly?: boolean;
+    noSummary?: boolean;
+    limit: number;
+    offset: number;
+  }
+) {
+  const where: Record<string, unknown> = { tenantId: ctx.tenantId };
+  if (filters.spaceType) where.spaceType = filters.spaceType;
+  if (filters.noSummary) where.oneLiner = null;
+
+  const pages = await prisma.page.findMany({
+    where,
+    select: {
+      id: true,
+      title: true,
+      icon: true,
+      oneLiner: true,
+      parentId: true,
+      position: true,
+      spaceType: true,
+      updatedAt: true,
+      summaryUpdatedAt: true,
+      _count: {
+        select: {
+          sourceLinks: true,
+          targetLinks: true,
+        },
+      },
+    },
+    orderBy: { position: "asc" },
+  });
+
+  let filtered: PageWithCounts[] = pages;
+
+  // Post-query filter for staleOnly (requires comparing dates)
+  if (filters.staleOnly) {
+    filtered = filtered.filter((p) => {
+      if (!p.summaryUpdatedAt) return true;
+      return p.updatedAt > p.summaryUpdatedAt;
+    });
+  }
+
+  const meta = computeTreeMeta(filtered);
+
+  if (format === "tree") {
+    const tree = buildAgentPageTree(filtered);
+    return successResponse({ pages: tree }, meta);
+  }
+
+  // Flat format with pagination
+  const allFlat = buildFlatList(filtered);
+  const paginated = allFlat.slice(filters.offset, filters.offset + filters.limit);
+
+  return successResponse(
+    { pages: paginated },
+    {
+      ...meta,
+      total: allFlat.length,
+      limit: filters.limit,
+      offset: filters.offset,
+      hasMore: filters.offset + filters.limit < allFlat.length,
+    }
+  );
+}
 
 /**
  * POST /api/agent/pages — Create page from markdown
