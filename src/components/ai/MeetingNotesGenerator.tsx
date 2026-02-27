@@ -112,6 +112,12 @@ export function MeetingNotesGenerator({
     reset();
   }, [reset]);
 
+  // Build the final content with raw transcript appended
+  const buildFinalContent = useCallback(() => {
+    const rawTranscriptSection = `\n\n---\n\n## Raw Transcript\n\n<details>\n<summary>Click to expand original transcript</summary>\n\n${transcript}\n\n</details>`;
+    return content + rawTranscriptSection;
+  }, [content, transcript]);
+
   // When generation is done
   const isDone = stage === "generating" && !isGenerating && content.trim().length > 0;
 
@@ -169,6 +175,18 @@ export function MeetingNotesGenerator({
             onStop={cancel}
           />
 
+          {/* Raw transcript preview (shown after generation completes) */}
+          {isDone && transcript && (
+            <details className="mt-3 rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)]">
+              <summary className="px-3 py-2 text-xs font-medium text-[var(--text-secondary)] cursor-pointer hover:text-[var(--text-primary)]">
+                Raw Transcript (will be included in saved page)
+              </summary>
+              <div className="px-3 pb-3 text-xs text-[var(--text-tertiary)] whitespace-pre-wrap max-h-[200px] overflow-y-auto">
+                {transcript}
+              </div>
+            </details>
+          )}
+
           {isDone && (
             <div className="mt-3 flex items-center justify-end gap-2">
               <button
@@ -181,7 +199,7 @@ export function MeetingNotesGenerator({
                 Start over
               </button>
               <button
-                onClick={() => onComplete(content)}
+                onClick={() => onComplete(buildFinalContent())}
                 className="px-3 py-1.5 text-xs font-medium rounded
                   bg-[var(--accent-primary)] text-white
                   hover:opacity-90 transition-opacity"
