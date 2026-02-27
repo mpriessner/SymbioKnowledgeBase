@@ -142,13 +142,16 @@ export function SidebarTreeNode({
           </span>
         </Tooltip>
 
-        {/* Create child button (visible on hover) */}
-        {isHovered && (
+        {/* Action buttons — always right-aligned via ml-auto */}
+        <div className="ml-auto flex items-center flex-shrink-0">
           <button
-            className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 mr-1"
+            className={`w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 mr-1 ${
+              isHovered ? "visible" : "invisible"
+            }`}
             onClick={handleCreateChild}
             aria-label={`Create page inside ${node.title}`}
             title="Create subpage"
+            tabIndex={isHovered ? 0 : -1}
           >
             <svg
               className="w-3.5 h-3.5 text-gray-400"
@@ -160,7 +163,7 @@ export function SidebarTreeNode({
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
           </button>
-        )}
+        </div>
       </div>
 
       {/* Recursive children */}

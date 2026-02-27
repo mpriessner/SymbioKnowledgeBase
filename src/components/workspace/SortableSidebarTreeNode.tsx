@@ -299,38 +299,39 @@ export function SortableSidebarTreeNode({
           </Tooltip>
         )}
 
-        {/* Action buttons (visible on hover, hidden during drag) */}
-        {isHovered && !activeId && (
-          <>
-            {/* More options button */}
-            <button
-              className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200"
-              onClick={handleMoreClick}
-              aria-label={`More options for ${node.title}`}
-              title="More options"
+        {/* Action buttons — always right-aligned via ml-auto */}
+        <div className="ml-auto flex items-center flex-shrink-0">
+          <button
+            className={`w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 ${
+              isHovered && !activeId ? "visible" : "invisible"
+            }`}
+            onClick={handleMoreClick}
+            aria-label={`More options for ${node.title}`}
+            title="More options"
+            tabIndex={isHovered && !activeId ? 0 : -1}
+          >
+            <MoreHorizontal className="w-3.5 h-3.5 text-gray-400" />
+          </button>
+          <button
+            className={`w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 mr-1 ${
+              isHovered && !activeId ? "visible" : "invisible"
+            }`}
+            onClick={handleCreateChild}
+            aria-label={`Create page inside ${node.title}`}
+            title="Create subpage"
+            tabIndex={isHovered && !activeId ? 0 : -1}
+          >
+            <svg
+              className="w-3.5 h-3.5 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
             >
-              <MoreHorizontal className="w-3.5 h-3.5 text-gray-400" />
-            </button>
-
-            {/* Create child button */}
-            <button
-              className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 mr-1"
-              onClick={handleCreateChild}
-              aria-label={`Create page inside ${node.title}`}
-              title="Create subpage"
-            >
-              <svg
-                className="w-3.5 h-3.5 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-            </button>
-          </>
-        )}
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Drop indicator line: after */}
