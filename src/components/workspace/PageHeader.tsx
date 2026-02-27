@@ -139,7 +139,7 @@ export function PageHeader({ page }: PageHeaderProps) {
           <div className="mb-2 relative">
             <button
               onClick={() => setShowEmojiPicker((prev) => !prev)}
-              className="text-5xl hover:bg-gray-100 rounded-lg p-2 transition-colors"
+              className="text-5xl hover:bg-[var(--bg-hover)] rounded-lg p-2 transition-colors"
               aria-label="Change page icon"
             >
               {page.icon}
@@ -165,7 +165,7 @@ export function PageHeader({ page }: PageHeaderProps) {
             <div className="relative">
               <button
                 onClick={() => setShowEmojiPicker((prev) => !prev)}
-                className="text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded px-2 py-1 transition-colors flex items-center gap-1"
+                className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded px-2 py-1 transition-colors flex items-center gap-1"
                 aria-label="Add icon"
               >
                 <svg
@@ -194,7 +194,7 @@ export function PageHeader({ page }: PageHeaderProps) {
           {!page.coverUrl && (
             <button
               onClick={() => setShowCoverInput(true)}
-              className="text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded px-2 py-1 transition-colors flex items-center gap-1"
+              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded px-2 py-1 transition-colors flex items-center gap-1"
               aria-label="Add cover"
             >
               <svg
@@ -220,7 +220,7 @@ export function PageHeader({ page }: PageHeaderProps) {
           ref={titleRef}
           contentEditable
           suppressContentEditableWarning
-          className="text-4xl font-bold text-gray-900 outline-none focus:outline-none empty:before:content-['Untitled'] empty:before:text-gray-300 cursor-text"
+          className="text-4xl font-bold text-[var(--text-primary)] outline-none focus:outline-none empty:before:content-['Untitled'] empty:before:text-[var(--text-tertiary)] cursor-text"
           onBlur={handleTitleBlur}
           onKeyDown={handleTitleKeyDown}
           onInput={(e) => setTitle(e.currentTarget.textContent || "")}

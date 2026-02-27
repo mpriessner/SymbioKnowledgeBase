@@ -98,9 +98,9 @@ export function CoverImageManager({
   // URL input modal
   if (isEditing) {
     return (
-      <div className="w-full bg-gray-50 border-b border-gray-200 content-pad py-4">
+      <div className="w-full bg-[var(--bg-secondary)] border-b border-[var(--border-default)] content-pad py-4">
         <div className="w-full">
-          <p className="text-sm font-medium text-gray-700 mb-2">
+          <p className="text-sm font-medium text-[var(--text-primary)] mb-2">
             {coverUrl ? "Change cover image" : "Add cover image"}
           </p>
           <div className="flex gap-2">
@@ -117,8 +117,9 @@ export function CoverImageManager({
                 placeholder="Paste an image URL (e.g., https://example.com/image.jpg)"
                 className={`
                   w-full px-3 py-2 text-sm border rounded-md
+                  bg-[var(--bg-primary)] text-[var(--text-primary)]
                   focus:outline-none focus:ring-2 focus:ring-blue-300
-                  ${error ? "border-red-300" : "border-gray-300"}
+                  ${error ? "border-red-300" : "border-[var(--border-default)]"}
                 `}
                 aria-label="Cover image URL"
                 aria-invalid={!!error}
@@ -135,7 +136,7 @@ export function CoverImageManager({
             </button>
             <button
               onClick={handleCancel}
-              className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors"
+              className="px-4 py-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-md transition-colors"
             >
               Cancel
             </button>
