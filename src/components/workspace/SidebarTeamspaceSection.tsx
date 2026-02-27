@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import { DndSidebarTree } from "@/components/workspace/DndSidebarTree";
 import { useCollapsedState } from "@/hooks/useLocalStorageState";
 import type { PageTreeNode } from "@/types/page";
+import type { MultiSelectProps } from "@/components/workspace/Sidebar";
 
 interface SidebarTeamspaceSectionProps {
   sectionId: string;
@@ -13,6 +14,7 @@ interface SidebarTeamspaceSectionProps {
   isLoading: boolean;
   error: Error | null;
   tree: PageTreeNode[];
+  multiSelect?: MultiSelectProps;
 }
 
 export function SidebarTeamspaceSection({
@@ -23,6 +25,7 @@ export function SidebarTeamspaceSection({
   isLoading,
   error,
   tree,
+  multiSelect,
 }: SidebarTeamspaceSectionProps) {
   const [collapsed, toggleCollapsed] = useCollapsedState(sectionId);
 
@@ -93,7 +96,7 @@ export function SidebarTeamspaceSection({
           )}
 
           {!isLoading && !error && tree.length > 0 && (
-            <DndSidebarTree tree={tree} />
+            <DndSidebarTree tree={tree} multiSelect={multiSelect} />
           )}
         </div>
       )}

@@ -6,12 +6,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { useRouter, usePathname } from "next/navigation";
 import { useCreatePage, useUpdatePage } from "@/hooks/usePages";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, Check } from "lucide-react";
 import {
   PageContextMenu,
   usePageContextMenu,
 } from "@/components/sidebar/PageContextMenu";
 import type { PageTreeNode } from "@/types/page";
+import type { MultiSelectProps } from "@/components/workspace/Sidebar";
 
 interface DropPosition {
   type: "before" | "after" | "child";
@@ -29,6 +30,7 @@ interface SortableSidebarTreeNodeProps {
   activeId: string | null;
   overId: string | null;
   dropPosition: DropPosition | null;
+  multiSelect?: MultiSelectProps;
 }
 
 export function SortableSidebarTreeNode({
@@ -40,6 +42,7 @@ export function SortableSidebarTreeNode({
   activeId,
   overId,
   dropPosition,
+  multiSelect,
 }: SortableSidebarTreeNodeProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -52,6 +55,9 @@ export function SortableSidebarTreeNode({
   const titleRef = useRef<HTMLSpanElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const { contextMenu, openContextMenu, closeContextMenu } = usePageContextMenu();
+
+  const isNodeSelected = multiSelect?.isSelected(node.id) ?? false;
+  const showCheckboxes = (multiSelect?.selectionCount ?? 0) > 0;
 
   // Check if title is truncated
   useEffect(() => {
@@ -89,9 +95,16 @@ export function SortableSidebarTreeNode({
     paddingLeft: `${paddingLeft}px`,
   };
 
-  const handleClick = useCallback(() => {
-    router.push(`/pages/${node.id}`);
-  }, [router, node.id]);
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Let multi-select consume Cmd/Shift clicks
+      if (multiSelect?.handleMultiSelectClick(node.id, e)) {
+        return;
+      }
+      router.push(`/pages/${node.id}`);
+    },
+    [router, node.id, multiSelect]
+  );
 
   const handleToggle = useCallback(
     (e: React.MouseEvent) => {
@@ -179,6 +192,13 @@ export function SortableSidebarTreeNode({
     );
   }, [createPage, node.title, node.parentId, node.icon, router]);
 
+  // Row background: selected > active > drop-target > default
+  const rowBg = (() => {
+    if (isNodeSelected) return "bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-100";
+    if (isActive) return "bg-blue-100 text-blue-900";
+    return "hover:bg-gray-100 text-gray-700";
+  })();
+
   return (
     <div>
       {/* Drop indicator line: before */}
@@ -198,7 +218,7 @@ export function SortableSidebarTreeNode({
           group flex items-center h-8 cursor-pointer rounded-md mx-1
           transition-colors duration-100
           ${isDragging ? "opacity-40" : ""}
-          ${isActive ? "bg-blue-100 text-blue-900" : "hover:bg-gray-100 text-gray-700"}
+          ${rowBg}
           ${isDropTarget && dropPosition?.type === "child" ? "bg-blue-100 ring-2 ring-blue-400 ring-inset" : ""}
         `}
         onClick={handleClick}
@@ -207,34 +227,60 @@ export function SortableSidebarTreeNode({
         onMouseLeave={() => setIsHovered(false)}
         role="treeitem"
         aria-expanded={hasChildren ? isExpanded : undefined}
-        aria-selected={isActive}
+        aria-selected={isActive || isNodeSelected}
         aria-level={depth + 1}
       >
-        {/* Drag handle (visible on hover) */}
-        <button
-          className={`
-            flex-shrink-0 w-4 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing
-            ${isHovered ? "opacity-100" : "opacity-0"}
-            transition-opacity
-          `}
-          {...attributes}
-          {...listeners}
-          tabIndex={-1}
-          aria-label={`Drag ${node.title}`}
-        >
-          <svg
-            className="w-3 h-3 text-gray-400"
-            viewBox="0 0 16 16"
-            fill="currentColor"
+        {/* Checkbox (visible when any page is selected, or on hover) */}
+        {(showCheckboxes || isHovered) ? (
+          <button
+            className={`
+              flex-shrink-0 w-4 h-4 ml-0.5 mr-0.5 flex items-center justify-center rounded border transition-colors
+              ${isNodeSelected
+                ? "bg-blue-500 border-blue-500 text-white"
+                : "border-gray-300 hover:border-gray-400 bg-transparent"
+              }
+            `}
+            onClick={(e) => {
+              e.stopPropagation();
+              multiSelect?.handleMultiSelectClick(node.id, {
+                ...e,
+                metaKey: true,
+                ctrlKey: false,
+                shiftKey: false,
+              } as React.MouseEvent);
+            }}
+            tabIndex={-1}
+            aria-label={isNodeSelected ? `Deselect ${node.title}` : `Select ${node.title}`}
           >
-            <circle cx="5" cy="3" r="1.5" />
-            <circle cx="11" cy="3" r="1.5" />
-            <circle cx="5" cy="8" r="1.5" />
-            <circle cx="11" cy="8" r="1.5" />
-            <circle cx="5" cy="13" r="1.5" />
-            <circle cx="11" cy="13" r="1.5" />
-          </svg>
-        </button>
+            {isNodeSelected && <Check className="w-3 h-3" />}
+          </button>
+        ) : (
+          /* Drag handle (visible on hover when no selection) */
+          <button
+            className={`
+              flex-shrink-0 w-4 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing
+              ${isHovered ? "opacity-100" : "opacity-0"}
+              transition-opacity
+            `}
+            {...attributes}
+            {...listeners}
+            tabIndex={-1}
+            aria-label={`Drag ${node.title}`}
+          >
+            <svg
+              className="w-3 h-3 text-gray-400"
+              viewBox="0 0 16 16"
+              fill="currentColor"
+            >
+              <circle cx="5" cy="3" r="1.5" />
+              <circle cx="11" cy="3" r="1.5" />
+              <circle cx="5" cy="8" r="1.5" />
+              <circle cx="11" cy="8" r="1.5" />
+              <circle cx="5" cy="13" r="1.5" />
+              <circle cx="11" cy="13" r="1.5" />
+            </svg>
+          </button>
+        )}
 
         {/* Expand/collapse chevron */}
         <button
@@ -356,6 +402,7 @@ export function SortableSidebarTreeNode({
               activeId={activeId}
               overId={overId}
               dropPosition={dropPosition}
+              multiSelect={multiSelect}
             />
           ))}
         </div>
@@ -370,6 +417,8 @@ export function SortableSidebarTreeNode({
           onClose={closeContextMenu}
           onRename={handleStartRename}
           onDuplicate={handleDuplicate}
+          selectedIds={multiSelect?.selectedIds}
+          selectionCount={multiSelect?.selectionCount ?? 0}
         />
       )}
     </div>

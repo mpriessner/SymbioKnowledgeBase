@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { WorkspaceDropdown } from "@/components/workspace/WorkspaceDropdown";
 import { SidebarTeamspaceSection } from "@/components/workspace/SidebarTeamspaceSection";
+import { BulkActionBar } from "@/components/sidebar/BulkActionBar";
 import { usePageTree } from "@/hooks/usePageTree";
 import { useCreatePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
@@ -12,9 +13,28 @@ import { useSidebarCollapse } from "@/hooks/useSidebarCollapse";
 import { useSidebarWidth } from "@/hooks/useSidebarWidth";
 import { useTeamspaces } from "@/hooks/useTeamspaces";
 import { useIsMac } from "@/hooks/useClientValue";
+import { useMultiSelect, flattenVisibleTree } from "@/hooks/useMultiSelect";
+import { useSidebarExpandState } from "@/hooks/useSidebarExpandState";
 import type { PageTreeNode } from "@/types/page";
 import { DEFAULT_COLUMNS } from "@/types/database";
 import type { DatabaseSchema } from "@/types/database";
+
+/** Props passed through to tree nodes for multi-select behavior */
+export interface MultiSelectProps {
+  isSelected: (id: string) => boolean;
+  handleMultiSelectClick: (id: string, event: React.MouseEvent) => boolean;
+  selectionCount: number;
+}
+
+/** Collect all page titles from a tree for the bulk action bar */
+function collectPageTitles(nodes: PageTreeNode[], map: Map<string, string>) {
+  for (const node of nodes) {
+    map.set(node.id, node.title);
+    if (node.children.length > 0) {
+      collectPageTitles(node.children, map);
+    }
+  }
+}
 
 export function Sidebar() {
   const router = useRouter();
@@ -26,10 +46,54 @@ export function Sidebar() {
   const { isCollapsed, toggle: toggleSidebar } = useSidebarCollapse();
   const { width: sidebarWidth, isResizing, startResize } = useSidebarWidth();
   const { data: teamspaces } = useTeamspaces();
+  const expandState = useSidebarExpandState();
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [isCreatingDatabase, setIsCreatingDatabase] = useState(false);
   const isMac = useIsMac();
   const createMenuRef = useRef<HTMLDivElement>(null);
+
+  // Compute flat tree order for multi-select range selection (across all sections)
+  const allTrees = useMemo(() => {
+    if (!data) return [];
+    const trees: PageTreeNode[] = data.data;
+    return trees;
+  }, [data]);
+
+  const flatOrder = useMemo(
+    () => flattenVisibleTree(allTrees, expandState.isExpanded),
+    [allTrees, expandState.isExpanded]
+  );
+
+  const multiSelect = useMultiSelect(flatOrder);
+
+  // Collect pageTitles map for BulkActionBar
+  const pageTitles = useMemo(() => {
+    const map = new Map<string, string>();
+    collectPageTitles(allTrees, map);
+    return map;
+  }, [allTrees]);
+
+  // Multi-select props to pass down through tree
+  const multiSelectProps: MultiSelectProps = useMemo(
+    () => ({
+      isSelected: multiSelect.isSelected,
+      handleMultiSelectClick: multiSelect.handleClick,
+      selectionCount: multiSelect.selectionCount,
+    }),
+    [multiSelect.isSelected, multiSelect.handleClick, multiSelect.selectionCount]
+  );
+
+  // Escape clears multi-selection
+  useEffect(() => {
+    if (multiSelect.selectionCount === 0) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        multiSelect.clearSelection();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [multiSelect.selectionCount, multiSelect.clearSelection]);
 
   // Close create menu on outside click
   useEffect(() => {
@@ -317,6 +381,7 @@ export function Sidebar() {
             isLoading={isLoading}
             error={error}
             tree={data ? data.data.filter((n: PageTreeNode) => !n.teamspaceId && n.spaceType !== "AGENT") : []}
+            multiSelect={multiSelectProps}
           />
 
           {/* Teamspace sections */}
@@ -334,6 +399,7 @@ export function Sidebar() {
               isLoading={isLoading}
               error={null}
               tree={data ? data.data.filter((n: PageTreeNode) => n.teamspaceId === ts.id) : []}
+              multiSelect={multiSelectProps}
             />
           ))}
 
@@ -345,8 +411,16 @@ export function Sidebar() {
             isLoading={isLoading}
             error={error}
             tree={data ? data.data.filter((n: PageTreeNode) => n.spaceType === "AGENT") : []}
+            multiSelect={multiSelectProps}
           />
         </div>
+
+        {/* Bulk action bar — shown when pages are multi-selected */}
+        <BulkActionBar
+          selectedIds={multiSelect.selectedIds}
+          pageTitles={pageTitles}
+          onClearSelection={multiSelect.clearSelection}
+        />
 
       </aside>
   );

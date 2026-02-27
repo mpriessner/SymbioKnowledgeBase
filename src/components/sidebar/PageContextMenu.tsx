@@ -20,6 +20,10 @@ interface PageContextMenuProps {
   onClose: () => void;
   onRename?: () => void;
   onDuplicate?: () => void;
+  /** Multi-select: IDs of all selected pages */
+  selectedIds?: Set<string>;
+  /** Multi-select: count of selected pages */
+  selectionCount?: number;
 }
 
 interface MenuItem {
@@ -30,13 +34,21 @@ interface MenuItem {
   divider?: boolean;
 }
 
-function getMenuItems(isFavorite: boolean): MenuItem[] {
+function getSingleMenuItems(isFavorite: boolean): MenuItem[] {
   return [
     { icon: Pencil, label: "Rename", action: "rename" },
     { icon: Copy, label: "Duplicate", action: "duplicate" },
     { icon: Link, label: "Copy link", action: "copyLink" },
     { icon: Star, label: isFavorite ? "Remove from favorites" : "Add to favorites", action: "favorite", divider: true },
     { icon: Trash2, label: "Delete", action: "delete", danger: true },
+  ];
+}
+
+function getBulkMenuItems(count: number): MenuItem[] {
+  return [
+    { icon: Star, label: `Add ${count} to favorites`, action: "bulkFavorite" },
+    { icon: Star, label: `Remove ${count} from favorites`, action: "bulkUnfavorite" },
+    { icon: Trash2, label: `Delete ${count} pages`, action: "bulkDelete", danger: true, divider: true },
   ];
 }
 
@@ -76,17 +88,24 @@ export function PageContextMenu({
   onClose,
   onRename,
   onDuplicate,
+  selectedIds,
+  selectionCount = 0,
 }: PageContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [menuDimensions, setMenuDimensions] = useState({ width: 180, height: 200 });
+  const [isDeleting, setIsDeleting] = useState(false);
   const deletePage = useDeletePage();
   const isFavorite = useIsFavorite(pageId);
   const toggleFavorite = useToggleFavorite();
   const router = useRouter();
   const pathname = usePathname();
 
-  const menuItems = getMenuItems(isFavorite);
+  // Determine if this is a bulk context menu
+  const isBulk = selectionCount > 1 && selectedIds?.has(pageId);
+  const menuItems = isBulk
+    ? getBulkMenuItems(selectionCount)
+    : getSingleMenuItems(isFavorite);
 
   // Measure menu dimensions after render
   useLayoutEffect(() => {
@@ -162,34 +181,79 @@ export function PageContextMenu({
         case "delete":
           setShowDeleteConfirm(true);
           break;
+
+        // Bulk operations
+        case "bulkFavorite":
+          if (selectedIds) {
+            for (const id of selectedIds) {
+              toggleFavorite.mutate({ pageId: id, isFavorite: true });
+            }
+          }
+          onClose();
+          break;
+
+        case "bulkUnfavorite":
+          if (selectedIds) {
+            for (const id of selectedIds) {
+              toggleFavorite.mutate({ pageId: id, isFavorite: false });
+            }
+          }
+          onClose();
+          break;
+
+        case "bulkDelete":
+          setShowDeleteConfirm(true);
+          break;
       }
     },
-    [pageId, onClose, onRename, onDuplicate, toggleFavorite, isFavorite]
+    [pageId, onClose, onRename, onDuplicate, toggleFavorite, isFavorite, selectedIds]
   );
 
   const handleConfirmDelete = useCallback(async () => {
-    try {
-      await deletePage.mutateAsync(pageId);
-      
-      // If we're currently viewing this page, navigate away
-      if (pathname === `/pages/${pageId}`) {
+    setIsDeleting(true);
+
+    if (isBulk && selectedIds) {
+      // Bulk delete all selected pages
+      let navigateAway = false;
+      for (const id of selectedIds) {
+        try {
+          await deletePage.mutateAsync(id);
+          if (pathname === `/pages/${id}`) {
+            navigateAway = true;
+          }
+        } catch {
+          // Individual failures logged by mutation — continue
+        }
+      }
+      if (navigateAway) {
         router.push("/home");
       }
-      
-      setShowDeleteConfirm(false);
-      onClose();
-    } catch (error) {
-      console.error("Failed to delete page:", error);
-      // Error is handled by the mutation, keep modal open
+    } else {
+      // Single delete
+      try {
+        await deletePage.mutateAsync(pageId);
+        if (pathname === `/pages/${pageId}`) {
+          router.push("/home");
+        }
+      } catch (error) {
+        console.error("Failed to delete page:", error);
+        setIsDeleting(false);
+        return;
+      }
     }
-  }, [deletePage, pageId, pathname, router, onClose]);
+
+    setIsDeleting(false);
+    setShowDeleteConfirm(false);
+    onClose();
+  }, [isBulk, selectedIds, deletePage, pageId, pathname, router, onClose]);
 
   if (showDeleteConfirm) {
+    const deleteCount = isBulk ? selectionCount : 1;
     return (
       <Modal
         isOpen={true}
         onClose={() => setShowDeleteConfirm(false)}
-        title="Delete page"
+        title={deleteCount > 1 ? `Delete ${deleteCount} pages` : "Delete page"}
         footer={
           <>
             <Button
@@ -201,17 +265,24 @@ export function PageContextMenu({
             <Button
               variant="danger"
               onClick={handleConfirmDelete}
-              loading={deletePage.isPending}
+              loading={isDeleting || deletePage.isPending}
             >
-              Delete
+              {deleteCount > 1 ? `Delete ${deleteCount} pages` : "Delete"}
             </Button>
           </>
         }
       >
-        <p className="text-[var(--text-secondary)]">
-          Delete <span className="font-medium text-[var(--text-primary)]">&quot;{pageTitle}&quot;</span>? 
-          This cannot be undone.
-        </p>
+        {isBulk ? (
+          <p className="text-[var(--text-secondary)]">
+            Delete <span className="font-medium text-[var(--text-primary)]">{selectionCount} pages</span>?
+            This cannot be undone.
+          </p>
+        ) : (
+          <p className="text-[var(--text-secondary)]">
+            Delete <span className="font-medium text-[var(--text-primary)]">&quot;{pageTitle}&quot;</span>?
+            This cannot be undone.
+          </p>
+        )}
         {deletePage.isError && (
           <p className="mt-2 text-sm text-[var(--danger)]">
             Failed to delete page. Please try again.

@@ -22,9 +22,11 @@ import { SortableSidebarTreeNode } from "@/components/workspace/SortableSidebarT
 import { useSidebarExpandState } from "@/hooks/useSidebarExpandState";
 import { useReorderPage } from "@/hooks/useReorderPage";
 import type { PageTreeNode } from "@/types/page";
+import type { MultiSelectProps } from "@/components/workspace/Sidebar";
 
 interface DndSidebarTreeProps {
   tree: PageTreeNode[];
+  multiSelect?: MultiSelectProps;
 }
 
 interface DropPosition {
@@ -129,7 +131,7 @@ const hybridCollision: CollisionDetection = (args) => {
   return closestCenter(args);
 };
 
-export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
+export function DndSidebarTree({ tree, multiSelect }: DndSidebarTreeProps) {
   const expandState = useSidebarExpandState();
   const reorderPage = useReorderPage();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -325,6 +327,7 @@ export function DndSidebarTree({ tree }: DndSidebarTreeProps) {
               activeId={activeId}
               overId={overId}
               dropPosition={dropPosition}
+              multiSelect={multiSelect}
             />
           ))}
         </div>
