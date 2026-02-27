@@ -107,6 +107,13 @@ export function ListView({
   const handleRowClick = useCallback(
     (row: { id: string; pageId: string | null }) => {
       setSelectedRowId(row.id);
+      // Single-click only selects; navigation moved to double-click
+    },
+    []
+  );
+
+  const handleRowDoubleClick = useCallback(
+    (row: { id: string; pageId: string | null }) => {
       if (row.pageId) {
         router.push(`/pages/${row.pageId}`);
       }
@@ -325,6 +332,7 @@ export function ListView({
                     hasCheckbox={!!checkboxColumn}
                     checkboxValue={checkboxValue}
                     onClick={() => handleRowClick(row)}
+                    onDoubleClick={() => handleRowDoubleClick(row)}
                     onCheckboxToggle={(checked) =>
                       handleCheckboxToggle(row.id, checked)
                     }
@@ -372,6 +380,7 @@ export function ListView({
                     checkboxValue={checkboxValue}
                     sortable
                     onClick={() => handleRowClick(row)}
+                    onDoubleClick={() => handleRowDoubleClick(row)}
                     onCheckboxToggle={(checked) =>
                       handleCheckboxToggle(row.id, checked)
                     }

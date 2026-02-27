@@ -225,8 +225,8 @@ export function SearchDialog({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      {/* Backdrop — pointer-events-none so clicks pass through to the parent wrapper's onClick */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-none" />
 
       {/* Dialog */}
       <div className="relative z-10 w-full max-w-2xl px-4">

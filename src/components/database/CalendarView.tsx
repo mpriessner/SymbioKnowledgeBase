@@ -17,7 +17,7 @@ import { useDatabaseRows } from "@/hooks/useDatabaseRows";
 import { useTableFilters } from "@/hooks/useTableFilters";
 import { FilterBar } from "./FilterBar";
 import { CalendarDayCell } from "./CalendarDayCell";
-import { CalendarEventPillOverlay } from "./CalendarEventPill";
+import { CalendarEventPill, CalendarEventPillOverlay } from "./CalendarEventPill";
 import {
   getMonthGridDays,
   getWeekDays,
@@ -251,10 +251,36 @@ export function CalendarView({
   );
 
   const handleRowClick = useCallback(
+    (_rowId: string, _pageId: string | null) => {
+      // Single-click: no navigation (inline edit will be triggered by CalendarEventPill)
+    },
+    []
+  );
+
+  const handleRowDoubleClick = useCallback(
     (_rowId: string, pageId: string | null) => {
       if (pageId) router.push(`/pages/${pageId}`);
     },
     [router]
+  );
+
+  const handleRowTitleSave = useCallback(
+    (rowId: string, newTitle: string) => {
+      const row = rows.find((r) => r.id === rowId);
+      if (!row) return;
+      const titleColumnId = Object.entries(row.properties).find(
+        ([, v]) => v.type === "TITLE"
+      )?.[0];
+      if (!titleColumnId) return;
+      updateRow.mutate({
+        rowId,
+        properties: {
+          ...row.properties,
+          [titleColumnId]: { type: "TITLE", value: newTitle },
+        },
+      });
+    },
+    [rows, updateRow]
   );
 
   if (isLoading) {
@@ -425,6 +451,8 @@ export function CalendarView({
                       isCurrentMonth={isCurrentMonth(day, currentDate)}
                       onAddRow={handleAddRow}
                       onRowClick={handleRowClick}
+                      onRowDoubleClick={handleRowDoubleClick}
+                      onRowTitleSave={handleRowTitleSave}
                       onRowContextMenu={(e, rowId, title) => {
                         e.preventDefault();
                         setContextMenu({ rowId, title, x: e.clientX, y: e.clientY });
@@ -462,6 +490,12 @@ export function CalendarView({
                     maxVisible={5}
                     onAddRow={handleAddRow}
                     onRowClick={handleRowClick}
+                    onRowDoubleClick={handleRowDoubleClick}
+                    onRowTitleSave={handleRowTitleSave}
+                    onRowContextMenu={(e, rowId, title) => {
+                      e.preventDefault();
+                      setContextMenu({ rowId, title, x: e.clientX, y: e.clientY });
+                    }}
                   />
                 ))}
               </div>
@@ -487,20 +521,19 @@ export function CalendarView({
           </div>
           <div className="flex flex-wrap gap-1">
             {noDateRows.map((row) => (
-              <div
+              <CalendarEventPill
                 key={row.id}
+                rowId={row.id}
+                title={row.title}
+                colorDot={row.colorDot}
                 onClick={() => handleRowClick(row.id, row.pageId)}
-                className="flex items-center gap-1 px-2 py-1 text-xs rounded
-                  bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors"
-              >
-                {row.colorDot && (
-                  <span
-                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: row.colorDot }}
-                  />
-                )}
-                <span className="truncate max-w-[120px]">{row.title}</span>
-              </div>
+                onDoubleClick={() => handleRowDoubleClick(row.id, row.pageId)}
+                onTitleSave={(newTitle) => handleRowTitleSave(row.id, newTitle)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setContextMenu({ rowId: row.id, title: row.title, x: e.clientX, y: e.clientY });
+                }}
+              />
             ))}
           </div>
         </div>

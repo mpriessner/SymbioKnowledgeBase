@@ -23,6 +23,8 @@ interface CalendarDayCellProps {
   maxVisible?: number;
   onAddRow: (date: Date) => void;
   onRowClick: (rowId: string, pageId: string | null) => void;
+  onRowDoubleClick?: (rowId: string, pageId: string | null) => void;
+  onRowTitleSave?: (rowId: string, newTitle: string) => void;
   onRowContextMenu?: (e: React.MouseEvent, rowId: string, title: string) => void;
 }
 
@@ -34,6 +36,8 @@ export function CalendarDayCell({
   maxVisible = 3,
   onAddRow,
   onRowClick,
+  onRowDoubleClick,
+  onRowTitleSave,
   onRowContextMenu,
 }: CalendarDayCellProps) {
   const [expanded, setExpanded] = useState(false);
@@ -88,6 +92,8 @@ export function CalendarDayCell({
             title={row.title}
             colorDot={row.colorDot}
             onClick={() => onRowClick(row.id, row.pageId)}
+            onDoubleClick={onRowDoubleClick ? () => onRowDoubleClick(row.id, row.pageId) : undefined}
+            onTitleSave={onRowTitleSave ? (newTitle) => onRowTitleSave(row.id, newTitle) : undefined}
             onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(e, row.id, row.title) : undefined}
           />
         ))}

@@ -21,6 +21,7 @@ interface ListRowProps {
   checkboxValue: boolean;
   sortable?: boolean;
   onClick: () => void;
+  onDoubleClick?: () => void;
   onCheckboxToggle?: (checked: boolean) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   onUpdateRow?: (rowId: string, properties: RowProperties) => void;
@@ -38,6 +39,7 @@ export function ListRow({
   checkboxValue,
   sortable,
   onClick,
+  onDoubleClick,
   onCheckboxToggle,
   onContextMenu,
   onUpdateRow,
@@ -150,6 +152,9 @@ export function ListRow({
       style={sortStyle}
       onClick={() => {
         if (!editingField) onClick();
+      }}
+      onDoubleClick={() => {
+        if (!editingField) onDoubleClick?.();
       }}
       onContextMenu={onContextMenu}
       className={`group flex items-center gap-2 px-3 h-9 cursor-pointer border-b border-[var(--border-default)] transition-colors
