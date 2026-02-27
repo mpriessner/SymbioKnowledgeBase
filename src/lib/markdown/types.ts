@@ -7,6 +7,9 @@ export interface PageMetadata {
   id?: string; // Page UUID (set by sync, read-only in frontmatter)
   title: string;
   icon?: string | null;
+  oneLiner?: string | null; // Brief page description (max 100 chars)
+  summary?: string | null; // 2-4 sentence summary (max 500 chars)
+  summaryUpdatedAt?: string | null; // ISO 8601, when summary was last updated
   parent?: string | null; // Parent page ID
   position?: number; // Sort position among siblings
   spaceType?: string; // PRIVATE | TEAMSPACE

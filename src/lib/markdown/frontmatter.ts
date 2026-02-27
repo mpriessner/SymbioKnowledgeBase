@@ -16,6 +16,18 @@ export function generateFrontmatter(metadata: PageMetadata): string {
     lines.push(`icon: ${metadata.icon}`);
   }
 
+  if (metadata.oneLiner) {
+    lines.push(`oneLiner: ${escapeYamlString(metadata.oneLiner)}`);
+  }
+
+  if (metadata.summary) {
+    lines.push(`summary: ${escapeYamlString(metadata.summary)}`);
+  }
+
+  if (metadata.summary && metadata.summaryUpdatedAt) {
+    lines.push(`summaryUpdatedAt: ${metadata.summaryUpdatedAt}`);
+  }
+
   if (metadata.parent) {
     lines.push(`parent: ${metadata.parent}`);
   }
@@ -78,6 +90,19 @@ export function parseFrontmatter(markdown: string): {
         break;
       case "icon":
         metadata.icon = value;
+        break;
+      case "oneLiner": {
+        const parsed = unescapeYamlString(value);
+        metadata.oneLiner = parsed || null;
+        break;
+      }
+      case "summary": {
+        const parsed = unescapeYamlString(value);
+        metadata.summary = parsed || null;
+        break;
+      }
+      case "summaryUpdatedAt":
+        metadata.summaryUpdatedAt = value || null;
         break;
       case "parent":
         metadata.parent = value;

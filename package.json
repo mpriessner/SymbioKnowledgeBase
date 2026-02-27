@@ -12,7 +12,8 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "agent:sweep": "tsx scripts/agent-sweep.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

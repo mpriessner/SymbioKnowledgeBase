@@ -31,6 +31,9 @@ export interface SyncPageData {
   id: string;
   title: string;
   icon: string | null;
+  oneLiner?: string | null;
+  summary?: string | null;
+  summaryUpdatedAt?: Date | null;
   parentId: string | null;
   position: number;
   spaceType: string;
