@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Table2,
   KanbanSquare,
@@ -41,11 +41,21 @@ const VIEW_OPTIONS: {
 
 export function PageCreationMenu({ pageId, onAction }: PageCreationMenuProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { addToast } = useToast();
   const [isCreating, setIsCreating] = useState(false);
   const [showAskAI, setShowAskAI] = useState(false);
   const [showMeetingNotes, setShowMeetingNotes] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-open meeting notes when navigated with ?mode=meeting-notes
+  useEffect(() => {
+    if (searchParams.get("mode") === "meeting-notes") {
+      setShowMeetingNotes(true);
+      // Clean up the query param from the URL
+      router.replace(`/pages/${pageId}`, { scroll: false });
+    }
+  }, [searchParams, pageId, router]);
 
   const handleCreateDatabaseView = useCallback(
     async (viewType: DatabaseViewType) => {

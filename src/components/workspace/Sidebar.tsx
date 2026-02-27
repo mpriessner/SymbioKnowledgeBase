@@ -55,6 +55,18 @@ export function Sidebar() {
     );
   }, [createPage, router]);
 
+  const handleNewMeetingNotes = useCallback(() => {
+    setShowCreateMenu(false);
+    createPage.mutate(
+      { title: "Untitled" },
+      {
+        onSuccess: (data) => {
+          router.push(`/pages/${data.data.id}?mode=meeting-notes`);
+        },
+      }
+    );
+  }, [createPage, router]);
+
   const handleNewDatabase = useCallback(async () => {
     if (isCreatingDatabase) return;
     setShowCreateMenu(false);
@@ -195,7 +207,7 @@ export function Sidebar() {
                     Database
                   </button>
                   <button
-                    onClick={handleNewPage}
+                    onClick={handleNewMeetingNotes}
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
                   >
                     <svg className="w-4 h-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
