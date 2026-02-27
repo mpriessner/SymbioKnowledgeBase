@@ -44,6 +44,7 @@ export const GET = withTenant(
               id: true,
               title: true,
               icon: true,
+              oneLiner: true,
             },
           },
         },
@@ -58,6 +59,7 @@ export const GET = withTenant(
         pageId: link.targetPage.id,
         pageTitle: link.targetPage.title,
         pageIcon: link.targetPage.icon,
+        oneLiner: link.targetPage.oneLiner,
       }));
 
       return successResponse(results, {

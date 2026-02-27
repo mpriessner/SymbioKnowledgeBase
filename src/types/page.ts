@@ -10,6 +10,10 @@ export interface Page {
   icon: string | null;
   coverUrl: string | null;
   position: number;
+  oneLiner: string | null;
+  summary: string | null;
+  summaryUpdatedAt: string | null;
+  lastAgentVisitAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

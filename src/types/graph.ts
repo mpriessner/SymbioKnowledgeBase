@@ -7,6 +7,7 @@ export interface GraphNode {
   id: string;
   label: string;
   icon: string | null;
+  oneLiner: string | null;
   linkCount: number;
   updatedAt: string;
 }

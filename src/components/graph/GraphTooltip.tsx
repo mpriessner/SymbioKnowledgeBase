@@ -3,6 +3,7 @@
 interface GraphTooltipProps {
   title: string;
   linkCount: number;
+  oneLiner?: string | null;
   x: number;
   y: number;
   visible: boolean;
@@ -15,6 +16,7 @@ interface GraphTooltipProps {
 export function GraphTooltip({
   title,
   linkCount,
+  oneLiner,
   x,
   y,
   visible,
@@ -23,7 +25,7 @@ export function GraphTooltip({
 
   return (
     <div
-      className="pointer-events-none fixed z-50 rounded-md border border-[var(--color-border)]
+      className="pointer-events-none fixed z-50 max-w-xs rounded-md border border-[var(--color-border)]
                  bg-[var(--color-bg-primary)] px-3 py-2 shadow-lg"
       style={{
         left: x + 12,
@@ -33,6 +35,11 @@ export function GraphTooltip({
       <p className="text-sm font-medium text-[var(--color-text-primary)]">
         {title}
       </p>
+      {oneLiner && (
+        <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">
+          {oneLiner}
+        </p>
+      )}
       <p className="text-xs text-[var(--color-text-secondary)]">
         {linkCount} {linkCount === 1 ? "connection" : "connections"}
       </p>

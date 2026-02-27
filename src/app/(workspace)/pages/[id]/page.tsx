@@ -7,6 +7,7 @@ import { useRecentPages } from "@/hooks/useRecentPages";
 import { PageHeader } from "@/components/workspace/PageHeader";
 import { PageContent } from "@/components/page/PageContent";
 import { BacklinksPanel } from "@/components/page/BacklinksPanel";
+import { PageAboutSection } from "@/components/page/PageAboutSection";
 import { LocalGraph } from "@/components/graph/LocalGraph";
 import { LocalGraphSidebar } from "@/components/graph/LocalGraphSidebar";
 import { PresenceIndicators } from "@/components/page/PresenceIndicators";
@@ -88,6 +89,11 @@ export default function PageView({ params }: PageViewProps) {
 
         {/* Page Content (creation menu, database view, or block editor) */}
         <PageContent pageId={page.id} onEditorReady={handleEditorReady} />
+
+        {/* About This Page (summaries) */}
+        <div className="w-full content-pad">
+          <PageAboutSection pageId={page.id} />
+        </div>
 
         {/* Backlinks Panel */}
         <div className="w-full content-pad">

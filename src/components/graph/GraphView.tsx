@@ -112,12 +112,14 @@ export function GraphView({
   const [tooltip, setTooltip] = useState<{
     title: string;
     linkCount: number;
+    oneLiner: string | null;
     x: number;
     y: number;
     visible: boolean;
   }>({
     title: "",
     linkCount: 0,
+    oneLiner: null,
     x: 0,
     y: 0,
     visible: false,
@@ -187,6 +189,7 @@ export function GraphView({
           setTooltip({
             title: typedNode.label,
             linkCount: typedNode.linkCount,
+            oneLiner: typedNode.oneLiner,
             x: event.clientX,
             y: event.clientY,
             visible: true,
@@ -361,6 +364,7 @@ export function GraphView({
       <GraphTooltip
         title={tooltip.title}
         linkCount={tooltip.linkCount}
+        oneLiner={tooltip.oneLiner}
         x={tooltip.x}
         y={tooltip.y}
         visible={tooltip.visible}

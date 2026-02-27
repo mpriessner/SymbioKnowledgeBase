@@ -30,6 +30,7 @@ async function buildGlobalGraph(tenantId: string): Promise<GraphData> {
         id: true,
         title: true,
         icon: true,
+        oneLiner: true,
         updatedAt: true,
       },
     }),
@@ -60,6 +61,7 @@ async function buildGlobalGraph(tenantId: string): Promise<GraphData> {
     id: page.id,
     label: page.title,
     icon: page.icon,
+    oneLiner: page.oneLiner,
     linkCount: linkCounts.get(page.id) || 0,
     updatedAt: page.updatedAt.toISOString(),
   }));
@@ -170,6 +172,7 @@ async function buildLocalGraph(
     id: page.id,
     label: page.title,
     icon: page.icon,
+    oneLiner: page.oneLiner,
     linkCount: linkCounts.get(page.id) || 0,
     updatedAt: page.updatedAt.toISOString(),
   }));

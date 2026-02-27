@@ -189,9 +189,13 @@ model Page {
   coverUrl     String?   @map("cover_url")
   position     Int       @default(0)
   spaceType      SpaceType     @default(PRIVATE) @map("space_type")
-  generalAccess  GeneralAccess @default(INVITED_ONLY) @map("general_access")
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  generalAccess    GeneralAccess @default(INVITED_ONLY) @map("general_access")
+  oneLiner         String?       @map("one_liner")
+  summary          String?       @map("summary")
+  summaryUpdatedAt DateTime?     @map("summary_updated_at")
+  lastAgentVisitAt DateTime?     @map("last_agent_visit_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
 
   // Relations
   tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)

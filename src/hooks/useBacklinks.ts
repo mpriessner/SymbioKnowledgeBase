@@ -6,6 +6,7 @@ interface BacklinkResult {
   pageId: string;
   pageTitle: string;
   pageIcon: string | null;
+  oneLiner: string | null;
 }
 
 interface BacklinksResponse {
