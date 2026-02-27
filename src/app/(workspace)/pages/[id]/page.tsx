@@ -6,8 +6,8 @@ import { usePage } from "@/hooks/usePages";
 import { useRecentPages } from "@/hooks/useRecentPages";
 import { PageHeader } from "@/components/workspace/PageHeader";
 import { PageContent } from "@/components/page/PageContent";
-import { BacklinksPanel } from "@/components/page/BacklinksPanel";
 import { PageAboutSection } from "@/components/page/PageAboutSection";
+import { PageConnectionsPanel } from "@/components/page/PageConnectionsPanel";
 import { LocalGraph } from "@/components/graph/LocalGraph";
 import { LocalGraphSidebar } from "@/components/graph/LocalGraphSidebar";
 import { PresenceIndicators } from "@/components/page/PresenceIndicators";
@@ -95,9 +95,9 @@ export default function PageView({ params }: PageViewProps) {
           <PageAboutSection pageId={page.id} />
         </div>
 
-        {/* Backlinks Panel */}
+        {/* Page Connections (outgoing links + backlinks with summaries) */}
         <div className="w-full content-pad">
-          <BacklinksPanel pageId={page.id} />
+          <PageConnectionsPanel pageId={page.id} />
         </div>
 
         {/* Local Graph (bottom, expandable) */}

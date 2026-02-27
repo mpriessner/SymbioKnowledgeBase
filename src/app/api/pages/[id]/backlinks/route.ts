@@ -46,6 +46,8 @@ export const GET = withTenant(
               title: true,
               icon: true,
               oneLiner: true,
+              summary: true,
+              summaryUpdatedAt: true,
             },
           },
         },
@@ -63,6 +65,8 @@ export const GET = withTenant(
         pageTitle: string;
         pageIcon: string | null;
         oneLiner: string | null;
+        summary: string | null;
+        summaryUpdatedAt: string | null;
       }> = [];
 
       for (const link of backlinks) {
@@ -73,6 +77,8 @@ export const GET = withTenant(
             pageTitle: link.sourcePage.title,
             pageIcon: link.sourcePage.icon,
             oneLiner: link.sourcePage.oneLiner,
+            summary: link.sourcePage.summary,
+            summaryUpdatedAt: link.sourcePage.summaryUpdatedAt?.toISOString() ?? null,
           });
         }
       }

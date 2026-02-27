@@ -7,6 +7,8 @@ interface BacklinkResult {
   pageTitle: string;
   pageIcon: string | null;
   oneLiner: string | null;
+  summary: string | null;
+  summaryUpdatedAt: string | null;
 }
 
 interface BacklinksResponse {
