@@ -2,7 +2,7 @@
 
 **Epic ID:** EPIC-19
 **Created:** 2026-02-22
-**Total Story Points:** 21
+**Total Story Points:** 29
 **Priority:** Critical
 **Status:** Planned
 **Dependencies:** Blocks EPIC-15 (Symbio ecosystem integration requires unified auth)
@@ -147,6 +147,46 @@ Cross-App SSO Flow
 
 ---
 
+### SKB-19.5: Add Google OAuth Sign-In — 5 points, High
+
+**Delivers:** "Sign in with Google" and "Sign up with Google" buttons on login and registration pages. OAuth callback handler that auto-provisions Prisma User + Tenant for new Google users. Google OAuth enabled in Supabase configuration.
+
+**Details:** See [SKB-19.5 story file](SKB-19.5-google-oauth-sign-in.md)
+
+**Depends on:** SKB-19.1 (Supabase client must be functional). Can be done in parallel with SKB-19.2 if Supabase Auth is already working for email/password.
+
+**Reference:** Follows the exact pattern from ExpTube's Google sign-in (`ExpTube/app/(auth)/login/page.tsx` lines 60-78, `ExpTube/app/auth/callback/route.ts`).
+
+---
+
+### SKB-19.6: Remove NextAuth.js Legacy Code — 3 points, Medium
+
+**Delivers:** Clean removal of all NextAuth.js files, dependencies, and environment variables. The codebase uses only Supabase Auth with zero NextAuth remnants.
+
+**Details:** See [SKB-19.6 story file](SKB-19.6-remove-nextauth-legacy-code.md)
+
+**Depends on:** SKB-19.5 (Google OAuth must be working before removing fallback)
+
+---
+
+## Current Migration Status (Updated 2026-02-27)
+
+**Investigation reveals the migration is partially complete:**
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Supabase client setup (SKB-19.1) | **Done** | `client.ts`, `server.ts`, `middleware.ts` all functional |
+| Login page | **Done** | Uses `supabase.auth.signInWithPassword()` |
+| Register page | **Done** | Uses `supabase.auth.signUp()` + Prisma user creation |
+| Middleware | **Done** | Uses Supabase session validation |
+| SupabaseProvider | **Done** | Auth context with `useUser()`, `onAuthStateChange()`, 45-min token refresh |
+| NextAuth removal (SKB-19.6) | **Not started** | `src/lib/auth.ts` and `[...nextauth]/route.ts` still exist as dead code |
+| Google OAuth (SKB-19.5) | **Not started** | No OAuth button, no callback handler |
+| Database migration (SKB-19.3) | **Partially done** | Prisma User has `supabaseUserId` field; register route links them |
+| Cross-App SSO (SKB-19.4) | **Not started** | Requires shared Supabase project or SymbioCore |
+
+---
+
 ## Test Coverage Requirements
 
 | Story | Unit Tests | Integration Tests | E2E Tests |
@@ -155,6 +195,8 @@ Cross-App SSO Flow
 | 19.2 | Login form submits to Supabase, useUser returns correct user | Sign in → session persisted, sign out → session cleared | Full login → navigate → logout flow |
 | 19.3 | User ID mapping (Supabase UUID ↔ Prisma User), migration script idempotent | Migrated user can log in, tenant isolation preserved | - |
 | 19.4 | Token expiry handled, refresh logic tested | - | Login to ExpTube → navigate to SKB → verify logged in |
+| 19.5 | Google OAuth button rendered, `signInWithOAuth` called with correct params, `ensureUserExists` creates/skips Prisma User | OAuth callback exchanges code and sets session cookies, new Google user auto-provisioned | Click "Sign in with Google" → Google auth → redirected back → logged in |
+| 19.6 | No imports of `next-auth` remain in codebase | Build succeeds without NextAuth dependencies | Login, registration, logout still work via Supabase Auth |
 
 ---
 
@@ -162,17 +204,23 @@ Cross-App SSO Flow
 
 ```
 19.1 → 19.2 → 19.3 → 19.4 (sequential, each depends on previous)
+19.5 can start after 19.1 (parallel with 19.2 if email/password auth works)
+19.6 runs last (after 19.5, removes all NextAuth remnants)
 
-19.1  Supabase Client Setup
+19.1  Supabase Client Setup          ✅ DONE
   │
-  ▼
-19.2  Auth Flow Migration (remove NextAuth)
-  │
+  ├──────────────────────┐
+  ▼                      ▼
+19.2  Auth Flow Migration    19.5  Google OAuth Sign-In
+  │   ✅ DONE (mostly)
   ▼
 19.3  Database Migration Strategy
-  │
+  │   ⚡ PARTIALLY DONE
   ▼
 19.4  Cross-App SSO Verification
+  │
+  ▼
+19.6  Remove NextAuth Legacy Code
 ```
 
 ---
@@ -191,36 +239,43 @@ Cross-App SSO Flow
 
 ## Files Created/Modified by This Epic
 
-### New Files
-- `src/lib/supabase/client.ts` — Browser Supabase client
-- `src/lib/supabase/server.ts` — Server Supabase client (SSR, API routes)
-- `src/lib/supabase/middleware.ts` — Supabase auth middleware
-- `src/components/providers/SupabaseProvider.tsx` — Supabase context provider
-- `src/app/(auth)/supabase-login/page.tsx` — Supabase login page (replaces NextAuth login)
-- `src/app/(auth)/supabase-register/page.tsx` — Supabase registration page
+### New Files (SKB-19.1 through 19.4)
+- `src/lib/supabase/client.ts` — Browser Supabase client ✅
+- `src/lib/supabase/server.ts` — Server Supabase client (SSR, API routes) ✅
+- `src/lib/supabase/middleware.ts` — Supabase auth middleware ✅
+- `src/components/providers/SupabaseProvider.tsx` — Supabase context provider ✅
+- `src/app/(auth)/supabase-login/page.tsx` — Supabase login page (replaces NextAuth login) ✅
+- `src/app/(auth)/supabase-register/page.tsx` — Supabase registration page ✅
 - `scripts/migrate-users-to-supabase.ts` — User migration script
 - `src/__tests__/lib/supabase/client.test.ts`
 - `src/__tests__/lib/supabase/server.test.ts`
 - `tests/e2e/supabase-auth.spec.ts`
 - `tests/e2e/cross-app-sso.spec.ts`
 
+### New Files (SKB-19.5 — Google OAuth)
+- `src/app/auth/callback/route.ts` — OAuth callback: exchange code for session, auto-provision Prisma User + Tenant
+- `src/components/icons/GoogleLogo.tsx` — Google 4-color SVG logo component (optional, could inline SVG)
+
 ### Modified Files
-- `src/components/providers/QueryProvider.tsx` — Replace SessionProvider with SupabaseProvider
-- `src/middleware.ts` — Replace NextAuth middleware with Supabase session check
-- `src/components/settings/SettingsModal.tsx` — Replace `useSession()` with `useUser()`
-- `src/components/workspace/WorkspaceDropdown.tsx` — Replace `signOut()` with `supabase.auth.signOut()`
-- `src/app/api/**/*.ts` — Replace `getServerSession()` with Supabase server client
+- `src/components/providers/QueryProvider.tsx` — Replace SessionProvider with SupabaseProvider ✅
+- `src/middleware.ts` — Replace NextAuth middleware with Supabase session check ✅
+- `src/components/settings/SettingsModal.tsx` — Replace `useSession()` with `useUser()` ✅
+- `src/components/workspace/WorkspaceDropdown.tsx` — Replace `signOut()` with `supabase.auth.signOut()` ✅
+- `src/app/api/**/*.ts` — Replace `getServerSession()` with Supabase server client ✅
 - `package.json` — Remove `next-auth`, add `@supabase/supabase-js`, `@supabase/ssr`
 - `prisma/schema.prisma` — Update User.id to match Supabase UUID format (if needed)
 - `.env.example` — Add Supabase env vars, remove NextAuth vars
 - `README.md` — Update auth setup documentation
+- `src/app/(auth)/login/page.tsx` — Add "Sign in with Google" button (SKB-19.5)
+- `src/app/(auth)/register/page.tsx` — Add "Sign up with Google" button (SKB-19.5)
+- `supabase/config.toml` — Enable `[auth.external.google]` (SKB-19.5)
 
-### Deleted Files
-- `src/app/api/auth/[...nextauth]/route.ts` — NextAuth route handler
-- `src/app/api/auth/register/route.ts` — NextAuth registration (replaced by Supabase)
-- `src/lib/auth.ts` — NextAuth configuration (replaced by Supabase config)
-- `src/app/(auth)/login/page.tsx` — NextAuth login page (replaced by Supabase login)
-- `src/app/(auth)/register/page.tsx` — NextAuth register page (replaced by Supabase register)
+### Deleted Files (SKB-19.6)
+- `src/app/api/auth/[...nextauth]/route.ts` — NextAuth route handler (dead code)
+- `src/lib/auth.ts` — NextAuth configuration (dead code)
+- `next-auth` — Remove from `package.json` dependencies
+- `@auth/prisma-adapter` — Remove from `package.json` if unused
+- `NEXTAUTH_SECRET`, `NEXTAUTH_URL` — Remove from `.env.example`
 
 ---
 
@@ -253,4 +308,4 @@ If migration fails catastrophically:
 
 ---
 
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-02-27
