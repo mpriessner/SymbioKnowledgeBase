@@ -21,7 +21,7 @@ type TenantHandler = (
  *
  * Extracts tenant context from either:
  * 1. API key (Authorization: Bearer <key>) — takes precedence
- * 2. NextAuth.js JWT session (from HTTP-only cookie)
+ * 2. Supabase Auth session (from cookie)
  *
  * Returns 401 if neither authentication method is valid.
  *

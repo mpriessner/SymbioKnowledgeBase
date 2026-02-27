@@ -11,8 +11,6 @@
 
 interface EnvConfig {
   DATABASE_URL: string;
-  NEXTAUTH_SECRET: string;
-  NEXTAUTH_URL: string;
   NODE_ENV: "development" | "production" | "test";
 }
 
@@ -53,7 +51,5 @@ function validateNodeEnv(
  */
 export const env: EnvConfig = {
   DATABASE_URL: getRequiredEnv("DATABASE_URL"),
-  NEXTAUTH_SECRET: getRequiredEnv("NEXTAUTH_SECRET"),
-  NEXTAUTH_URL: getRequiredEnv("NEXTAUTH_URL"),
   NODE_ENV: validateNodeEnv(process.env.NODE_ENV || "development"),
 };
