@@ -4,7 +4,12 @@
 **Created:** 2026-02-25
 **Total Story Points:** 10
 **Priority:** High
-**Status:** Draft
+**Status:** Not Started
+**Notes:** Neither story has been implemented. No cache clearing on workspace creation (SKB-29.1) or workspace switching (SKB-29.2). Users may see stale data from other workspaces after switching.
+
+**Remaining work:**
+- SKB-29.1: Clear React Query cache on workspace creation, create welcome page
+- SKB-29.2: Full client state reset on workspace switch (queryClient.clear(), loading state, scope verification)
 
 ---
 

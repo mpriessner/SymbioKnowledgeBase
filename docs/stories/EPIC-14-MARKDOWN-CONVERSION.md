@@ -4,7 +4,9 @@
 **Created:** 2026-02-22
 **Total Story Points:** 21
 **Priority:** High
-**Status:** Planned
+**Status:** Done
+**Completed:** 2026-02-27
+**Notes:** All 4 stories implemented: TipTap-to-markdown serializer (all block types + frontmatter), markdown-to-TipTap deserializer (remark/unified), API endpoints (single/bulk export, import, format negotiation), export/import UI in settings modal + page header.
 
 ---
 

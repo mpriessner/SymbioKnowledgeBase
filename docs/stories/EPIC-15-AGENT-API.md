@@ -4,7 +4,13 @@
 **Created:** 2026-02-22
 **Total Story Points:** 34
 **Priority:** High
-**Status:** Planned
+**Status:** In Progress (~90% complete)
+**Notes:** SKB-15.1 (REST API) done — 6 core endpoints + 5 bonus. SKB-15.2 (MCP Server) done — 7 tools, 3 resources, stdio transport. SKB-15.4 (Docs) done — OpenAPI spec, Swagger UI, Python/TS SDKs, guides. SKB-15.3 (Auth) partially done — API key auth works, rate limiting works (in-memory only, not Redis), audit logging writes to console only (not persisted to DB), Supabase JWT validation deferred to EPIC-19.
+
+**Remaining work:**
+- Persist audit logs to database (currently console-only)
+- Redis-backed rate limiting for multi-instance deployments
+- Supabase JWT validation (blocked on EPIC-19)
 
 ---
 

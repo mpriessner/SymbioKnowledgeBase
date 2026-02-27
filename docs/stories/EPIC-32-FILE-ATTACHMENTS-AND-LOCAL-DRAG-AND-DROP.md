@@ -4,7 +4,13 @@
 **Created:** 2026-02-27
 **Total Story Points:** 21
 **Priority:** High
-**Status:** Draft
+**Status:** In Progress (~25% complete)
+**Notes:** SKB-32.1 (Local file storage backend) done — upload API at /api/pages/[id]/attachments, FileAttachment model in Prisma, 50MB limit, MD5 checksums, tenant isolation. SKB-32.2 (Editor drag-and-drop) not started — no file drop plugin in TipTap extensions. SKB-32.3 (Inline file rendering) not started — no FileBlockView, ImageLightbox, or UploadProgress components. SKB-32.4 (Filesystem mirror integration) partially done — asset folder path generation exists.
+
+**Remaining work:**
+- SKB-32.2: TipTap file drop extension for drag-and-drop uploads
+- SKB-32.3: Inline file rendering, image lightbox, upload progress UI
+- SKB-32.4: Complete filesystem mirror asset integration
 
 ---
 

@@ -4,7 +4,9 @@
 **Created:** 2026-02-27
 **Total Story Points:** 16
 **Priority:** Medium
-**Status:** Draft
+**Status:** Done
+**Completed:** 2026-02-27
+**Notes:** All 4 stories implemented: sweep service core with budget enforcement, summary staleness detection and regeneration, link discovery with confidence scoring, CLI command and API endpoint with scheduling.
 
 ---
 

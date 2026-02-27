@@ -4,7 +4,13 @@
 **Created:** 2026-02-25
 **Total Story Points:** 40
 **Priority:** High
-**Status:** Draft
+**Status:** In Progress (~70% complete)
+**Notes:** SKB-31.1-ALT (Round-trip fidelity) done — serializer/deserializer handle 27+ block types. SKB-31.2-ALT (Initial sync) done — fullSync() exports all pages with atomic writes and MD5 checksums. SKB-31.3-ALT (DB-to-FS live sync) done — sync lock, debouncing, metadata tracking. SKB-31.4-ALT (FS-to-DB live sync) done — chokidar file watcher with debouncing and conflict handling. SKB-31.5-ALT (Attachments) partially done — asset folder infrastructure exists. SKB-31.7-ALT (Conflict resolution) partially done — conflict detection and backup functions exist, health endpoint available.
+
+**Remaining work:**
+- SKB-31.6-ALT: Agent filesystem API and MCP tools (not started)
+- SKB-31.5-ALT: Complete file attachment integration with filesystem mirror
+- SKB-31.7-ALT: Finalize conflict resolution and sync health monitoring
 
 ---
 

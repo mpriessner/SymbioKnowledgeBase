@@ -4,7 +4,12 @@
 **Created:** 2026-02-25
 **Total Story Points:** 42
 **Priority:** High
-**Status:** Draft
+**Status:** In Progress (~85% complete)
+**Notes:** SKB-27.1 (Row Delete) done — RowContextMenu with confirmation in all views. SKB-27.2 (Gallery Inline Editing) done. SKB-27.3 (List View Menu + Editing) done. SKB-27.5 (DnD Reorder) done — Gallery and List views with @dnd-kit. SKB-27.4 (Timeline Inline Editing) partially done — infrastructure exists but full inline property UI in sidebar incomplete. SKB-27.6 (Empty States) partially done — empty states exist but messaging is inconsistent across views.
+
+**Remaining work:**
+- Complete timeline view inline title/property editing in sidebar (SKB-27.4)
+- Standardize empty state messages across all database views (SKB-27.6)
 
 ---
 

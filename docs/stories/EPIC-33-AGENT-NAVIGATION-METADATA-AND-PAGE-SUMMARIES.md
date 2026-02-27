@@ -4,7 +4,9 @@
 **Created:** 2026-02-27
 **Total Story Points:** 19
 **Priority:** High
-**Status:** Draft
+**Status:** Done
+**Completed:** 2026-02-27
+**Notes:** All 5 stories implemented: page summary schema extension, LLM summary generation service (OpenAI/Anthropic), enriched page connections panel, frontmatter integration for filesystem mirror, agent page tree API with filtering.
 
 ---
 

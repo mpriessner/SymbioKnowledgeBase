@@ -4,7 +4,11 @@
 **Created:** 2026-02-25
 **Total Story Points:** 16
 **Priority:** Critical
-**Status:** Done
+**Status:** In Progress (~75% complete)
+**Notes:** SKB-26.1 (Page delete navigation) done — redirects to /home. SKB-26.2 (Database creation from sidebar) done. SKB-26.3 (Search dialog click-outside dismiss) done — pointer-events-none fix applied. SKB-26.4 (List/Calendar view title editing) partially done — List view inline editing works, but Calendar view still navigates on single-click instead of allowing inline title editing.
+
+**Remaining work:**
+- Fix Calendar view title editing: single-click should enter edit mode, not navigate (SKB-26.4)
 
 ---
 

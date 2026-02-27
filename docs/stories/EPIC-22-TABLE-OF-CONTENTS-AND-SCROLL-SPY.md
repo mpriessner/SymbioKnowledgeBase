@@ -4,7 +4,9 @@
 **Created:** 2026-02-25
 **Total Story Points:** 18
 **Priority:** Medium
-**Status:** Draft
+**Status:** Done
+**Completed:** 2026-02-27
+**Notes:** All 3 stories implemented: heading extraction with scroll spy hook, right-edge scroll indicator bars, expandable TOC panel with click navigation.
 
 ---
 

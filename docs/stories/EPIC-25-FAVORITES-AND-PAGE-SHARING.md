@@ -4,7 +4,9 @@
 **Created:** 2026-02-25
 **Total Story Points:** 24
 **Priority:** High
-**Status:** Draft
+**Status:** Done
+**Completed:** 2026-02-27
+**Notes:** All 3 stories implemented: page favorites with sidebar integration, share dialog with permission management, publish to web via public share links.
 
 ---
 

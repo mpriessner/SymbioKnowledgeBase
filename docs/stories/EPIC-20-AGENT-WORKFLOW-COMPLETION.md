@@ -4,7 +4,12 @@
 **Created:** 2026-02-25
 **Total Story Points:** 42
 **Priority:** Critical
-**Status:** Draft
+**Status:** In Progress (~90% complete)
+**Notes:** SKB-20.1 (MCP Build) done. SKB-20.2 (Wikilink auto-linking) done — fully integrated into POST/PUT handlers. SKB-20.3 (Delete + Backlinks) done — cascade delete + backlinks API + MCP tools. SKB-20.4 (Database Agent API) done — full CRUD with schema validation. SKB-20.5 (Navigation) done — page tree, links, context endpoints + MCP tools. SKB-20.6 (E2E Tests) partially done — unit-level tests exist but live database integration tests are missing.
+
+**Remaining work:**
+- Live API integration tests hitting actual database (SKB-20.6)
+- MCP server full integration tests with running server
 
 ---
 

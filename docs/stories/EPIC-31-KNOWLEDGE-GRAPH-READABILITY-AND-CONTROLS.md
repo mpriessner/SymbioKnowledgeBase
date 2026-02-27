@@ -4,7 +4,18 @@
 **Created:** 2026-02-25
 **Total Story Points:** 49
 **Priority:** High
-**Status:** Draft
+**Status:** In Progress (~40% complete)
+**Notes:** SKB-31.5 (Zoom buttons) done — zoom in/out/fit/reset all working. SKB-31.1 (Dark mode labels) partially done — label color handling exists but min font size still 3px (should be 8px), no text stroke. SKB-31.6 (Visual polish) partially done — highlighted node glow works, but missing: subtle glow for all dark mode nodes, edge brightness, arrow head size, radial gradient background, pulsing animation.
+
+**Remaining work:**
+- SKB-31.2: Node spacing control slider (not started)
+- SKB-31.3: Always-visible name labels on 3D graph (not started)
+- SKB-31.4: Edge labels and distance display (not started)
+- SKB-31.7: Move graph legend from bottom-right to top-right (not started)
+- SKB-31.8: Node size control slider (not started)
+- SKB-31.9: Scale node size by document content length (not started)
+- SKB-31.1: Increase min font size to 8px, add text stroke for readability
+- SKB-31.6: Complete visual polish (dark mode glow, edge styling, background)
 
 ---
 
