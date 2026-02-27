@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { GraphView, GraphRefHandle } from "./GraphView";
 import { useGraphData } from "@/hooks/useGraphData";
+
+const Graph3DView = dynamic(
+  () => import("./Graph3DView").then((mod) => ({ default: mod.Graph3DView })),
+  { ssr: false }
+);
+
+const STORAGE_KEY = "skb-graph-sidebar-settings";
 
 interface LocalGraphSidebarProps {
   /** The current page ID (highlighted as center node) */
@@ -27,10 +35,31 @@ interface LocalGraphSidebarProps {
 const MIN_DEPTH = 1;
 const MAX_DEPTH = 4;
 
+function loadSavedSettings(): { is3D: boolean; nodeSize: number } {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        is3D: typeof parsed.is3D === "boolean" ? parsed.is3D : false,
+        nodeSize: typeof parsed.nodeSize === "number" ? parsed.nodeSize : 3,
+      };
+    }
+  } catch { /* ignore */ }
+  return { is3D: false, nodeSize: 3 };
+}
+
 export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGraphSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [depth, setDepth] = useState(1);
   const graphRef = useRef<GraphRefHandle | null>(null);
+
+  const [is3D, setIs3D] = useState(() => loadSavedSettings().is3D);
+  const [nodeSize, setNodeSize] = useState(() => loadSavedSettings().nodeSize);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ is3D, nodeSize }));
+  }, [is3D, nodeSize]);
 
   const { data, isLoading } = useGraphData({ pageId, depth, enabled: !isCollapsed });
 
@@ -136,13 +165,97 @@ export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGrap
               </p>
             </div>
           ) : (
+            <>
             <div className="relative flex-1 min-h-0">
-              {/* Depth control (left) */}
-              <div className="absolute top-2 left-2 z-10 flex items-center gap-1">
+              {/* Zoom controls (right) — only for 2D */}
+              {!is3D && (
+                <div className="absolute top-2 right-2 z-10 flex flex-col gap-1">
+                  <button
+                    onClick={handleZoomIn}
+                    className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    title="Zoom in"
+                    aria-label="Zoom in"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={handleZoomOut}
+                    className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    title="Zoom out"
+                    aria-label="Zoom out"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={handleZoomFit}
+                    className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    title="Fit to view"
+                    aria-label="Fit to view"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {/* Graph */}
+              <div className="absolute inset-0">
+                {is3D ? (
+                  <Graph3DView
+                    pageId={pageId}
+                    depth={depth}
+                    highlightCenter={true}
+                    showLabels={true}
+                    nodeSize={nodeSize}
+                  />
+                ) : (
+                  <GraphView
+                    pageId={pageId}
+                    depth={depth}
+                    highlightCenter={true}
+                    showLabels={true}
+                    nodeSize={nodeSize}
+                    onGraphRef={handleGraphRef}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Controls panel */}
+            <div className="px-3 py-2 border-t border-[var(--border-default)] flex items-center gap-3">
+              {/* 2D/3D toggle */}
+              <button
+                onClick={() => setIs3D((v) => !v)}
+                className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-[var(--border-default)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors select-none"
+                title={is3D ? "Switch to 2D view" : "Switch to 3D view"}
+              >
+                {is3D ? "3D" : "2D"}
+              </button>
+
+              {/* Node size slider */}
+              <label className="flex items-center gap-1 text-[10px] text-[var(--text-secondary)]">
+                <span className="select-none">Size</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  value={nodeSize}
+                  onChange={(e) => setNodeSize(Number(e.target.value))}
+                  className="w-14 h-1 accent-[var(--accent-primary)]"
+                />
+              </label>
+
+              {/* Depth controls */}
+              <div className="flex items-center gap-1 ml-auto">
                 <button
                   onClick={decreaseDepth}
                   disabled={depth <= MIN_DEPTH}
-                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-0.5 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   title="Decrease depth"
                   aria-label="Decrease depth"
                 >
@@ -159,7 +272,7 @@ export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGrap
                 <button
                   onClick={increaseDepth}
                   disabled={depth >= MAX_DEPTH}
-                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="p-0.5 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   title="Increase depth"
                   aria-label="Increase depth"
                 >
@@ -168,52 +281,8 @@ export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGrap
                   </svg>
                 </button>
               </div>
-
-              {/* Zoom controls (right) */}
-              <div className="absolute top-2 right-2 z-10 flex flex-col gap-1">
-                <button
-                  onClick={handleZoomIn}
-                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                  title="Zoom in"
-                  aria-label="Zoom in"
-                >
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-                <button
-                  onClick={handleZoomOut}
-                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                  title="Zoom out"
-                  aria-label="Zoom out"
-                >
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
-                  </svg>
-                </button>
-                <button
-                  onClick={handleZoomFit}
-                  className="p-1 rounded bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-                  title="Fit to view"
-                  aria-label="Fit to view"
-                >
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Graph */}
-              <div className="absolute inset-0">
-                <GraphView
-                  pageId={pageId}
-                  depth={depth}
-                  highlightCenter={true}
-                  showLabels={true}
-                  onGraphRef={handleGraphRef}
-                />
-              </div>
             </div>
+            </>
           )}
         </div>
       )}

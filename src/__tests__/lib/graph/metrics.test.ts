@@ -6,8 +6,10 @@ const makeNode = (id: string): GraphNode => ({
   id,
   label: `Page ${id}`,
   icon: null,
+  oneLiner: null,
   linkCount: 0,
   updatedAt: "2026-01-01T00:00:00Z",
+  contentLength: 0,
 });
 
 describe("computeGraphMetrics", () => {

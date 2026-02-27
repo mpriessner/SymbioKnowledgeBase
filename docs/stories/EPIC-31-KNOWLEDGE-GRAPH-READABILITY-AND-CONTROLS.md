@@ -4,18 +4,8 @@
 **Created:** 2026-02-25
 **Total Story Points:** 49
 **Priority:** High
-**Status:** In Progress (~40% complete)
-**Notes:** SKB-31.5 (Zoom buttons) done — zoom in/out/fit/reset all working. SKB-31.1 (Dark mode labels) partially done — label color handling exists but min font size still 3px (should be 8px), no text stroke. SKB-31.6 (Visual polish) partially done — highlighted node glow works, but missing: subtle glow for all dark mode nodes, edge brightness, arrow head size, radial gradient background, pulsing animation.
-
-**Remaining work:**
-- SKB-31.2: Node spacing control slider (not started)
-- SKB-31.3: Always-visible name labels on 3D graph (not started)
-- SKB-31.4: Edge labels and distance display (not started)
-- SKB-31.7: Move graph legend from bottom-right to top-right (not started)
-- SKB-31.8: Node size control slider (not started)
-- SKB-31.9: Scale node size by document content length (not started)
-- SKB-31.1: Increase min font size to 8px, add text stroke for readability
-- SKB-31.6: Complete visual polish (dark mode glow, edge styling, background)
+**Status:** Done
+**Notes:** All 9 stories complete. SKB-31.5 (Zoom buttons) was already working. SKB-31.7: legend moved to top-right. SKB-31.1: min font 8px, text stroke, dimmed opacity 0.6, zoom threshold 0.5. SKB-31.6: dark mode node glow, brighter edges (#6B7280), larger arrows (8px). SKB-31.4: edge labels show "linked" at midpoints with readability stroke. SKB-31.2: spacing slider (10-500, controls charge force). SKB-31.8: node size slider (1-10, controls base radius). SKB-31.9: "Size by" toggle (Links/Content), contentLength added to GraphNode/API/builder, logarithmic scaling. SKB-31.3: SpriteText 3D labels with semi-transparent background.
 
 ---
 
@@ -534,38 +524,17 @@ The `GraphRefHandle` interface defines these methods, but the ref may not be pro
 ## Implementation Order
 
 ```
-Phase 1: Quick wins
-  31.5 (zoom fix) → 31.7 (legend move)
+All stories complete:
 
-Phase 2: Core readability
-  31.1 (dark mode labels) → 31.3 (3D labels) → 31.4 (edge labels)
-
-Phase 3: Node sizing
-  31.8 (size slider) → 31.9 (size by content — depends on 31.8)
-
-Phase 4: Layout & polish
-  31.2 (spacing slider) → 31.6 (visual polish)
-
-┌──────┐    ┌──────┐
-│ 31.5 │ →  │ 31.7 │
-│ Zoom │    │Legend │
-│ Fix  │    │Move  │
-└──────┘    └──────┘
-                        ┌──────┐    ┌──────┐    ┌──────┐
-                        │ 31.1 │ →  │ 31.3 │ →  │ 31.4 │
-                        │Label │    │ 3D   │    │ Edge │
-                        │Dark  │    │Labels│    │Labels│
-                        └──────┘    └──────┘    └──────┘
-                                                            ┌──────┐    ┌──────┐
-                                                            │ 31.8 │ →  │ 31.9 │
-                                                            │ Size │    │Size× │
-                                                            │Slider│    │Content│
-                                                            └──────┘    └──────┘
-                        ┌──────┐    ┌──────┐
-                        │ 31.2 │ →  │ 31.6 │
-                        │Space │    │Polish│
-                        │Slider│    │      │
-                        └──────┘    └──────┘
+✅ 31.5 (zoom fix) — already working
+✅ 31.7 (legend move) — bottom-4 → top-4
+✅ 31.1 (dark mode labels) — min font 8px, text stroke, opacity 0.6
+✅ 31.3 (3D labels) — SpriteText with semi-transparent background
+✅ 31.4 (edge labels) — "linked" text at midpoints with stroke
+✅ 31.8 (size slider) — range 1-10, controls base radius
+✅ 31.9 (size by content) — contentLength in API, logarithmic scaling, toggle
+✅ 31.2 (spacing slider) — range 10-500, controls d3 charge force
+✅ 31.6 (visual polish) — dark mode glow, brighter edges, larger arrows
 ```
 
 ---
@@ -596,4 +565,4 @@ Phase 4: Layout & polish
 
 ---
 
-**Last Updated:** 2026-02-27
+**Last Updated:** 2026-02-27 (all stories implemented)

@@ -8,12 +8,14 @@ import type { PageTreeNode } from "@/types/page";
 interface BreadcrumbsProps {
   tree: PageTreeNode[];
   currentPageId: string;
+  /** Optional right-aligned actions (e.g. export, favorite, share buttons) */
+  actions?: React.ReactNode;
 }
 
 /** Maximum number of visible breadcrumb segments before truncation kicks in. */
 const MAX_VISIBLE_SEGMENTS = 4;
 
-export function Breadcrumbs({ tree, currentPageId }: BreadcrumbsProps) {
+export function Breadcrumbs({ tree, currentPageId, actions }: BreadcrumbsProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const ancestry = useMemo(
@@ -48,7 +50,8 @@ export function Breadcrumbs({ tree, currentPageId }: BreadcrumbsProps) {
   const lastIndex = visibleSegments.length - 1;
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center w-full content-pad py-2">
+    <nav aria-label="Breadcrumb" className="flex items-center justify-between w-full content-pad py-2">
+      <div className="flex items-center min-w-0">
       {/* Home breadcrumb */}
       <Link
         href="/"
@@ -114,6 +117,8 @@ export function Breadcrumbs({ tree, currentPageId }: BreadcrumbsProps) {
           </span>
         );
       })}
+      </div>
+      {actions && <div className="flex-shrink-0 ml-2">{actions}</div>}
     </nav>
   );
 }

@@ -85,6 +85,7 @@ describe("LocalGraph", () => {
               oneLiner: null,
               linkCount: 0,
               updatedAt: "",
+              contentLength: 0,
             },
           ],
           edges: [],
@@ -114,6 +115,7 @@ describe("LocalGraph", () => {
               oneLiner: null,
               linkCount: 1,
               updatedAt: "",
+              contentLength: 0,
             },
             {
               id: "2",
@@ -122,6 +124,7 @@ describe("LocalGraph", () => {
               oneLiner: null,
               linkCount: 1,
               updatedAt: "",
+              contentLength: 0,
             },
           ],
           edges: [{ source: "1", target: "2" }],

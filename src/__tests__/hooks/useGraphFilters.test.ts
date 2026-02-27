@@ -12,6 +12,7 @@ describe("Graph filtering logic", () => {
         oneLiner: null,
         linkCount: 5,
         updatedAt: "2026-01-15T00:00:00Z",
+        contentLength: 0,
       },
       {
         id: "2",
@@ -20,6 +21,7 @@ describe("Graph filtering logic", () => {
         oneLiner: null,
         linkCount: 1,
         updatedAt: "2026-02-10T00:00:00Z",
+        contentLength: 0,
       },
       {
         id: "3",
@@ -28,6 +30,7 @@ describe("Graph filtering logic", () => {
         oneLiner: null,
         linkCount: 0,
         updatedAt: "2026-03-01T00:00:00Z",
+        contentLength: 0,
       },
     ],
     edges: [

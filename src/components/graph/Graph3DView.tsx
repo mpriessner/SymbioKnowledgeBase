@@ -7,6 +7,7 @@ import { useGraphData } from "@/hooks/useGraphData";
 import { getNodeColor, getNodeRadiusByContent } from "@/lib/graph/colorPalette";
 import type { ThemeMode } from "@/lib/graph/colorPalette";
 import type { GraphNode, GraphData } from "@/types/graph";
+import SpriteText from "three-spritetext";
 
 // Dynamically import ForceGraph3D to avoid SSR issues (uses WebGL/three.js)
 const ForceGraph3D = dynamic(
@@ -185,6 +186,27 @@ const handleNodeClick = useCallback(
     [sizeMode]
   );
 
+  // Always-visible 3D text labels using SpriteText
+  const nodeThreeObject = useCallback(
+    (node: ForceGraphNodeObject) => {
+      const label = node.label ?? "";
+      const displayLabel = label.length > 20 ? label.substring(0, 20) + "..." : label;
+      const sprite = new SpriteText(displayLabel);
+      sprite.color = theme === "dark" ? "#E5E7EB" : "#37352f";
+      sprite.textHeight = 3;
+      sprite.fontFace = "Inter, system-ui, sans-serif";
+      sprite.backgroundColor = theme === "dark" ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.5)";
+      sprite.padding = 1;
+      sprite.borderRadius = 2;
+      sprite.material.opacity = showLabelsRef.current ? 0.6 : 0;
+      sprite.material.transparent = true;
+      // Position slightly above the node sphere
+      sprite.position.y = nodeSize + 4;
+      return sprite;
+    },
+    [theme, nodeSize]
+  );
+
   if (isLoading) {
     return (
       <div
@@ -233,6 +255,8 @@ const handleNodeClick = useCallback(
         nodeRelSize={nodeSize}
         nodeVal={nodeVal}
         nodeVisibility={() => showNodesRef.current}
+        nodeThreeObject={nodeThreeObject}
+        nodeThreeObjectExtend={true}
         onNodeClick={handleNodeClick}
         linkColor={() => (theme === "dark" ? "#6B7280" : "#D1D5DB")}
         linkWidth={1}

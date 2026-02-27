@@ -14,8 +14,10 @@ describe("Graph Color Palette", () => {
     id: "1",
     label: "Test Page",
     icon: null,
+    oneLiner: null,
     linkCount: 5,
     updatedAt: "2026-01-01T00:00:00Z",
+    contentLength: 0,
     ...overrides,
   });
 

@@ -53,6 +53,7 @@
     "remark-parse": "^11.0.0",
     "swagger-ui-react": "^5.31.2",
     "three": "^0.183.1",
+    "three-spritetext": "^1.10.0",
     "tippy.js": "^6.3.7",
     "unified": "^11.0.5",
     "zod": "^4.3.6"

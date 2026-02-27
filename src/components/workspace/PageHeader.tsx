@@ -9,6 +9,49 @@ import { FavoriteButton } from "@/components/page/FavoriteButton";
 import { ShareButton } from "@/components/page/ShareButton";
 import type { Page } from "@/types/page";
 
+/** Standalone action buttons for the page (export, favorite, share). Designed to be rendered inside the breadcrumb bar. */
+export function PageActions({ pageId, pageTitle }: { pageId: string; pageTitle: string }) {
+  const handleExportMarkdown = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/pages/${pageId}/export`);
+      if (!res.ok) return;
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) return;
+      const text = await res.text();
+      if (!text || text.trim().length === 0) return;
+      const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const dispositionFilename = res.headers
+        .get("content-disposition")
+        ?.match(/filename="(.+)"/)?.[1];
+      link.download = dispositionFilename || `${pageTitle || "untitled"}.md`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Export markdown error:", error);
+    }
+  }, [pageId, pageTitle]);
+
+  return (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={handleExportMarkdown}
+        className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
+        title="Export as Markdown"
+        aria-label="Export as Markdown"
+      >
+        <Download className="h-4 w-4" />
+      </button>
+      <FavoriteButton pageId={pageId} />
+      <ShareButton pageId={pageId} pageTitle={pageTitle} />
+    </div>
+  );
+}
+
 interface PageHeaderProps {
   page: Page;
 }
@@ -109,20 +152,6 @@ export function PageHeader({ page }: PageHeaderProps) {
 
   return (
     <div className="w-full">
-      {/* Action buttons - top right */}
-      <div className="absolute right-4 top-2 z-10 flex items-center gap-1">
-        <button
-          onClick={handleExportMarkdown}
-          className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
-          title="Export as Markdown"
-          aria-label="Export as Markdown"
-        >
-          <Download className="h-4 w-4" />
-        </button>
-        <FavoriteButton pageId={page.id} />
-        <ShareButton pageId={page.id} pageTitle={page.title} />
-      </div>
-
       {/* Cover Image Area */}
       {(page.coverUrl || showCoverInput) && (
         <CoverImageManager
