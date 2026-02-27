@@ -11,7 +11,7 @@ type FieldErrors = Partial<Record<string, string>>;
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/pages";
+  const callbackUrl = searchParams.get("callbackUrl") || "/home";
   const registered = searchParams.get("registered");
   const oauthError = searchParams.get("error");
 

@@ -54,6 +54,7 @@ export async function getTenantContext(
 
   // 2. Try Supabase session from cookies
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseInternalUrl = process.env.SUPABASE_INTERNAL_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (supabaseUrl && supabaseKey && !supabaseUrl.includes("xxxxx") && supabaseUrl.startsWith("http")) {
@@ -69,6 +70,17 @@ export async function getTenantContext(
             // API routes don't need to set cookies (middleware handles refresh)
           },
         },
+        // Route API calls through Docker-internal URL when available
+        ...(supabaseInternalUrl && supabaseInternalUrl !== supabaseUrl
+          ? {
+              global: {
+                fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+                  const url = input.toString().replace(supabaseUrl, supabaseInternalUrl);
+                  return fetch(url, init);
+                },
+              },
+            }
+          : {}),
       }
     );
 

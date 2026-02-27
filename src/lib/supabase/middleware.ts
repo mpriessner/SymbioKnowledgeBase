@@ -16,6 +16,28 @@ function isSupabaseConfigured(): boolean {
   );
 }
 
+/**
+ * Build a custom fetch that rewrites localhost URLs to the Docker-internal URL.
+ * This is needed because the Supabase client is initialized with the browser-facing
+ * URL (for cookie name matching) but server-side calls need to go through
+ * host.docker.internal.
+ */
+function getGlobalFetchConfig() {
+  const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const internalUrl = process.env.SUPABASE_INTERNAL_URL;
+  if (internalUrl && publicUrl && internalUrl !== publicUrl) {
+    return {
+      global: {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = input.toString().replace(publicUrl, internalUrl);
+          return fetch(url, init);
+        },
+      },
+    };
+  }
+  return {};
+}
+
 export async function updateSession(request: NextRequest) {
   // Gracefully degrade when Supabase is not configured (local dev without Supabase)
   if (!isSupabaseConfigured()) {
@@ -45,6 +67,7 @@ export async function updateSession(request: NextRequest) {
           );
         },
       },
+      ...getGlobalFetchConfig(),
     }
   );
 

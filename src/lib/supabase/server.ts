@@ -2,10 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export async function createClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const internalUrl = process.env.SUPABASE_INTERNAL_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url || !key || url.includes("xxxxx")) {
+  if (!publicUrl || !key || publicUrl.includes("xxxxx")) {
     // Return null when Supabase is not configured (local dev without Supabase)
     return null;
   }
@@ -13,7 +14,7 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
-    url,
+    publicUrl,
     key,
     {
       cookies: {
@@ -31,6 +32,17 @@ export async function createClient() {
           }
         },
       },
+      // Route API calls through Docker-internal URL when available
+      ...(internalUrl && internalUrl !== publicUrl
+        ? {
+            global: {
+              fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+                const url = input.toString().replace(publicUrl, internalUrl);
+                return fetch(url, init);
+              },
+            },
+          }
+        : {}),
     }
   );
 }

@@ -34,6 +34,12 @@ COPY . .
 # Copy generated Prisma client (overwrite stale local copy excluded by .dockerignore)
 COPY --from=deps /app/src/generated ./src/generated
 
+# Supabase public vars must be available at build time (baked into client JS)
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+
 # Build Next.js (standalone output)
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
