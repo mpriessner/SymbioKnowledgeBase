@@ -4,7 +4,7 @@
 **Created:** 2026-02-25
 **Total Story Points:** 16
 **Priority:** Critical
-**Status:** Draft
+**Status:** Done
 
 ---
 
@@ -156,19 +156,19 @@ Four bugs prevent basic workflows from functioning:
 ## Implementation Order
 
 ```
-26.1 (quick fix) → 26.2 (requires API calls)
-26.3 and 26.4 are independent — can run in parallel
+✅ 26.1 — Already fixed in codebase (router.push("/home") already present)
+✅ 26.2 — Already fixed in codebase (handleNewDatabase creates page + DB via API)
+✅ 26.3 — Fixed: pointer-events-none on backdrop div (commit decb220)
+✅ 26.4 — Fixed: single-click=inline-edit, double-click=navigate (commit decb220)
 
 ┌──────┐    ┌──────┐
 │ 26.1 │ →  │ 26.2 │
-│ Del  │    │ DB   │
-│ Nav  │    │Create │
+│ ✅   │    │ ✅   │
 └──────┘    └──────┘
 
 ┌──────┐    ┌──────┐
-│ 26.3 │    │ 26.4 │  (both parallel)
-│Search│    │ List │
-│Dismiss│   │ Cal  │
+│ 26.3 │    │ 26.4 │
+│ ✅   │    │ ✅   │
 └──────┘    └──────┘
 ```
 
