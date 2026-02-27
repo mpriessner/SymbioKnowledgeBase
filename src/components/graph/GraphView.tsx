@@ -204,8 +204,22 @@ export function GraphView({
 
   const theme = getThemeMode();
 
+  // Use ref so toggling labels doesn't recreate the callback
+  // (which would restart the force simulation and cause wiggle)
+  const showLabelsRef = useRef(showLabels);
+  useEffect(() => {
+    showLabelsRef.current = showLabels;
+  }, [showLabels]);
+
+  // Force canvas repaint when labels toggle (without restarting simulation)
+  useEffect(() => {
+    if (graphRef.current) {
+      (graphRef.current as GraphRefHandle).centerAt(undefined as unknown as number, undefined as unknown as number, 0);
+    }
+  }, [showLabels]);
+
   // Custom node rendering: circle with size based on linkCount
-   
+
   const nodeCanvasObject = useCallback(
     (
       nodeObj: GenericNodeObject,
@@ -256,7 +270,7 @@ export function GraphView({
       ctx.fill();
 
       // Draw label (only if enabled and zoomed in enough, or always for highlighted)
-      if ((showLabels && globalScale > 0.8) || isHighlighted) {
+      if ((showLabelsRef.current && globalScale > 0.8) || isHighlighted) {
         ctx.font = `${isHighlighted ? "bold " : ""}${fontSize}px Inter, system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
@@ -283,7 +297,7 @@ export function GraphView({
         );
       }
     },
-    [highlightCenter, pageId, showLabels, theme, highlightedNodes]
+    [highlightCenter, pageId, theme, highlightedNodes]
   );
 
   // Pin center node when engine stops (for local graph)

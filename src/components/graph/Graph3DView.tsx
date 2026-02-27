@@ -121,19 +121,26 @@ const handleNodeClick = useCallback(
   const theme = getThemeMode();
   const centerId = highlightCenter ? pageId : undefined;
 
-const nodeColor = useCallback(
+  // Use ref so toggling labels doesn't recreate the callback
+  // (which would restart the force simulation and cause wiggle)
+  const showLabelsRef = useRef(showLabels);
+  useEffect(() => {
+    showLabelsRef.current = showLabels;
+  }, [showLabels]);
+
+  const nodeColor = useCallback(
     (node: ForceGraphNodeObject) => {
       return getNodeColor(node as GraphNode, theme, centerId);
     },
     [theme, centerId]
   );
 
-const nodeLabel = useCallback(
+  const nodeLabel = useCallback(
     (node: ForceGraphNodeObject): string => {
-      if (!showLabels) return "";
+      if (!showLabelsRef.current) return "";
       return node.label ?? "";
     },
-    [showLabels]
+    []
   );
 
   if (isLoading) {
