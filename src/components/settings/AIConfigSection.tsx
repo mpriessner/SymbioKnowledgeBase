@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Key, Eye, EyeOff, Check, AlertCircle, Loader2, ChevronDown } from "lucide-react";
+import { Key, Eye, EyeOff, Check, AlertCircle, Loader2, ChevronDown, Mic } from "lucide-react";
+
+type TranscriptionProvider = "openai-whisper" | "elevenlabs" | "assemblyai";
 
 interface AIConfig {
   provider: "openai" | "anthropic" | "google";
@@ -11,6 +13,10 @@ interface AIConfig {
   openaiModel: string;
   anthropicModel: string;
   googleModel: string;
+  transcriptionProvider: TranscriptionProvider;
+  transcriptionModel: string;
+  transcriptionApiKey?: string;
+  useSharedTranscriptionKey: boolean;
 }
 
 const DEFAULT_CONFIG: AIConfig = {
@@ -18,6 +24,30 @@ const DEFAULT_CONFIG: AIConfig = {
   openaiModel: "gpt-5.2",
   anthropicModel: "claude-sonnet-4-5-20250929",
   googleModel: "gemini-3-flash-preview",
+  transcriptionProvider: "openai-whisper",
+  transcriptionModel: "whisper-1",
+  useSharedTranscriptionKey: true,
+};
+
+const TRANSCRIPTION_PROVIDERS: { value: TranscriptionProvider; label: string }[] = [
+  { value: "openai-whisper", label: "OpenAI Whisper" },
+  { value: "elevenlabs", label: "ElevenLabs" },
+  { value: "assemblyai", label: "AssemblyAI" },
+];
+
+const TRANSCRIPTION_MODELS: Record<TranscriptionProvider, { value: string; label: string }[]> = {
+  "openai-whisper": [{ value: "whisper-1", label: "Whisper-1" }],
+  elevenlabs: [{ value: "default", label: "Default STT Model" }],
+  assemblyai: [
+    { value: "best", label: "Best" },
+    { value: "nano", label: "Nano" },
+  ],
+};
+
+const TRANSCRIPTION_PROVIDER_LABELS: Record<TranscriptionProvider, string> = {
+  "openai-whisper": "OpenAI Whisper",
+  elevenlabs: "ElevenLabs",
+  assemblyai: "AssemblyAI",
 };
 
 const MODEL_OPTIONS = {
@@ -147,11 +177,13 @@ export function AIConfigSection() {
     openai: false,
     anthropic: false,
     google: false,
+    transcription: false,
   });
   const [tempKeys, setTempKeys] = useState({
     openai: "",
     anthropic: "",
     google: "",
+    transcription: "",
   });
   const [testResult, setTestResult] = useState<{
     provider: string;
@@ -169,6 +201,7 @@ export function AIConfigSection() {
           openai: parsed.openaiKey || "",
           anthropic: parsed.anthropicKey || "",
           google: parsed.googleKey || "",
+          transcription: parsed.transcriptionApiKey || "",
         });
       }
     } catch {
@@ -204,6 +237,7 @@ export function AIConfigSection() {
         openaiKey: tempKeys.openai || undefined,
         anthropicKey: tempKeys.anthropic || undefined,
         googleKey: tempKeys.google || undefined,
+        transcriptionApiKey: config.useSharedTranscriptionKey ? undefined : (tempKeys.transcription || undefined),
       };
 
       localStorage.setItem("skb-ai-config", JSON.stringify(newConfig));
@@ -435,6 +469,126 @@ export function AIConfigSection() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Transcription Settings */}
+      <div className="space-y-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <Mic className="h-5 w-5 text-[var(--text-secondary)]" />
+            <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+              Transcription
+            </h3>
+          </div>
+          <p className="text-sm text-[var(--text-tertiary)]">
+            Configure the provider used for audio transcription in Meeting Notes
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-secondary)] p-4 space-y-4">
+          {/* Transcription Provider */}
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">
+              Transcription Provider
+            </label>
+            <CustomSelect
+              value={config.transcriptionProvider}
+              options={TRANSCRIPTION_PROVIDERS}
+              onChange={(val) =>
+                setConfig((prev) => ({
+                  ...prev,
+                  transcriptionProvider: val as TranscriptionProvider,
+                  transcriptionModel: TRANSCRIPTION_MODELS[val as TranscriptionProvider][0].value,
+                }))
+              }
+            />
+          </div>
+
+          {/* Transcription Model */}
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">
+              Transcription Model
+            </label>
+            <CustomSelect
+              value={config.transcriptionModel}
+              options={TRANSCRIPTION_MODELS[config.transcriptionProvider]}
+              onChange={(val) =>
+                setConfig((prev) => ({ ...prev, transcriptionModel: val }))
+              }
+            />
+          </div>
+
+          {/* API Key — shared or separate */}
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-1.5">
+              API Key
+            </label>
+            {config.transcriptionProvider === "openai-whisper" ? (
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={config.useSharedTranscriptionKey}
+                    onChange={(e) =>
+                      setConfig((prev) => ({ ...prev, useSharedTranscriptionKey: e.target.checked }))
+                    }
+                    className="rounded border-[var(--border-default)]"
+                  />
+                  Use same API key as OpenAI LLM provider
+                </label>
+                {!config.useSharedTranscriptionKey && (
+                  <div className="flex gap-2">
+                    <div className="flex-1 relative">
+                      <input
+                        type={showKeys.transcription ? "text" : "password"}
+                        value={tempKeys.transcription}
+                        onChange={(e) =>
+                          setTempKeys((prev) => ({ ...prev, transcription: e.target.value }))
+                        }
+                        placeholder="Enter transcription API key"
+                        className="w-full px-3 py-2 pr-10 rounded-md border border-[var(--border-default)]
+                          bg-[var(--bg-primary)] text-[var(--text-primary)] text-sm
+                          focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/50 focus:border-[var(--accent-primary)]
+                          placeholder:text-[var(--text-tertiary)] font-mono"
+                      />
+                      <button
+                        onClick={() => setShowKeys((prev) => ({ ...prev, transcription: !prev.transcription }))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-tertiary)]
+                          hover:text-[var(--text-primary)] transition-colors"
+                      >
+                        {showKeys.transcription ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <input
+                    type={showKeys.transcription ? "text" : "password"}
+                    value={tempKeys.transcription}
+                    onChange={(e) =>
+                      setTempKeys((prev) => ({ ...prev, transcription: e.target.value }))
+                    }
+                    placeholder={`Enter your ${TRANSCRIPTION_PROVIDER_LABELS[config.transcriptionProvider]} API key`}
+                    className="w-full px-3 py-2 pr-10 rounded-md border border-[var(--border-default)]
+                      bg-[var(--bg-primary)] text-[var(--text-primary)] text-sm
+                      focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/50 focus:border-[var(--accent-primary)]
+                      placeholder:text-[var(--text-tertiary)] font-mono"
+                  />
+                  <button
+                    onClick={() => setShowKeys((prev) => ({ ...prev, transcription: !prev.transcription }))}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-tertiary)]
+                      hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    {showKeys.transcription ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Security Notice */}

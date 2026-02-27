@@ -7,6 +7,29 @@ import { TranscriptPreview } from "./TranscriptPreview";
 import { StreamingPreview } from "./StreamingPreview";
 import { useAIPageGeneration } from "@/hooks/useAIPageGeneration";
 
+const AI_CONFIG_KEY = "skb-ai-config";
+
+function getTranscriptionConfig(): { provider: string; model: string; apiKey?: string } {
+  try {
+    const stored = typeof window !== "undefined" ? localStorage.getItem(AI_CONFIG_KEY) : null;
+    if (!stored) return { provider: "openai-whisper", model: "whisper-1" };
+    const config = JSON.parse(stored);
+    const provider = config.transcriptionProvider || "openai-whisper";
+    const model = config.transcriptionModel || "whisper-1";
+
+    let apiKey: string | undefined;
+    if (provider === "openai-whisper" && config.useSharedTranscriptionKey !== false) {
+      apiKey = config.openaiKey;
+    } else {
+      apiKey = config.transcriptionApiKey;
+    }
+
+    return { provider, model, apiKey };
+  } catch {
+    return { provider: "openai-whisper", model: "whisper-1" };
+  }
+}
+
 interface MeetingNotesGeneratorProps {
   pageId: string;
   onComplete: (markdown: string) => void;
@@ -41,8 +64,14 @@ export function MeetingNotesGenerator({
       setTranscribeError(null);
 
       try {
+        const txConfig = getTranscriptionConfig();
         const formData = new FormData();
         formData.append("file", audioBlob, "recording.webm");
+        formData.append("provider", txConfig.provider);
+        formData.append("model", txConfig.model);
+        if (txConfig.apiKey) {
+          formData.append("apiKey", txConfig.apiKey);
+        }
 
         const response = await fetch("/api/ai/transcribe", {
           method: "POST",
