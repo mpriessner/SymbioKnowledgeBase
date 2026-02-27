@@ -22,6 +22,12 @@ interface GraphControlsProps {
   orphanCount?: number;
   onSearchNode?: (query: string) => void;
   searchMatchCount?: number;
+  spacing?: number;
+  onSpacingChange?: (value: number) => void;
+  nodeSize?: number;
+  onNodeSizeChange?: (value: number) => void;
+  sizeMode?: "connections" | "content";
+  onSizeModeChange?: (mode: "connections" | "content") => void;
 }
 
 /**
@@ -42,6 +48,12 @@ export function GraphControls({
   orphanCount,
   onSearchNode,
   searchMatchCount,
+  spacing = 100,
+  onSpacingChange,
+  nodeSize = 4,
+  onNodeSizeChange,
+  sizeMode = "connections",
+  onSizeModeChange,
 }: GraphControlsProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -120,6 +132,98 @@ export function GraphControls({
           >
             Reset
           </button>
+        </div>
+      </div>
+
+      {/* Layout Controls */}
+      <div>
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--color-text-secondary)]">
+          Layout
+        </h3>
+
+        {/* Node Spacing Slider */}
+        <label className="mb-3 block">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--color-text-secondary)]">
+              Node spacing
+            </span>
+            {spacing !== 100 && (
+              <button
+                onClick={() => onSpacingChange?.(100)}
+                className="text-xs text-[var(--color-accent)] hover:underline"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <input
+            type="range"
+            min={10}
+            max={500}
+            value={spacing}
+            onChange={(e) => onSpacingChange?.(Number(e.target.value))}
+            className="mt-1 w-full"
+          />
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            {spacing}
+          </span>
+        </label>
+
+        {/* Node Size Slider */}
+        <label className="mb-3 block">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--color-text-secondary)]">
+              Node size
+            </span>
+            {nodeSize !== 4 && (
+              <button
+                onClick={() => onNodeSizeChange?.(4)}
+                className="text-xs text-[var(--color-accent)] hover:underline"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={10}
+            value={nodeSize}
+            onChange={(e) => onNodeSizeChange?.(Number(e.target.value))}
+            className="mt-1 w-full"
+          />
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            {nodeSize}
+          </span>
+        </label>
+
+        {/* Size by toggle */}
+        <div className="mb-1">
+          <span className="text-xs text-[var(--color-text-secondary)]">
+            Size by
+          </span>
+          <div className="mt-1 flex gap-1">
+            <button
+              onClick={() => onSizeModeChange?.("connections")}
+              className={`flex-1 rounded-md px-2 py-1 text-xs transition-colors ${
+                sizeMode === "connections"
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]"
+              }`}
+            >
+              Links
+            </button>
+            <button
+              onClick={() => onSizeModeChange?.("content")}
+              className={`flex-1 rounded-md px-2 py-1 text-xs transition-colors ${
+                sizeMode === "content"
+                  ? "bg-[var(--color-accent)] text-white"
+                  : "border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]"
+              }`}
+            >
+              Content
+            </button>
+          </div>
         </div>
       </div>
 

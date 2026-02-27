@@ -10,6 +10,7 @@ export interface GraphNode {
   oneLiner: string | null;
   linkCount: number;
   updatedAt: string;
+  contentLength: number;
 }
 
 /**

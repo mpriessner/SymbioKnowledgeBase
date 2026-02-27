@@ -23,7 +23,7 @@ export async function buildGraphData(
  * Builds the global graph: all pages and all links for the tenant.
  */
 async function buildGlobalGraph(tenantId: string): Promise<GraphData> {
-  const [pages, links] = await Promise.all([
+  const [pages, links, blockLengths] = await Promise.all([
     prisma.page.findMany({
       where: { tenantId },
       select: {
@@ -41,7 +41,21 @@ async function buildGlobalGraph(tenantId: string): Promise<GraphData> {
         targetPageId: true,
       },
     }),
+    // Aggregate plainText length per page for content-based sizing
+    prisma.block.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { pageId: true, plainText: true },
+    }),
   ]);
+
+  // Compute content length per page
+  const contentLengths = new Map<string, number>();
+  for (const block of blockLengths) {
+    contentLengths.set(
+      block.pageId,
+      (contentLengths.get(block.pageId) || 0) + (block.plainText?.length || 0)
+    );
+  }
 
   // Compute link counts per page (incoming + outgoing)
   const linkCounts = new Map<string, number>();
@@ -64,6 +78,7 @@ async function buildGlobalGraph(tenantId: string): Promise<GraphData> {
     oneLiner: page.oneLiner,
     linkCount: linkCounts.get(page.id) || 0,
     updatedAt: page.updatedAt.toISOString(),
+    contentLength: contentLengths.get(page.id) || 0,
   }));
 
   // Build edges (only include edges where both source and target exist)
@@ -134,20 +149,40 @@ async function buildLocalGraph(
     if (frontier.length === 0) break;
   }
 
-  // Fetch page details for discovered pages
-  const pages = await prisma.page.findMany({
-    where: {
-      id: { in: Array.from(discoveredPageIds) },
-      tenantId,
-    },
-    select: {
-      id: true,
-      title: true,
-      icon: true,
-      oneLiner: true,
-      updatedAt: true,
-    },
-  });
+  // Fetch page details and content lengths for discovered pages
+  const discoveredIds = Array.from(discoveredPageIds);
+  const [pages, pageBlocks] = await Promise.all([
+    prisma.page.findMany({
+      where: {
+        id: { in: discoveredIds },
+        tenantId,
+      },
+      select: {
+        id: true,
+        title: true,
+        icon: true,
+        oneLiner: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.block.findMany({
+      where: {
+        pageId: { in: discoveredIds },
+        tenantId,
+        deletedAt: null,
+      },
+      select: { pageId: true, plainText: true },
+    }),
+  ]);
+
+  // Compute content length per page
+  const contentLengths = new Map<string, number>();
+  for (const block of pageBlocks) {
+    contentLengths.set(
+      block.pageId,
+      (contentLengths.get(block.pageId) || 0) + (block.plainText?.length || 0)
+    );
+  }
 
   const pageIdSet = new Set(pages.map((p) => p.id));
 
@@ -176,6 +211,7 @@ async function buildLocalGraph(
     oneLiner: page.oneLiner,
     linkCount: linkCounts.get(page.id) || 0,
     updatedAt: page.updatedAt.toISOString(),
+    contentLength: contentLengths.get(page.id) || 0,
   }));
 
   // Build edges (only between discovered pages)

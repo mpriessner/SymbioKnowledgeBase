@@ -12,7 +12,7 @@ import dynamic from "next/dynamic";
 import { useGraphData } from "@/hooks/useGraphData";
 import { GraphTooltip } from "./GraphTooltip";
 import { GraphLegend } from "./GraphLegend";
-import { getNodeColor, getNodeRadius, getEdgeColor } from "@/lib/graph/colorPalette";
+import { getNodeColor, getNodeRadius, getNodeRadiusByContent, getEdgeColor } from "@/lib/graph/colorPalette";
 import type { ThemeMode } from "@/lib/graph/colorPalette";
 import type { GraphNode, GraphData } from "@/types/graph";
 
@@ -48,6 +48,12 @@ interface GraphViewProps {
   onGraphRef?: (ref: GraphRefHandle | null) => void;
   /** Node IDs to highlight (from search) */
   highlightedNodes?: string[];
+  /** Node spacing / repulsion force strength (default 100) */
+  spacing?: number;
+  /** Base node radius (default 4) */
+  nodeSize?: number;
+  /** Size mode: "connections" (default) or "content" */
+  sizeMode?: "connections" | "content";
 }
 
 /** Extended GraphNode with force-simulation coordinates */
@@ -104,6 +110,9 @@ export function GraphView({
   showEdges = true,
   onGraphRef,
   highlightedNodes = [],
+  spacing = 100,
+  nodeSize = 4,
+  sizeMode = "connections",
 }: GraphViewProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -231,6 +240,24 @@ export function GraphView({
     }
   }, [showLabels, showEdgeLabels, showNodes, showEdges]);
 
+  // Update d3 force simulation when spacing changes
+  useEffect(() => {
+    const fg = graphRef.current as unknown as {
+      d3Force: (name: string) => { strength?: (v: number) => void; distance?: (v: number) => void } | null;
+      d3ReheatSimulation: () => void;
+    } | null;
+    if (!fg?.d3Force) return;
+    const charge = fg.d3Force("charge");
+    if (charge?.strength) {
+      charge.strength(-spacing);
+    }
+    const link = fg.d3Force("link");
+    if (link?.distance) {
+      link.distance(spacing * 0.5);
+    }
+    fg.d3ReheatSimulation?.();
+  }, [spacing]);
+
   // Custom node rendering: circle with size based on linkCount
 
   const nodeCanvasObject = useCallback(
@@ -245,8 +272,10 @@ export function GraphView({
       // Cast to our extended type to access custom properties (via unknown for strict TS)
       const node = nodeObj as unknown as ForceGraphNode;
       const label = node.label;
-      const fontSize = Math.max(12 / globalScale, 3);
-      const baseRadius = getNodeRadius(node.linkCount, 3);
+      const fontSize = Math.max(12 / globalScale, 8);
+      const baseRadius = sizeMode === "content"
+        ? getNodeRadiusByContent(node.contentLength, nodeSize)
+        : getNodeRadius(node.linkCount, nodeSize);
       
       // Check if this node is highlighted from search
       const isHighlighted = highlightedNodes.includes(node.id);
@@ -267,7 +296,7 @@ export function GraphView({
           color = "#3b82f6";
         } else {
           // Dim non-matching nodes
-          color = theme === "dark" ? "rgba(100,100,100,0.4)" : "rgba(150,150,150,0.4)";
+          color = theme === "dark" ? "rgba(100,100,100,0.6)" : "rgba(150,150,150,0.6)";
         }
       }
 
@@ -279,14 +308,26 @@ export function GraphView({
         ctx.fill();
       }
 
-      // Draw circle
-      ctx.beginPath();
-      ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI, false);
-      ctx.fillStyle = color;
-      ctx.fill();
+      // Subtle glow for all nodes in dark mode
+      if (theme === "dark" && !isHighlighted) {
+        ctx.save();
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 6;
+        ctx.beginPath();
+        ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI, false);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.restore();
+      } else {
+        // Draw circle (light mode or highlighted — no extra shadow)
+        ctx.beginPath();
+        ctx.arc(node.x || 0, node.y || 0, radius, 0, 2 * Math.PI, false);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
 
       // Draw label (only if enabled and zoomed in enough, or always for highlighted)
-      if ((showLabelsRef.current && globalScale > 0.8) || isHighlighted) {
+      if ((showLabelsRef.current && globalScale > 0.5) || isHighlighted) {
         ctx.font = `${isHighlighted ? "bold " : ""}${fontSize}px Inter, system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
@@ -295,7 +336,7 @@ export function GraphView({
         if (hasSearchActive) {
           ctx.fillStyle = isHighlighted
             ? (theme === "dark" ? "#ffffff" : "#1e40af")
-            : (theme === "dark" ? "rgba(229,231,235,0.4)" : "rgba(55,53,47,0.4)");
+            : (theme === "dark" ? "rgba(229,231,235,0.6)" : "rgba(55,53,47,0.6)");
         } else {
           ctx.fillStyle = theme === "dark" ? "#E5E7EB" : "#37352f";
         }
@@ -306,6 +347,16 @@ export function GraphView({
             ? label.substring(0, maxLabelLength) + "..."
             : label;
 
+        // Draw text outline/stroke for readability against any background
+        ctx.strokeStyle = theme === "dark" ? "rgba(17,24,39,0.8)" : "rgba(255,255,255,0.8)";
+        ctx.lineWidth = 3 / globalScale;
+        ctx.lineJoin = "round";
+        ctx.strokeText(
+          displayLabel,
+          node.x || 0,
+          (node.y || 0) + radius + 2
+        );
+
         ctx.fillText(
           displayLabel,
           node.x || 0,
@@ -313,7 +364,7 @@ export function GraphView({
         );
       }
     },
-    [highlightCenter, pageId, theme, highlightedNodes]
+    [highlightCenter, pageId, theme, highlightedNodes, nodeSize, sizeMode]
   );
 
   // Custom edge rendering: line with optional label at midpoint
@@ -338,7 +389,7 @@ export function GraphView({
         ctx.stroke();
 
         // Draw arrow at target
-        const arrowLength = 6 / globalScale;
+        const arrowLength = 8 / globalScale;
         const dx = target.x - source.x;
         const dy = target.y - source.y;
         const angle = Math.atan2(dy, dx);
@@ -362,15 +413,31 @@ export function GraphView({
       }
 
       // Draw label at midpoint (if enabled and zoomed in enough)
-      if (showEdgeLabelsRef.current && showEdgesRef.current && globalScale > 1.2) {
-        const midX = (source.x + target.x) / 2;
-        const midY = (source.y + target.y) / 2;
-        const fontSize = Math.max(10 / globalScale, 2);
-        ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
-        ctx.fillStyle = theme === "dark" ? "rgba(229,231,235,0.6)" : "rgba(55,53,47,0.6)";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("\u2192", midX, midY);
+      if (showEdgeLabelsRef.current && showEdgesRef.current && globalScale > 0.8) {
+        // Only show label if edge is long enough to avoid clutter
+        const edgeLength = Math.sqrt(
+          Math.pow(target.x - source.x, 2) + Math.pow(target.y - source.y, 2)
+        );
+        const minEdgeLengthForLabel = 40 / globalScale;
+
+        if (edgeLength > minEdgeLengthForLabel) {
+          const midX = (source.x + target.x) / 2;
+          const midY = (source.y + target.y) / 2;
+          const fontSize = Math.max(9 / globalScale, 6);
+          ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          // Draw text outline for readability
+          const labelText = "linked";
+          ctx.strokeStyle = theme === "dark" ? "rgba(17,24,39,0.7)" : "rgba(255,255,255,0.7)";
+          ctx.lineWidth = 2 / globalScale;
+          ctx.lineJoin = "round";
+          ctx.strokeText(labelText, midX, midY);
+
+          ctx.fillStyle = theme === "dark" ? "rgba(229,231,235,0.5)" : "rgba(55,53,47,0.5)";
+          ctx.fillText(labelText, midX, midY);
+        }
       }
     },
     [theme]

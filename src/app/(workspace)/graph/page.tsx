@@ -31,6 +31,9 @@ function GraphPageContent() {
   const [webglSupported] = useState(getWebGLSupport);
   const [highlightedNodes, setHighlightedNodes] = useState<string[]>([]);
   const [searchMatches, setSearchMatches] = useState<number>(0);
+  const [spacing, setSpacing] = useState<number>(100);
+  const [nodeSize, setNodeSize] = useState<number>(4);
+  const [sizeMode, setSizeMode] = useState<"connections" | "content">("connections");
 
   const { data } = useGraphData();
   const { filters, updateFilter, resetFilters, filteredData, isFiltered } =
@@ -140,6 +143,12 @@ function GraphPageContent() {
           orphanCount={metrics.orphanCount}
           onSearchNode={handleSearchNode}
           searchMatchCount={searchMatches}
+          spacing={spacing}
+          onSpacingChange={setSpacing}
+          nodeSize={nodeSize}
+          onNodeSizeChange={setNodeSize}
+          sizeMode={sizeMode}
+          onSizeModeChange={setSizeMode}
         />
 
         <div className="flex-1">
@@ -152,13 +161,20 @@ function GraphPageContent() {
               showEdges={filters.showEdges}
               onGraphRef={handleGraphRef}
               highlightedNodes={highlightedNodes}
+              spacing={spacing}
+              nodeSize={nodeSize}
+              sizeMode={sizeMode}
             />
           ) : (
             <Graph3DView
               overrideData={filteredData}
               showLabels={filters.showLabels}
+              showEdgeLabels={filters.showEdgeLabels}
               showNodes={filters.showNodes}
               showEdges={filters.showEdges}
+              spacing={spacing}
+              nodeSize={nodeSize}
+              sizeMode={sizeMode}
             />
           )}
         </div>

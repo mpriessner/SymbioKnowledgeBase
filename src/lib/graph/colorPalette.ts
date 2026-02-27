@@ -19,7 +19,7 @@ export const graphColors = {
     database: "#A78BFA",
     orphan: "#6B7280",
     center: "#F87171",
-    edge: "#4B5563",
+    edge: "#6B7280",
     edgeBidirectional: "#6B7280",
     label: "#E5E7EB",
     labelBg: "rgba(30, 30, 30, 0.9)",
@@ -51,6 +51,18 @@ export function getNodeRadius(
   baseRadius: number = 4
 ): number {
   return Math.min(Math.max(Math.sqrt(linkCount + 1) * baseRadius, baseRadius), 20);
+}
+
+/**
+ * Calculate node radius based on content length using logarithmic scale.
+ * Min: baseRadius, Max: 20px.
+ */
+export function getNodeRadiusByContent(
+  contentLength: number,
+  baseRadius: number = 4
+): number {
+  if (contentLength <= 0) return baseRadius;
+  return Math.min(Math.max(Math.log10(contentLength + 1) * baseRadius * 0.7, baseRadius), 20);
 }
 
 /**

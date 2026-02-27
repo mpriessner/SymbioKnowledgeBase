@@ -4,7 +4,7 @@ import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useGraphData } from "@/hooks/useGraphData";
-import { getNodeColor } from "@/lib/graph/colorPalette";
+import { getNodeColor, getNodeRadiusByContent } from "@/lib/graph/colorPalette";
 import type { ThemeMode } from "@/lib/graph/colorPalette";
 import type { GraphNode, GraphData } from "@/types/graph";
 
@@ -22,8 +22,12 @@ interface Graph3DViewProps {
   highlightCenter?: boolean;
   overrideData?: GraphData;
   showLabels?: boolean;
+  showEdgeLabels?: boolean;
   showNodes?: boolean;
   showEdges?: boolean;
+  spacing?: number;
+  nodeSize?: number;
+  sizeMode?: "connections" | "content";
 }
 
 /**
@@ -46,6 +50,7 @@ type ForceGraphNodeObject = {
   icon?: string | null;
   linkCount?: number;
   updatedAt?: string;
+  contentLength?: number;
   [key: string]: unknown;
 };
 
@@ -69,8 +74,12 @@ export function Graph3DView({
   highlightCenter = false,
   overrideData,
   showLabels = true,
+  showEdgeLabels = false,
   showNodes = true,
   showEdges = true,
+  spacing = 100,
+  nodeSize = 4,
+  sizeMode = "connections",
 }: Graph3DViewProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -134,6 +143,21 @@ const handleNodeClick = useCallback(
   useEffect(() => { showNodesRef.current = showNodes; }, [showNodes]);
   useEffect(() => { showEdgesRef.current = showEdges; }, [showEdges]);
 
+  // Update d3 force simulation when spacing changes
+  useEffect(() => {
+    const fg = graphRef.current;
+    if (!fg?.d3Force) return;
+    const charge = fg.d3Force("charge");
+    if (charge?.strength) {
+      charge.strength(-spacing);
+    }
+    const link = fg.d3Force("link");
+    if (link?.distance) {
+      link.distance(spacing * 0.5);
+    }
+    fg.d3ReheatSimulation?.();
+  }, [spacing]);
+
   const nodeColor = useCallback(
     (node: ForceGraphNodeObject) => {
       return getNodeColor(node as unknown as GraphNode, theme, centerId);
@@ -147,6 +171,18 @@ const handleNodeClick = useCallback(
       return node.label ?? "";
     },
     []
+  );
+
+  // Dynamic node value for content-based sizing in 3D
+  const nodeVal = useCallback(
+    (node: ForceGraphNodeObject) => {
+      if (sizeMode === "content") {
+        const contentLength = (node as unknown as GraphNode).contentLength || 0;
+        return getNodeRadiusByContent(contentLength, 1);
+      }
+      return 1; // default — nodeRelSize handles base sizing
+    },
+    [sizeMode]
   );
 
   if (isLoading) {
@@ -194,12 +230,13 @@ const handleNodeClick = useCallback(
         nodeId="id"
         nodeColor={nodeColor}
         nodeLabel={nodeLabel}
-        nodeRelSize={4}
+        nodeRelSize={nodeSize}
+        nodeVal={nodeVal}
         nodeVisibility={() => showNodesRef.current}
         onNodeClick={handleNodeClick}
-        linkColor={() => (theme === "dark" ? "#4B5563" : "#D1D5DB")}
+        linkColor={() => (theme === "dark" ? "#6B7280" : "#D1D5DB")}
         linkWidth={1}
-        linkDirectionalArrowLength={3.5}
+        linkDirectionalArrowLength={5}
         linkDirectionalArrowRelPos={1}
         linkVisibility={() => showEdgesRef.current}
         enableNavigationControls={true}
