@@ -179,7 +179,7 @@ async function handleTreeOrFlat(
 
   if (format === "tree") {
     const tree = buildAgentPageTree(filtered);
-    return successResponse({ pages: tree }, meta);
+    return successResponse({ pages: tree }, { ...meta });
   }
 
   // Flat format with pagination

@@ -27,10 +27,15 @@ export const POST = withAgentAuth(
       const parsed = sweepBodySchema.safeParse(body);
 
       if (!parsed.success) {
+        const fieldErrors = parsed.error.flatten().fieldErrors;
+        const validationErrors = Object.entries(fieldErrors).map(([field, messages]) => ({
+          field,
+          message: Array.isArray(messages) ? messages.join(", ") : messages,
+        }));
         return errorResponse(
           "VALIDATION_ERROR",
           "Invalid sweep parameters",
-          parsed.error.flatten().fieldErrors,
+          validationErrors,
           400
         );
       }

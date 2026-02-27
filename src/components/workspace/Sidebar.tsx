@@ -24,6 +24,7 @@ export interface MultiSelectProps {
   isSelected: (id: string) => boolean;
   handleMultiSelectClick: (id: string, event: React.MouseEvent) => boolean;
   selectionCount: number;
+  selectedIds: Set<string>;
 }
 
 /** Collect all page titles from a tree for the bulk action bar */
@@ -79,8 +80,9 @@ export function Sidebar() {
       isSelected: multiSelect.isSelected,
       handleMultiSelectClick: multiSelect.handleClick,
       selectionCount: multiSelect.selectionCount,
+      selectedIds: multiSelect.selectedIds,
     }),
-    [multiSelect.isSelected, multiSelect.handleClick, multiSelect.selectionCount]
+    [multiSelect.isSelected, multiSelect.handleClick, multiSelect.selectionCount, multiSelect.selectedIds]
   );
 
   // Escape clears multi-selection

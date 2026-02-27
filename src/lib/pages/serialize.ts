@@ -14,6 +14,10 @@ export function serializePage(page: {
   icon: string | null;
   coverUrl: string | null;
   position: number;
+  oneLiner?: string | null;
+  summary?: string | null;
+  summaryUpdatedAt?: Date | null;
+  lastAgentVisitAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): Page {
@@ -27,6 +31,10 @@ export function serializePage(page: {
     icon: page.icon,
     coverUrl: page.coverUrl,
     position: page.position,
+    oneLiner: page.oneLiner ?? null,
+    summary: page.summary ?? null,
+    summaryUpdatedAt: page.summaryUpdatedAt?.toISOString() ?? null,
+    lastAgentVisitAt: page.lastAgentVisitAt?.toISOString() ?? null,
     createdAt: page.createdAt.toISOString(),
     updatedAt: page.updatedAt.toISOString(),
   };

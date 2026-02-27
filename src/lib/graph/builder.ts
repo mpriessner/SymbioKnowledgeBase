@@ -144,6 +144,7 @@ async function buildLocalGraph(
       id: true,
       title: true,
       icon: true,
+      oneLiner: true,
       updatedAt: true,
     },
   });

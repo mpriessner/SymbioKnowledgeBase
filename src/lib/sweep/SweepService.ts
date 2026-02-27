@@ -57,7 +57,7 @@ export class SweepService {
           tenantId: session.tenantId,
           budget: session.budget,
           status: "RUNNING",
-          results: results as unknown as Record<string, unknown>,
+          results: JSON.parse(JSON.stringify(results)),
         },
       });
     }
@@ -131,7 +131,7 @@ export class SweepService {
         data: {
           status: session.status,
           completedAt: session.completedAt,
-          results: results as unknown as Record<string, unknown>,
+          results: JSON.parse(JSON.stringify(results)),
         },
       });
     }

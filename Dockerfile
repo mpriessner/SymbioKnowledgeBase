@@ -31,6 +31,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Copy generated Prisma client (overwrite stale local copy excluded by .dockerignore)
+COPY --from=deps /app/src/generated ./src/generated
+
 # Build Next.js (standalone output)
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build

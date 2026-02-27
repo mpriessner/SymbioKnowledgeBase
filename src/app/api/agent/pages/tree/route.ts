@@ -39,7 +39,7 @@ export const GET = withAgentAuth(
 
       const tree = buildAgentPageTree(pages);
       const meta = computeTreeMeta(pages);
-      return successResponse({ pages: tree }, meta);
+      return successResponse({ pages: tree }, { ...meta });
     } catch (error) {
       console.error("GET /api/agent/pages/tree error:", error);
       return errorResponse(

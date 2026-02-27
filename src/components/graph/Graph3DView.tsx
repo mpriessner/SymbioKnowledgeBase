@@ -136,7 +136,7 @@ const handleNodeClick = useCallback(
 
   const nodeColor = useCallback(
     (node: ForceGraphNodeObject) => {
-      return getNodeColor(node as GraphNode, theme, centerId);
+      return getNodeColor(node as unknown as GraphNode, theme, centerId);
     },
     [theme, centerId]
   );

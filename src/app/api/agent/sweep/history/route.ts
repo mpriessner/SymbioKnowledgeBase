@@ -26,10 +26,15 @@ export const GET = withAgentAuth(
       });
 
       if (!parsed.success) {
+        const fieldErrors = parsed.error.flatten().fieldErrors;
+        const validationErrors = Object.entries(fieldErrors).map(([field, messages]) => ({
+          field,
+          message: Array.isArray(messages) ? messages.join(", ") : messages,
+        }));
         return errorResponse(
           "VALIDATION_ERROR",
           "Invalid query parameters",
-          parsed.error.flatten().fieldErrors,
+          validationErrors,
           400
         );
       }
@@ -48,7 +53,7 @@ export const GET = withAgentAuth(
         }),
       ]);
 
-      return listResponse(sessions, { total, limit, offset });
+      return listResponse(sessions, total, limit, offset);
     } catch (err) {
       console.error("Sweep history API error:", err);
       return errorResponse(

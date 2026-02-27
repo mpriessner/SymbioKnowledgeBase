@@ -11,7 +11,8 @@ export interface AgentContext {
   scopes: string[];
 }
 
-type RouteContext = { params: Promise<Record<string, string>> };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type RouteContext = { params: Promise<Record<string, any>> };
 type AgentHandler = (
   req: NextRequest,
   ctx: AgentContext,
