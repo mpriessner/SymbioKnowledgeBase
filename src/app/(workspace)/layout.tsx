@@ -14,9 +14,11 @@ export default function WorkspaceLayout({
     <QueryProvider>
       <div className="flex h-screen w-screen overflow-hidden">
         <Sidebar />
-        <main className="workspace-main flex-1 min-w-0 flex flex-col">
+        <main className="workspace-main flex-1 min-w-0 flex flex-col overflow-hidden">
           <BreadcrumbsWrapper />
-          {children}
+          <div className="flex-1 overflow-y-auto">
+            {children}
+          </div>
         </main>
       </div>
       {/* Quick Switcher (global Cmd/Ctrl+K overlay) */}
