@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePageSummary, useUpdatePageSummary } from "@/hooks/usePageSummary";
 
 interface PageAboutSectionProps {
@@ -32,8 +33,30 @@ function timeAgo(dateString: string): string {
  * Shows one-liner, summary paragraph, and last-updated timestamp.
  */
 export function PageAboutSection({ pageId }: PageAboutSectionProps) {
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = usePageSummary(pageId);
   const updateMutation = useUpdatePageSummary(pageId);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  const regenerateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/pages/${pageId}/summary/generate`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error?.message || "Failed to regenerate");
+      }
+      return res.json();
+    },
+    onMutate: () => setIsRegenerating(true),
+    onSettled: () => setIsRegenerating(false),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["pages", pageId, "summary"],
+      });
+    },
+  });
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -158,12 +181,13 @@ export function PageAboutSection({ pageId }: PageAboutSectionProps) {
               </p>
 
               <button
-                disabled
+                onClick={() => regenerateMutation.mutate()}
+                disabled={isRegenerating}
                 className="text-xs px-2 py-1 rounded border border-[var(--border-default)]
-                           text-[var(--text-tertiary)] opacity-50 cursor-not-allowed"
-                title="Configure LLM API key to enable"
+                           text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]
+                           transition-colors disabled:opacity-50"
               >
-                Regenerate with AI
+                {isRegenerating ? "Generating..." : "Regenerate with AI"}
               </button>
             </>
           )}

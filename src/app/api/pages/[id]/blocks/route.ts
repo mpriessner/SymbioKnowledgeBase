@@ -11,6 +11,7 @@ import {
 } from "@/lib/notifications/triggers";
 import type { TipTapDocument } from "@/lib/wikilinks/types";
 import { syncPageToFilesystem } from "@/lib/sync/SyncService";
+import { getSummaryService } from "@/lib/summary/SummaryService";
 import type { TenantContext } from "@/types/auth";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -106,7 +107,11 @@ export const PUT = withTenant(
           type: "DOCUMENT",
           deletedAt: null,
         },
+        select: { id: true, content: true, plainText: true },
       });
+
+      // Capture old plainText for summary change detection
+      const oldPlainText = existing?.plainText ?? "";
 
       let block;
       if (existing) {
@@ -159,6 +164,14 @@ export const PUT = withTenant(
       syncPageToFilesystem(ctx.tenantId, pageId).catch((err) =>
         console.error("Sync after block save failed:", err)
       );
+
+      // Trigger summary regeneration if content changed substantially (fire-and-forget)
+      const newPlainText = block.plainText;
+      getSummaryService()
+        .onPageSaved(pageId, ctx.tenantId, oldPlainText, newPlainText)
+        .catch((err) =>
+          console.error("Summary generation trigger failed:", err)
+        );
 
       return successResponse(block);
     } catch (error) {
