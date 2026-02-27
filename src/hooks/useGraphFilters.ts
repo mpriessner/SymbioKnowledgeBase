@@ -11,6 +11,10 @@ export interface GraphFilters {
   beforeDate: string | null;
   /** Only include nodes with at least this many connections */
   minLinkCount: number;
+  /** Whether to show node circles */
+  showNodes: boolean;
+  /** Whether to show edge lines */
+  showEdges: boolean;
   /** Whether to show node labels */
   showLabels: boolean;
   /** Whether to show edge labels */
@@ -21,6 +25,8 @@ const DEFAULT_FILTERS: GraphFilters = {
   afterDate: null,
   beforeDate: null,
   minLinkCount: 0,
+  showNodes: true,
+  showEdges: true,
   showLabels: true,
   showEdgeLabels: false,
 };
@@ -41,6 +47,8 @@ export function useGraphFilters(graphData: GraphData | undefined) {
     afterDate: searchParams.get("after") || null,
     beforeDate: searchParams.get("before") || null,
     minLinkCount: Number(searchParams.get("minLinks")) || 0,
+    showNodes: searchParams.get("nodes") !== "false",
+    showEdges: searchParams.get("edges") !== "false",
     showLabels: searchParams.get("labels") !== "false",
     showEdgeLabels: searchParams.get("edgeLabels") === "true",
   }));
@@ -55,6 +63,8 @@ export function useGraphFilters(graphData: GraphData | undefined) {
       if (newFilters.minLinkCount > 0) {
         params.set("minLinks", String(newFilters.minLinkCount));
       }
+      if (!newFilters.showNodes) params.set("nodes", "false");
+      if (!newFilters.showEdges) params.set("edges", "false");
       if (!newFilters.showLabels) params.set("labels", "false");
       if (newFilters.showEdgeLabels) params.set("edgeLabels", "true");
 

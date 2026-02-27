@@ -22,6 +22,8 @@ interface Graph3DViewProps {
   highlightCenter?: boolean;
   overrideData?: GraphData;
   showLabels?: boolean;
+  showNodes?: boolean;
+  showEdges?: boolean;
 }
 
 /**
@@ -67,6 +69,8 @@ export function Graph3DView({
   highlightCenter = false,
   overrideData,
   showLabels = true,
+  showNodes = true,
+  showEdges = true,
 }: Graph3DViewProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -121,12 +125,14 @@ const handleNodeClick = useCallback(
   const theme = getThemeMode();
   const centerId = highlightCenter ? pageId : undefined;
 
-  // Use ref so toggling labels doesn't recreate the callback
+  // Use refs so toggling display options doesn't recreate callbacks
   // (which would restart the force simulation and cause wiggle)
   const showLabelsRef = useRef(showLabels);
-  useEffect(() => {
-    showLabelsRef.current = showLabels;
-  }, [showLabels]);
+  const showNodesRef = useRef(showNodes);
+  const showEdgesRef = useRef(showEdges);
+  useEffect(() => { showLabelsRef.current = showLabels; }, [showLabels]);
+  useEffect(() => { showNodesRef.current = showNodes; }, [showNodes]);
+  useEffect(() => { showEdgesRef.current = showEdges; }, [showEdges]);
 
   const nodeColor = useCallback(
     (node: ForceGraphNodeObject) => {
@@ -189,11 +195,13 @@ const handleNodeClick = useCallback(
         nodeColor={nodeColor}
         nodeLabel={nodeLabel}
         nodeRelSize={4}
+        nodeVisibility={() => showNodesRef.current}
         onNodeClick={handleNodeClick}
         linkColor={() => (theme === "dark" ? "#4B5563" : "#D1D5DB")}
         linkWidth={1}
         linkDirectionalArrowLength={3.5}
         linkDirectionalArrowRelPos={1}
+        linkVisibility={() => showEdgesRef.current}
         enableNavigationControls={true}
         enableNodeDrag={true}
         cooldownTime={3000}

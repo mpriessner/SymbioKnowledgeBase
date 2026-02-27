@@ -201,6 +201,30 @@ export function GraphControls({
         <label className="mb-2 flex cursor-pointer items-center gap-2">
           <input
             type="checkbox"
+            checked={filters.showNodes}
+            onChange={(e) => onFilterChange("showNodes", e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-xs text-[var(--color-text-primary)]">
+            Show nodes
+          </span>
+        </label>
+
+        <label className="mb-2 flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={filters.showEdges}
+            onChange={(e) => onFilterChange("showEdges", e.target.checked)}
+            className="rounded"
+          />
+          <span className="text-xs text-[var(--color-text-primary)]">
+            Show edges
+          </span>
+        </label>
+
+        <label className="mb-2 flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
             checked={filters.showLabels}
             onChange={(e) => onFilterChange("showLabels", e.target.checked)}
             className="rounded"

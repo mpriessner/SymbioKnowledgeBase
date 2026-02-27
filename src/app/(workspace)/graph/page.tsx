@@ -147,6 +147,9 @@ function GraphPageContent() {
             <GraphView
               overrideData={filteredData}
               showLabels={filters.showLabels}
+              showEdgeLabels={filters.showEdgeLabels}
+              showNodes={filters.showNodes}
+              showEdges={filters.showEdges}
               onGraphRef={handleGraphRef}
               highlightedNodes={highlightedNodes}
             />
@@ -154,6 +157,8 @@ function GraphPageContent() {
             <Graph3DView
               overrideData={filteredData}
               showLabels={filters.showLabels}
+              showNodes={filters.showNodes}
+              showEdges={filters.showEdges}
             />
           )}
         </div>

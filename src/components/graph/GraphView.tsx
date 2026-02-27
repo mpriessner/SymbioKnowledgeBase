@@ -38,6 +38,12 @@ interface GraphViewProps {
   overrideData?: GraphData;
   /** Whether to show node labels (default true) */
   showLabels?: boolean;
+  /** Whether to show edge labels (default false) */
+  showEdgeLabels?: boolean;
+  /** Whether to show node circles (default true) */
+  showNodes?: boolean;
+  /** Whether to show edge lines (default true) */
+  showEdges?: boolean;
   /** Callback to expose the graph ref for external zoom controls */
   onGraphRef?: (ref: GraphRefHandle | null) => void;
   /** Node IDs to highlight (from search) */
@@ -93,6 +99,9 @@ export function GraphView({
   highlightCenter = false,
   overrideData,
   showLabels = true,
+  showEdgeLabels = false,
+  showNodes = true,
+  showEdges = true,
   onGraphRef,
   highlightedNodes = [],
 }: GraphViewProps) {
@@ -204,19 +213,23 @@ export function GraphView({
 
   const theme = getThemeMode();
 
-  // Use ref so toggling labels doesn't recreate the callback
+  // Use refs so toggling display options doesn't recreate callbacks
   // (which would restart the force simulation and cause wiggle)
   const showLabelsRef = useRef(showLabels);
-  useEffect(() => {
-    showLabelsRef.current = showLabels;
-  }, [showLabels]);
+  const showEdgeLabelsRef = useRef(showEdgeLabels);
+  const showNodesRef = useRef(showNodes);
+  const showEdgesRef = useRef(showEdges);
+  useEffect(() => { showLabelsRef.current = showLabels; }, [showLabels]);
+  useEffect(() => { showEdgeLabelsRef.current = showEdgeLabels; }, [showEdgeLabels]);
+  useEffect(() => { showNodesRef.current = showNodes; }, [showNodes]);
+  useEffect(() => { showEdgesRef.current = showEdges; }, [showEdges]);
 
-  // Force canvas repaint when labels toggle (without restarting simulation)
+  // Force canvas repaint when any display toggle changes (without restarting simulation)
   useEffect(() => {
     if (graphRef.current) {
       (graphRef.current as GraphRefHandle).centerAt(undefined as unknown as number, undefined as unknown as number, 0);
     }
-  }, [showLabels]);
+  }, [showLabels, showEdgeLabels, showNodes, showEdges]);
 
   // Custom node rendering: circle with size based on linkCount
 
@@ -226,6 +239,9 @@ export function GraphView({
       ctx: CanvasRenderingContext2D,
       globalScale: number
     ) => {
+      // Skip drawing entirely when nodes are hidden
+      if (!showNodesRef.current) return;
+
       // Cast to our extended type to access custom properties (via unknown for strict TS)
       const node = nodeObj as unknown as ForceGraphNode;
       const label = node.label;
@@ -300,6 +316,66 @@ export function GraphView({
     [highlightCenter, pageId, theme, highlightedNodes]
   );
 
+  // Custom edge rendering: line with optional label at midpoint
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const linkCanvasObject = useCallback(
+    (
+      linkObj: any,
+      ctx: CanvasRenderingContext2D,
+      globalScale: number
+    ) => {
+      const source = linkObj.source as GenericNodeObject | undefined;
+      const target = linkObj.target as GenericNodeObject | undefined;
+      if (source?.x == null || source?.y == null || target?.x == null || target?.y == null) return;
+
+      // Draw edge line
+      if (showEdgesRef.current) {
+        ctx.beginPath();
+        ctx.moveTo(source.x, source.y);
+        ctx.lineTo(target.x, target.y);
+        ctx.strokeStyle = getEdgeColor(theme);
+        ctx.lineWidth = 1 / globalScale;
+        ctx.stroke();
+
+        // Draw arrow at target
+        const arrowLength = 6 / globalScale;
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const angle = Math.atan2(dy, dx);
+        // Position arrow slightly before target (account for node radius)
+        const nodeRadius = 4;
+        const ax = target.x - Math.cos(angle) * nodeRadius;
+        const ay = target.y - Math.sin(angle) * nodeRadius;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(
+          ax - arrowLength * Math.cos(angle - Math.PI / 6),
+          ay - arrowLength * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.lineTo(
+          ax - arrowLength * Math.cos(angle + Math.PI / 6),
+          ay - arrowLength * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.closePath();
+        ctx.fillStyle = getEdgeColor(theme);
+        ctx.fill();
+      }
+
+      // Draw label at midpoint (if enabled and zoomed in enough)
+      if (showEdgeLabelsRef.current && showEdgesRef.current && globalScale > 1.2) {
+        const midX = (source.x + target.x) / 2;
+        const midY = (source.y + target.y) / 2;
+        const fontSize = Math.max(10 / globalScale, 2);
+        ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+        ctx.fillStyle = theme === "dark" ? "rgba(229,231,235,0.6)" : "rgba(55,53,47,0.6)";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("\u2192", midX, midY);
+      }
+    },
+    [theme]
+  );
+
   // Pin center node when engine stops (for local graph)
   const handleEngineStop = useCallback(() => {
     if (highlightCenter && pageId && graphRef.current) {
@@ -363,10 +439,8 @@ export function GraphView({
         onNodeClick={handleNodeClick}
         onNodeHover={handleNodeHover}
         onEngineStop={handleEngineStop}
-        linkColor={() => getEdgeColor(theme)}
-        linkWidth={1}
-        linkDirectionalArrowLength={4}
-        linkDirectionalArrowRelPos={1}
+        linkCanvasObject={linkCanvasObject}
+        linkCanvasObjectMode={() => "replace"}
         enableZoomInteraction={true}
         enablePanInteraction={true}
         enableNodeDrag={true}
