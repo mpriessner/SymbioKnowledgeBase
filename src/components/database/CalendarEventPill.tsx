@@ -68,23 +68,16 @@ export function CalendarEventPill({
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
+      {...(onTitleSave ? {} : listeners)}
       {...attributes}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (onTitleSave) {
-          setIsEditing(true);
-        } else {
-          onClick();
-        }
-      }}
       onDoubleClick={(e) => {
         e.stopPropagation();
         onDoubleClick?.();
       }}
       onContextMenu={onContextMenu}
-      className={`flex items-center gap-1 px-1.5 py-0.5 text-[11px] leading-tight rounded cursor-grab
+      className={`flex items-center gap-1 px-1.5 py-0.5 text-[11px] leading-tight rounded
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] transition-colors truncate
+        ${onTitleSave ? "cursor-text" : "cursor-grab"}
         ${isDragging ? "opacity-30" : ""}`}
       data-testid={`calendar-pill-${rowId}`}
     >
@@ -94,7 +87,19 @@ export function CalendarEventPill({
           style={{ backgroundColor: colorDot }}
         />
       )}
-      <span className="truncate">{title || "Untitled"}</span>
+      <span
+        className="truncate"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onTitleSave) {
+            setIsEditing(true);
+          } else {
+            onClick();
+          }
+        }}
+      >
+        {title || "Untitled"}
+      </span>
     </div>
   );
 }
