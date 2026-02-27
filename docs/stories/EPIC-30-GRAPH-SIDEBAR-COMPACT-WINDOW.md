@@ -2,7 +2,7 @@
 
 **Epic ID:** EPIC-30
 **Created:** 2026-02-25
-**Total Story Points:** 5
+**Total Story Points:** 8
 **Priority:** Medium
 **Status:** Draft
 
@@ -61,19 +61,20 @@ The knowledge graph sidebar currently takes the **full height** of the page when
 | ID | Story | Points | Priority | File |
 |----|-------|--------|----------|------|
 | SKB-30.1 | Convert Graph Sidebar to Compact Floating Window | 5 | Medium | [SKB-30.1](SKB-30.1-convert-graph-sidebar-to-compact-floating-window.md) |
+| SKB-30.2 | Align Toggle Arrows & Keep Header Buttons Visible | 3 | Medium | [SKB-30.2](SKB-30.2-align-toggle-arrows-keep-header-buttons-visible.md) |
 
 ---
 
 ## Implementation Order
 
 ```
-Single story — no dependencies:
+30.2 should be done first (arrow alignment), then 30.1 (compact window):
 
-┌──────┐
-│ 30.1 │
-│Compact│
-│Window │
-└──────┘
+┌──────┐    ┌──────┐
+│ 30.2 │ →  │ 30.1 │
+│Arrow │    │Compact│
+│Align │    │Window │
+└──────┘    └──────┘
 ```
 
 ---
@@ -93,6 +94,7 @@ Single story — no dependencies:
 | Story | Unit Tests | Integration Tests | E2E Tests |
 |-------|-----------|-------------------|-----------|
 | 30.1 | Sidebar container has compact dimensions; no `h-full` class; has `rounded-xl shadow-xl` | Graph loads in compact window; depth controls functional | Open graph, verify compact window, verify page content accessible underneath, close graph |
+| 30.2 | Both toggle buttons use same `top` value; sidebar starts below header buttons | Share/Favorite/Download buttons visible when sidebar open | Open sidebar, verify header buttons visible; toggle arrows at same height |
 
 ---
 
@@ -100,8 +102,9 @@ Single story — no dependencies:
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/app/(workspace)/pages/[id]/page.tsx` | Modify | Change sidebar from full-height to compact floating window CSS |
+| `src/app/(workspace)/pages/[id]/page.tsx` | Modify | Change sidebar from full-height to compact floating window CSS; align toggle buttons; lower sidebar start position |
 | `src/components/graph/LocalGraphSidebar.tsx` | Modify | Adjust graph to fill container; add close button |
+| `src/components/workspace/PageHeader.tsx` | Possibly Modify | Ensure header buttons z-index is above sidebar |
 | CSS files | Possibly Modify | Remove full-height overlay shadow |
 
 ---

@@ -1,8 +1,8 @@
-# Epic 26: Critical Bug Fixes (Delete Redirect & Database Creation)
+# Epic 26: Critical Bug Fixes
 
 **Epic ID:** EPIC-26
 **Created:** 2026-02-25
-**Total Story Points:** 8
+**Total Story Points:** 16
 **Priority:** Critical
 **Status:** Draft
 
@@ -10,11 +10,15 @@
 
 ## Epic Overview
 
-Two critical bugs prevent basic workflows from functioning:
+Four bugs prevent basic workflows from functioning:
 
 1. **Page delete redirects outside the workspace.** When a user right-clicks a page in the sidebar and chooses "Delete", after the page is deleted, the app navigates to `/` (the unauthenticated landing page) instead of `/home` (the workspace home). This ejects the user from their workspace and they must navigate back in.
 
 2. **Creating a database from the sidebar "+" menu shows "page not found".** When a user clicks "+" in the sidebar and selects "Database", the sidebar code calls `router.push("/databases")` — but that route does not exist. Only `/databases/[id]` exists for viewing a specific database. The correct flow should create a new page with a database and navigate to it.
+
+3. **Search dialog doesn't close when clicking outside.** Both the Quick Switcher (Cmd+K) and Enhanced Search (Cmd+Shift+F) dialogs can only be closed by pressing Escape. Clicking the dark backdrop area outside the dialog does nothing. Users expect clicking outside a modal to dismiss it.
+
+4. **List and Calendar view items navigate away instead of allowing inline editing.** In the List view and Calendar view, clicking on an item's title to rename it causes the app to navigate to the page (leaving the database view entirely). Users expect to edit the title in place. Additionally, the List view should always show checkmarks next to items for task tracking.
 
 ---
 
@@ -22,6 +26,8 @@ Two critical bugs prevent basic workflows from functioning:
 
 - **Delete redirect:** Users lose context and trust when the app boots them to the login page after a routine action
 - **Database creation:** Users cannot create new databases from the primary entry point (sidebar "+" button), blocking a core workflow
+- **Search dismiss:** Users get stuck in the search dialog and must know to press Escape — clicking outside does nothing, which violates standard modal UX patterns
+- **List/Calendar editing:** Users cannot rename items in List or Calendar views without being ejected from the database — a basic editing workflow is completely broken
 
 ---
 
@@ -36,6 +42,16 @@ Two critical bugs prevent basic workflows from functioning:
 - **File:** `src/components/workspace/Sidebar.tsx`, lines 55-58
 - **Bug:** `router.push("/databases")` — route does not exist
 - **Fix:** Create a new page + database via API (matching how `PageCreationMenu.tsx` does it), then navigate to the created database page
+
+### Search Dialog Click-Outside Dismiss
+- **Files:** `src/components/search/SearchDialog.tsx` (line ~224) and `src/components/search/EnhancedSearchDialog.tsx` (line ~279)
+- **Bug:** The outer wrapper uses `onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}` — but a child backdrop `div` (`absolute inset-0 bg-black/50`) sits inside the wrapper and intercepts the click. When the user clicks the backdrop, `e.target` is the backdrop (child), not the outer wrapper (`e.currentTarget`), so `onClose()` never fires.
+- **Fix:** Add `onClick={onClose}` directly to the backdrop `div`, or add `pointer-events-none` to the backdrop so clicks pass through to the parent wrapper
+
+### List & Calendar View Title Click Navigates Away
+- **Files:** `src/components/database/ListView.tsx` (lines 91-99) and `src/components/database/CalendarView.tsx` (lines 246-251)
+- **Bug:** Both views call `router.push(/pages/${pageId})` on ANY row/event click. Clicking the title to edit it navigates away from the database entirely. No inline editing exists — the title is a plain `<span>` with no input field.
+- **Fix:** Single-click on title should enter inline edit mode (replace `<span>` with `<input>`), double-click or separate "Open" action should navigate to the page. Additionally, the List view should always display checkboxes next to items (not only when a CHECKBOX column exists in the schema).
 
 ---
 
@@ -110,12 +126,30 @@ Two critical bugs prevent basic workflows from functioning:
 
 ---
 
+### SKB-26.3: Fix Search Dialog Click-Outside Dismiss — 2 points, Medium
+
+**Delivers:** Clicking outside the search dialog (on the dark backdrop) closes it, matching standard modal behavior.
+
+**Details:** See [SKB-26.3 story file](SKB-26.3-fix-search-dialog-click-outside-dismiss.md)
+
+---
+
+### SKB-26.4: Fix List & Calendar View Title Editing — 6 points, Critical
+
+**Delivers:** Clicking on an item title in the List view or Calendar view allows inline editing instead of navigating away. List view always shows checkboxes for task tracking.
+
+**Details:** See [SKB-26.4 story file](SKB-26.4-fix-list-calendar-view-title-editing.md)
+
+---
+
 ## Test Coverage Requirements
 
 | Story | Unit Tests | Integration Tests | E2E Tests |
 |-------|-----------|-------------------|-----------|
 | 26.1 | After delete, `router.push` called with `/home` not `/` | Delete page API returns 204; sidebar refreshes; navigation correct | Right-click delete on current page lands on home; delete non-current page stays on current |
 | 26.2 | `handleNewDatabase` calls create page + create database APIs | POST page returns 201; POST database returns 201; navigation to `/databases/{id}` works | Click "+ > Database" creates and opens a functional database |
+| 26.3 | Backdrop div has `onClick={onClose}` or `pointer-events-none`; `onClose` called on backdrop click | Both SearchDialog and EnhancedSearchDialog close on backdrop click | Open Cmd+K, click outside → closes; open Cmd+Shift+F, click outside → closes |
+| 26.4 | Title click enters edit mode (input rendered); no `router.push` on title click; checkboxes render in List view | `updateRow` called on title save; navigation only on double-click/Open action | Click title in List/Calendar → edit inline; checkboxes visible in List; double-click opens page |
 
 ---
 
@@ -123,11 +157,18 @@ Two critical bugs prevent basic workflows from functioning:
 
 ```
 26.1 (quick fix) → 26.2 (requires API calls)
+26.3 and 26.4 are independent — can run in parallel
 
 ┌──────┐    ┌──────┐
 │ 26.1 │ →  │ 26.2 │
 │ Del  │    │ DB   │
-│ Nav  │    │ Create│
+│ Nav  │    │Create │
+└──────┘    └──────┘
+
+┌──────┐    ┌──────┐
+│ 26.3 │    │ 26.4 │  (both parallel)
+│Search│    │ List │
+│Dismiss│   │ Cal  │
 └──────┘    └──────┘
 ```
 
@@ -135,7 +176,7 @@ Two critical bugs prevent basic workflows from functioning:
 
 ## Shared Constraints
 
-- **No Breaking Changes:** All existing delete and database creation flows must continue working
+- **No Breaking Changes:** All existing delete, database creation, and search flows must continue working
 - **Error Handling:** If database creation fails, show a toast error and don't leave user on a broken page
 - **Loading State:** Show a spinner or loading indicator while the database is being created
 
@@ -147,7 +188,13 @@ Two critical bugs prevent basic workflows from functioning:
 |------|--------|-------------|
 | `src/components/sidebar/PageContextMenu.tsx` | Modify | Fix redirect from `/` to `/home` |
 | `src/components/workspace/Sidebar.tsx` | Modify | Replace broken `router.push("/databases")` with create-then-navigate flow |
+| `src/components/search/SearchDialog.tsx` | Modify | Fix backdrop click to call `onClose` |
+| `src/components/search/EnhancedSearchDialog.tsx` | Modify | Fix backdrop click to call `onClose` |
+| `src/components/database/ListView.tsx` | Modify | Change click handler: single-click title → inline edit, double-click → navigate |
+| `src/components/database/ListRow.tsx` | Modify | Add inline title editing input, always show checkboxes |
+| `src/components/database/CalendarView.tsx` | Modify | Change event click: single-click → inline edit, double-click → navigate |
+| `src/components/database/CalendarEventPill.tsx` | Modify | Add inline title editing to event pill |
 
 ---
 
-**Last Updated:** 2026-02-25
+**Last Updated:** 2026-02-27
