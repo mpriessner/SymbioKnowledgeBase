@@ -1,5 +1,7 @@
 # EPIC-38: Sidebar Drag-and-Drop Regression Fix
 
+**Status:** Done
+
 ## Overview
 
 After the multi-select feature was added to the sidebar page tree, drag-and-drop page reordering and reparenting (moving pages into other pages as subpages) stopped working. This is a regression that needs to be fixed while preserving multi-select functionality.

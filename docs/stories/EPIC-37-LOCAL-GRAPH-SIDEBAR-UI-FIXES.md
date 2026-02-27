@@ -1,5 +1,7 @@
 # EPIC-37: Local Graph Sidebar UI Fixes
 
+**Status:** Done
+
 ## Overview
 
 The compact floating graph window (LocalGraphSidebar) on document pages has several UI issues that degrade usability. The graph is not centered in the container, the minimize functionality is not discoverable, the legend overflows the small window, and the legend position needs adjustment.
