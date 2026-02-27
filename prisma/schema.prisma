@@ -124,6 +124,7 @@ model Tenant {
   fileAttachments        FileAttachment[]
   pageFavorites          PageFavorite[]
   pageShares             PageShare[]
+  sweepSessions          SweepSession[]
 
   @@map("tenants")
 }
@@ -620,4 +621,24 @@ model PageShare {
   @@index([userId, tenantId], map: "idx_page_shares_user_tenant")
 
   @@map("page_shares")
+}
+
+// ─── Sweep Sessions (Agent Housekeeping) ───────────────────────────
+
+model SweepSession {
+  id          String    @id
+  tenantId    String    @map("tenant_id")
+  budget      Int
+  status      String    @default("RUNNING")  // RUNNING | COMPLETED | FAILED | CANCELLED
+  results     Json      @default("{}")
+  startedAt   DateTime  @default(now()) @map("started_at")
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId, startedAt], map: "idx_sweep_sessions_tenant_started")
+
+  @@map("sweep_sessions")
 }
