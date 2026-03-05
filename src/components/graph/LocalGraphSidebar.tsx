@@ -98,7 +98,7 @@ export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGrap
   }, []);
 
   return (
-    <div className={`flex flex-col ${className}`}>
+    <div className={`flex flex-col h-full ${className}`}>
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border-default)]">
         <button
@@ -166,7 +166,7 @@ export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGrap
             </div>
           ) : (
             <>
-            <div className="relative flex-1 min-h-0">
+            <div className="relative flex-1 min-h-0 overflow-hidden">
               {/* Zoom controls (right) — only for 2D */}
               {!is3D && (
                 <div className="absolute top-2 right-2 z-10 flex flex-col gap-1">
@@ -221,13 +221,15 @@ export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGrap
                     showLabels={true}
                     nodeSize={nodeSize}
                     onGraphRef={handleGraphRef}
+                    fitPadding={10}
+                    hideLegend={true}
                   />
                 )}
               </div>
             </div>
 
             {/* Controls panel */}
-            <div className="px-3 py-2 border-t border-[var(--border-default)] flex items-center gap-3">
+            <div className="relative z-10 px-3 py-2 border-t border-[var(--border-default)] flex items-center gap-3 bg-[var(--bg-secondary)]">
               {/* 2D/3D toggle */}
               <button
                 onClick={() => setIs3D((v) => !v)}

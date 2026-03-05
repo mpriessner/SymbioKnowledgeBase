@@ -54,6 +54,10 @@ interface GraphViewProps {
   nodeSize?: number;
   /** Size mode: "connections" (default) or "content" */
   sizeMode?: "connections" | "content";
+  /** Padding for zoomToFit (default 30, use smaller values for compact containers) */
+  fitPadding?: number;
+  /** Whether to hide the legend overlay (e.g. in compact sidebar) */
+  hideLegend?: boolean;
 }
 
 /** Extended GraphNode with force-simulation coordinates */
@@ -113,6 +117,8 @@ export function GraphView({
   spacing = 100,
   nodeSize = 4,
   sizeMode = "connections",
+  fitPadding = 30,
+  hideLegend = false,
 }: GraphViewProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -454,9 +460,9 @@ export function GraphView({
         (centerNode as ForceGraphNode).fy = 0;
       }
       // Fit all nodes into the visible area with padding, then center on the pinned node
-      graphRef.current.zoomToFit(400, 30);
+      graphRef.current.zoomToFit(400, fitPadding);
     }
-  }, [highlightCenter, pageId, graphData.nodes]);
+  }, [highlightCenter, pageId, graphData.nodes, fitPadding]);
 
   // Loading state
   if (isLoading) {
@@ -527,11 +533,13 @@ export function GraphView({
       />
 
       {/* Legend and stats */}
-      <GraphLegend
-        theme={theme}
-        nodeCount={graphData.nodes.length}
-        edgeCount={graphData.links.length}
-      />
+      {!hideLegend && (
+        <GraphLegend
+          theme={theme}
+          nodeCount={graphData.nodes.length}
+          edgeCount={graphData.links.length}
+        />
+      )}
     </div>
   );
 }
