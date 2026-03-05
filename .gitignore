@@ -45,3 +45,8 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# supabase CLI internal state
+supabase/.branches/
+supabase/.temp/
+supabase/snippets/

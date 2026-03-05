@@ -230,17 +230,20 @@ export function SortableSidebarTreeNode({
         aria-selected={isActive || isNodeSelected}
         aria-level={depth + 1}
       >
-        {/* Checkbox (visible when any page is selected, or on hover) */}
-        {(showCheckboxes || isHovered) ? (
-          <button
-            className={`
-              flex-shrink-0 w-4 h-4 ml-0.5 mr-0.5 flex items-center justify-center rounded border transition-colors
-              ${isNodeSelected
-                ? "bg-blue-500 border-blue-500 text-white"
-                : "border-gray-300 hover:border-gray-400 bg-transparent"
-              }
-            `}
-            onClick={(e) => {
+        {/* Drag handle + checkbox: always attach drag listeners so dnd-kit works.
+             Click (no movement) toggles checkbox; drag (5+ px) initiates reorder.
+             The PointerSensor distance:5 in DndSidebarTree ensures these don't conflict. */}
+        <button
+          className={`
+            flex-shrink-0 w-4 h-8 flex items-center justify-center
+            ${showCheckboxes ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"}
+            ${isHovered || showCheckboxes ? "opacity-100" : "opacity-0"}
+            transition-opacity
+          `}
+          {...attributes}
+          {...listeners}
+          onClick={(e) => {
+            if (showCheckboxes || e.metaKey || e.ctrlKey) {
               e.stopPropagation();
               multiSelect?.handleMultiSelectClick(node.id, {
                 ...e,
@@ -248,25 +251,20 @@ export function SortableSidebarTreeNode({
                 ctrlKey: false,
                 shiftKey: false,
               } as React.MouseEvent);
-            }}
-            tabIndex={-1}
-            aria-label={isNodeSelected ? `Deselect ${node.title}` : `Select ${node.title}`}
-          >
-            {isNodeSelected && <Check className="w-3 h-3" />}
-          </button>
-        ) : (
-          /* Drag handle (visible on hover when no selection) */
-          <button
-            className={`
-              flex-shrink-0 w-4 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing
-              ${isHovered ? "opacity-100" : "opacity-0"}
-              transition-opacity
-            `}
-            {...attributes}
-            {...listeners}
-            tabIndex={-1}
-            aria-label={`Drag ${node.title}`}
-          >
+            }
+          }}
+          tabIndex={-1}
+          aria-label={showCheckboxes ? (isNodeSelected ? `Deselect ${node.title}` : `Select ${node.title}`) : `Drag ${node.title}`}
+        >
+          {showCheckboxes ? (
+            <span className={`w-4 h-4 flex items-center justify-center rounded border transition-colors
+              ${isNodeSelected
+                ? "bg-blue-500 border-blue-500 text-white"
+                : "border-gray-300 hover:border-gray-400 bg-transparent"
+              }`}>
+              {isNodeSelected && <Check className="w-3 h-3" />}
+            </span>
+          ) : (
             <svg
               className="w-3 h-3 text-gray-400"
               viewBox="0 0 16 16"
@@ -279,8 +277,8 @@ export function SortableSidebarTreeNode({
               <circle cx="5" cy="13" r="1.5" />
               <circle cx="11" cy="13" r="1.5" />
             </svg>
-          </button>
-        )}
+          )}
+        </button>
 
         {/* Expand/collapse chevron */}
         <button

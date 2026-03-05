@@ -27,7 +27,7 @@ export function GraphLegend({ theme, nodeCount, edgeCount }: GraphLegendProps) {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="absolute top-4 right-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)]/90 px-2.5 py-1.5 backdrop-blur-sm text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+        className="absolute bottom-4 left-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)]/90 px-2.5 py-1.5 backdrop-blur-sm text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
         title="Show legend"
       >
         {nodeCount}n · {edgeCount}e
@@ -36,7 +36,7 @@ export function GraphLegend({ theme, nodeCount, edgeCount }: GraphLegendProps) {
   }
 
   return (
-    <div className="absolute top-4 right-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)]/90 p-3 backdrop-blur-sm">
+    <div className="absolute bottom-4 left-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)]/90 p-3 backdrop-blur-sm max-h-[calc(100%-2rem)] overflow-y-auto">
       <button
         onClick={() => setIsOpen(false)}
         className="mb-2 flex w-full items-center justify-between cursor-pointer"

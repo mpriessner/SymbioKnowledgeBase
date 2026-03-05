@@ -443,7 +443,7 @@ export function GraphView({
     [theme]
   );
 
-  // Pin center node when engine stops (for local graph)
+  // Pin center node and fit all nodes into view when engine stops (for local graph)
   const handleEngineStop = useCallback(() => {
     if (highlightCenter && pageId && graphRef.current) {
       const centerNode = graphData.nodes.find(
@@ -452,8 +452,9 @@ export function GraphView({
       if (centerNode) {
         (centerNode as ForceGraphNode).fx = 0;
         (centerNode as ForceGraphNode).fy = 0;
-        graphRef.current.centerAt(0, 0, 1000);
       }
+      // Fit all nodes into the visible area with padding, then center on the pinned node
+      graphRef.current.zoomToFit(400, 30);
     }
   }, [highlightCenter, pageId, graphData.nodes]);
 

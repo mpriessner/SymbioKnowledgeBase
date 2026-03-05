@@ -1,0 +1,60 @@
+# Supabase Configuration for SymbioKnowledgeBase
+# Uses the same ports as ExpTube (54321-54327) since they share the slot
+# ET_ELN uses 54331-54336
+
+project_id = "SymbioKnowledgeBase"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://localhost"
+
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000", "http://localhost:3001", "com.scisymbiolens.app://auth-callback"]
+jwt_expiry = 3600
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+[auth.sms]
+enable_signup = false
+enable_confirmations = false
+
+[auth.external.google]
+enabled = true
+client_id = "588839890978-dhtemct8murhd2to9fstj106u1qulgfn.apps.googleusercontent.com"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_SECRET)"
+skip_nonce_check = false
+
+[analytics]
+enabled = true
+port = 54327
+backend = "postgres"
+
+[edge_runtime]
+enabled = false

@@ -194,6 +194,8 @@ async function main() {
       icon: "\u{1F44B}",
       position: 0,
       parentId: null,
+      oneLiner: "Getting started with the AI-agent-first knowledge platform",
+      summary: "Introduction to SymbioKnowledgeBase, covering setup instructions, key features like wikilinks and AI agents, and quick-start guidance for new users.",
     },
     {
       id: PAGE.arch,
@@ -201,6 +203,8 @@ async function main() {
       icon: "\u{1F3D7}\u{FE0F}",
       position: 1,
       parentId: null,
+      oneLiner: "High-level overview of the platform's technical architecture",
+      summary: "Documents the Next.js App Router frontend, Prisma ORM data layer, Supabase auth, and REST API design. Serves as the parent page for all technical deep-dive guides.",
     },
     {
       id: PAGE.api,
@@ -208,6 +212,8 @@ async function main() {
       icon: "\u{1F4E1}",
       position: 2,
       parentId: null,
+      oneLiner: "Complete REST API documentation for pages, blocks, and search",
+      summary: "Covers all REST endpoints including CRUD operations for pages and blocks, wikilink resolution, search, and AI agent authentication via API keys.",
     },
     {
       id: PAGE.research,
@@ -215,6 +221,8 @@ async function main() {
       icon: "\u{1F9EA}",
       position: 3,
       parentId: null,
+      oneLiner: "Research findings on RAG, agent patterns, and prompt engineering",
+      summary: "Collects research notes on retrieval-augmented generation, multi-agent orchestration patterns, and prompt engineering techniques used in the platform.",
     },
     {
       id: PAGE.meeting,
@@ -222,6 +230,8 @@ async function main() {
       icon: "\u{1F4DD}",
       position: 4,
       parentId: null,
+      oneLiner: "Sprint 14 standup notes covering graph, auth, and API work",
+      summary: "Daily standup notes from Sprint 14, tracking progress on knowledge graph visualization, Supabase auth migration, and REST API improvements.",
     },
     {
       id: PAGE.roadmap,
@@ -229,6 +239,8 @@ async function main() {
       icon: "\u{1F5FA}\u{FE0F}",
       position: 5,
       parentId: null,
+      oneLiner: "Quarterly roadmap with milestones and deliverables for Q1 2026",
+      summary: "Outlines the product roadmap for Q1 2026 including key milestones, feature priorities, and target delivery dates across the knowledge platform.",
     },
     {
       id: PAGE.devSetup,
@@ -236,6 +248,8 @@ async function main() {
       icon: "\u{1F4BB}",
       position: 0,
       parentId: PAGE.arch,
+      oneLiner: "Step-by-step local development environment setup",
+      summary: "Walks through cloning the repo, installing dependencies, configuring environment variables, running Supabase locally, and starting the Next.js dev server.",
     },
     {
       id: PAGE.llmGuide,
@@ -243,6 +257,8 @@ async function main() {
       icon: "\u{1F916}",
       position: 1,
       parentId: PAGE.arch,
+      oneLiner: "How AI agents interact with the knowledge base via the REST API",
+      summary: "Explains the agent authentication flow using API keys, describes available endpoints for reading and writing pages, and provides example agent workflows.",
     },
     {
       id: PAGE.dataModels,
@@ -250,6 +266,8 @@ async function main() {
       icon: "\u{1F4CA}",
       position: 2,
       parentId: PAGE.arch,
+      oneLiner: "Prisma schema documentation for tenants, pages, blocks, and links",
+      summary: "Details every database model including Tenant, User, Page, Block, PageLink, ApiKey, and Database. Covers relationships, field types, and migration patterns.",
     },
     {
       id: PAGE.changelog,
@@ -257,6 +275,8 @@ async function main() {
       icon: "\u{1F4C3}",
       position: 6,
       parentId: null,
+      oneLiner: "Release history and version-by-version change log",
+      summary: "Tracks every release with detailed notes on new features, bug fixes, and breaking changes. Organized chronologically from newest to oldest.",
     },
     {
       id: PAGE.bugTracker,
@@ -264,6 +284,8 @@ async function main() {
       icon: "\u{1F41B}",
       position: 7,
       parentId: null,
+      oneLiner: "Active bug database with severity, status, and assignee tracking",
+      summary: "Central bug tracking page linked to the Bugs database table. Lists open issues with priority levels, reproduction steps, and current assignees.",
     },
     {
       id: PAGE.designDoc,
@@ -271,6 +293,8 @@ async function main() {
       icon: "\u{1F3A8}",
       position: 8,
       parentId: null,
+      oneLiner: "Visual design guidelines including colors, typography, and components",
+      summary: "Defines the design system for the platform covering the color palette, typography scale, spacing conventions, and reusable UI component patterns.",
     },
     // ── New pages (18 more) ──
     {
@@ -279,6 +303,8 @@ async function main() {
       icon: "\u{1F512}",
       position: 3,
       parentId: PAGE.arch,
+      oneLiner: "Authentication architecture and security best practices",
+      summary: "Covers Supabase Auth integration, JWT token handling, API key scoping, row-level security policies, and tenant isolation patterns.",
     },
     {
       id: PAGE.testing,
@@ -286,6 +312,8 @@ async function main() {
       icon: "\u{2705}",
       position: 4,
       parentId: PAGE.arch,
+      oneLiner: "Comprehensive testing approach covering unit, integration, and E2E",
+      summary: "Describes the project's testing pyramid: Vitest unit tests, React Testing Library component tests, Playwright E2E tests, and CI integration strategy.",
     },
     {
       id: PAGE.deployment,
@@ -293,6 +321,8 @@ async function main() {
       icon: "\u{1F680}",
       position: 5,
       parentId: PAGE.arch,
+      oneLiner: "Production deployment procedures for Vercel and Supabase",
+      summary: "Step-by-step instructions for deploying the platform to production, covering Vercel project setup, Supabase hosted configuration, environment secrets, and DNS.",
     },
     {
       id: PAGE.frontend,
@@ -300,6 +330,8 @@ async function main() {
       icon: "\u{1F3AF}",
       position: 6,
       parentId: PAGE.arch,
+      oneLiner: "React component library and frontend architecture patterns",
+      summary: "Documents the React component hierarchy, TipTap editor integration, sidebar navigation tree, graph visualization components, and shared UI primitives.",
     },
     {
       id: PAGE.performance,
@@ -307,6 +339,8 @@ async function main() {
       icon: "\u{26A1}",
       position: 9,
       parentId: null,
+      oneLiner: "Performance benchmarks and optimization techniques",
+      summary: "Covers database query optimization, API response time benchmarks, frontend bundle analysis, and caching strategies for the knowledge platform.",
     },
     {
       id: PAGE.vectorSearch,
@@ -314,6 +348,8 @@ async function main() {
       icon: "\u{1F50D}",
       position: 0,
       parentId: PAGE.research,
+      oneLiner: "Semantic search implementation using pgvector and OpenAI embeddings",
+      summary: "Details the vector embedding pipeline: text chunking, OpenAI embedding generation, pgvector storage, and cosine-similarity search for semantic page discovery.",
     },
     {
       id: PAGE.agentWorkflows,
@@ -321,6 +357,8 @@ async function main() {
       icon: "\u{1F916}",
       position: 1,
       parentId: PAGE.research,
+      oneLiner: "Multi-agent interaction patterns and orchestration designs",
+      summary: "Explores agent-to-knowledge-base interaction patterns including Q&A agents, meeting summarizers, and automated knowledge extraction workflows.",
     },
     {
       id: PAGE.promptLibrary,
@@ -328,6 +366,8 @@ async function main() {
       icon: "\u{1F4AC}",
       position: 2,
       parentId: PAGE.research,
+      oneLiner: "Curated collection of reusable prompts for AI agents",
+      summary: "A library of tested prompt templates organized by use case: summarization, Q&A extraction, knowledge graph generation, and content classification.",
     },
     {
       id: PAGE.knowledgePipe,
@@ -335,6 +375,8 @@ async function main() {
       icon: "\u{1F52C}",
       position: 3,
       parentId: PAGE.research,
+      oneLiner: "Automated pipeline for extracting structured knowledge from documents",
+      summary: "Describes the end-to-end pipeline for ingesting raw documents, extracting entities and relationships, and populating the knowledge graph automatically.",
     },
     {
       id: PAGE.meetingSprint13,
@@ -342,6 +384,8 @@ async function main() {
       icon: "\u{1F4DD}",
       position: 10,
       parentId: null,
+      oneLiner: "Sprint 13 review covering database views and sidebar redesign",
+      summary: "Sprint 13 review and retrospective notes. Key topics: database view implementation, sidebar tree redesign, and API key management improvements.",
     },
     {
       id: PAGE.meetingSprint12,
@@ -349,6 +393,8 @@ async function main() {
       icon: "\u{1F4DD}",
       position: 11,
       parentId: null,
+      oneLiner: "Sprint 12 review covering editor improvements and graph MVP",
+      summary: "Sprint 12 review and retrospective notes. Key topics: TipTap editor enhancements, initial knowledge graph MVP, and block-level permissions.",
     },
     {
       id: PAGE.onboarding,
@@ -356,6 +402,8 @@ async function main() {
       icon: "\u{1F44B}",
       position: 12,
       parentId: null,
+      oneLiner: "New team member onboarding checklist and resource guide",
+      summary: "A structured onboarding guide for new team members covering account setup, key documentation links, development environment configuration, and team introductions.",
     },
     {
       id: PAGE.contributing,
@@ -363,6 +411,8 @@ async function main() {
       icon: "\u{1F91D}",
       position: 13,
       parentId: null,
+      oneLiner: "How to contribute code, documentation, and bug reports",
+      summary: "Guidelines for contributing to the project including branch naming conventions, pull request workflow, code review expectations, and documentation standards.",
     },
     {
       id: PAGE.troubleshoot,
@@ -370,6 +420,8 @@ async function main() {
       icon: "\u{2753}",
       position: 14,
       parentId: null,
+      oneLiner: "Common issues and their solutions for developers",
+      summary: "Frequently asked questions and troubleshooting steps for common development issues including database connectivity, build errors, auth problems, and deployment failures.",
     },
     {
       id: PAGE.cicd,
@@ -377,6 +429,8 @@ async function main() {
       icon: "\u{1F504}",
       position: 7,
       parentId: PAGE.arch,
+      oneLiner: "Automated build, test, and deployment pipeline configuration",
+      summary: "Documents the GitHub Actions CI/CD pipeline including lint checks, test runners, preview deployments on PRs, and production deployment triggers.",
     },
     {
       id: PAGE.dbMigration,
@@ -384,6 +438,8 @@ async function main() {
       icon: "\u{1F4E6}",
       position: 8,
       parentId: PAGE.arch,
+      oneLiner: "Database schema migration procedures and best practices",
+      summary: "Covers Prisma migration workflow, safe migration patterns for production, rollback procedures, and data migration scripts for schema changes.",
     },
     {
       id: PAGE.accessibility,
@@ -391,6 +447,8 @@ async function main() {
       icon: "\u{267F}",
       position: 0,
       parentId: PAGE.designDoc,
+      oneLiner: "WCAG compliance standards and accessibility implementation guide",
+      summary: "Covers WCAG 2.1 AA compliance requirements including keyboard navigation, screen reader support, color contrast ratios, and ARIA attribute usage.",
     },
     {
       id: PAGE.mobileDesign,
@@ -398,6 +456,8 @@ async function main() {
       icon: "\u{1F4F1}",
       position: 1,
       parentId: PAGE.designDoc,
+      oneLiner: "Responsive design specifications and mobile-first layout patterns",
+      summary: "Defines responsive breakpoints, touch-friendly interaction targets, mobile navigation patterns, and performance budgets for mobile devices.",
     },
     // ── Agent pages — AI agent knowledge base ──
     // These pages contain organizational information that agents can search:
@@ -409,6 +469,8 @@ async function main() {
       position: 0,
       parentId: null,
       spaceType: SpaceType.AGENT,
+      oneLiner: "Connection strings and credential management for database access",
+      summary: "Provides agents with database connection details, credential rotation procedures, allowed query patterns, and access control boundaries.",
     },
     {
       id: PAGE.agentEquipOps,
@@ -417,6 +479,8 @@ async function main() {
       position: 1,
       parentId: null,
       spaceType: SpaceType.AGENT,
+      oneLiner: "Standard operating procedures for lab and facility equipment",
+      summary: "Contains step-by-step operating instructions for laboratory and facility equipment, including startup procedures, calibration steps, and shutdown checklists.",
     },
     {
       id: PAGE.agentQrCodes,
@@ -425,6 +489,8 @@ async function main() {
       position: 2,
       parentId: null,
       spaceType: SpaceType.AGENT,
+      oneLiner: "QR code generation, scanning, and processing procedures",
+      summary: "Instructions for generating, scanning, and processing QR codes used for asset tracking, equipment identification, and workflow triggering.",
     },
     {
       id: PAGE.agentOrgInstructions,
@@ -433,6 +499,8 @@ async function main() {
       position: 3,
       parentId: null,
       spaceType: SpaceType.AGENT,
+      oneLiner: "Organizational behavior guidelines and policy rules for agents",
+      summary: "Defines acceptable behavior boundaries, response tone guidelines, data handling policies, and escalation procedures that all AI agents must follow.",
     },
     {
       id: PAGE.agentApiIntegrations,
@@ -441,6 +509,8 @@ async function main() {
       position: 4,
       parentId: null,
       spaceType: SpaceType.AGENT,
+      oneLiner: "Third-party service endpoints and integration configurations",
+      summary: "Lists external API endpoints, authentication methods, rate limits, and example request/response payloads for services agents can interact with.",
     },
     {
       id: PAGE.agentSafetyProto,
@@ -449,6 +519,8 @@ async function main() {
       position: 5,
       parentId: null,
       spaceType: SpaceType.AGENT,
+      oneLiner: "Safety requirements and compliance rules for agent operations",
+      summary: "Defines safety boundaries, data privacy compliance requirements, emergency procedures, and audit logging obligations for all automated agent actions.",
     },
     // ── Team pages — Engineering teamspace ──
     {
@@ -459,6 +531,8 @@ async function main() {
       parentId: null,
       spaceType: SpaceType.TEAM,
       teamspaceId: TEAMSPACE.engineering,
+      oneLiner: "Code quality standards and engineering best practices",
+      summary: "Defines coding conventions, TypeScript strict mode requirements, linting rules, code review checklist, and architectural decision records for the engineering team.",
     },
     {
       id: PAGE.teamEngRunbooks,
@@ -468,6 +542,8 @@ async function main() {
       parentId: null,
       spaceType: SpaceType.TEAM,
       teamspaceId: TEAMSPACE.engineering,
+      oneLiner: "Operational runbooks for common and emergency procedures",
+      summary: "Step-by-step playbooks for production incidents, database recovery, deployment rollbacks, and scaling operations used by the engineering team.",
     },
     {
       id: PAGE.teamEngIncidents,
@@ -477,6 +553,8 @@ async function main() {
       parentId: null,
       spaceType: SpaceType.TEAM,
       teamspaceId: TEAMSPACE.engineering,
+      oneLiner: "Incident records, post-mortems, and resolution timelines",
+      summary: "Logs all production incidents with severity classification, timeline of events, root cause analysis, and corrective actions taken.",
     },
     {
       id: PAGE.teamEngOnCall,
@@ -486,6 +564,8 @@ async function main() {
       parentId: null,
       spaceType: SpaceType.TEAM,
       teamspaceId: TEAMSPACE.engineering,
+      oneLiner: "Weekly on-call rotation and escalation contact list",
+      summary: "Current on-call rotation schedule, escalation paths, contact information for each rotation slot, and handoff procedures between shifts.",
     },
     // ── Team pages — Product teamspace ──
     {
@@ -496,6 +576,8 @@ async function main() {
       parentId: null,
       spaceType: SpaceType.TEAM,
       teamspaceId: TEAMSPACE.product,
+      oneLiner: "Long-term product vision and strategic roadmap",
+      summary: "Defines the product team's strategic direction, quarterly OKRs, feature prioritization framework, and competitive landscape analysis.",
     },
     {
       id: PAGE.teamProdMetrics,
@@ -505,6 +587,8 @@ async function main() {
       parentId: null,
       spaceType: SpaceType.TEAM,
       teamspaceId: TEAMSPACE.product,
+      oneLiner: "Product health metrics, KPIs, and tracking dashboards",
+      summary: "Tracks key product metrics including daily active users, page creation rate, API call volume, agent adoption, and user retention cohorts.",
     },
     {
       id: PAGE.teamProdUserRes,
@@ -514,6 +598,8 @@ async function main() {
       parentId: null,
       spaceType: SpaceType.TEAM,
       teamspaceId: TEAMSPACE.product,
+      oneLiner: "User interview insights and usability test results",
+      summary: "Synthesizes findings from user interviews, usability testing sessions, and survey responses. Highlights pain points, feature requests, and satisfaction trends.",
     },
     {
       id: PAGE.teamProdSpecs,
@@ -523,6 +609,8 @@ async function main() {
       parentId: null,
       spaceType: SpaceType.TEAM,
       teamspaceId: TEAMSPACE.product,
+      oneLiner: "Detailed feature specs with requirements and acceptance criteria",
+      summary: "Contains detailed specifications for planned features including user stories, acceptance criteria, technical constraints, and design mockup references.",
     },
   ];
 
@@ -534,6 +622,8 @@ async function main() {
         icon: p.icon,
         position: p.position,
         parentId: p.parentId,
+        oneLiner: p.oneLiner,
+        summary: p.summary,
         spaceType: (p as { spaceType?: string }).spaceType as "PRIVATE" | "TEAM" | "AGENT" | undefined,
         teamspaceId: (p as { teamspaceId?: string }).teamspaceId,
       },

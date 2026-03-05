@@ -50,7 +50,7 @@ export function Breadcrumbs({ tree, currentPageId, actions }: BreadcrumbsProps) 
   const lastIndex = visibleSegments.length - 1;
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center justify-between w-full content-pad py-2">
+    <nav aria-label="Breadcrumb" className="flex items-center justify-between w-full content-pad py-2 border-b border-[var(--border-default)] bg-[var(--bg-primary)]">
       <div className="flex items-center min-w-0">
       {/* Home breadcrumb */}
       <Link

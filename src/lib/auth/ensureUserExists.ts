@@ -27,37 +27,60 @@ export async function ensureUserExists(supabaseUser: User) {
     ?? await resolveDefaultTenant()
     ?? await createPersonalTenant(supabaseUser);
 
-  const user = await prisma.user.create({
-    data: {
-      id: supabaseUser.id,
-      email: supabaseUser.email!,
-      tenantId,
-      role: "ADMIN",
-      name:
-        supabaseUser.user_metadata?.full_name
-        ?? supabaseUser.user_metadata?.name
-        ?? null,
-    },
-    select: { id: true, tenantId: true, role: true },
-  });
+  try {
+    const user = await prisma.user.create({
+      data: {
+        id: supabaseUser.id,
+        email: supabaseUser.email!,
+        tenantId,
+        role: "ADMIN",
+        name:
+          supabaseUser.user_metadata?.full_name
+          ?? supabaseUser.user_metadata?.name
+          ?? null,
+      },
+      select: { id: true, tenantId: true, role: true },
+    });
 
-  // Also create a TenantMember record so workspace-switching works
-  await prisma.tenantMember.upsert({
-    where: {
-      userId_tenantId: { userId: supabaseUser.id, tenantId },
-    },
-    update: {},
-    create: {
-      userId: supabaseUser.id,
-      tenantId,
-      role: "owner",
-    },
-  });
+    // Also create a TenantMember record so workspace-switching works
+    await prisma.tenantMember.upsert({
+      where: {
+        userId_tenantId: { userId: supabaseUser.id, tenantId },
+      },
+      update: {},
+      create: {
+        userId: supabaseUser.id,
+        tenantId,
+        role: "owner",
+      },
+    });
 
-  console.log(
-    `[Auth] Created user ${supabaseUser.email} in tenant ${tenantId}`
-  );
-  return user;
+    console.log(
+      `[Auth] Created user ${supabaseUser.email} in tenant ${tenantId}`
+    );
+    return user;
+  } catch (error: unknown) {
+    // Handle unique constraint violation on (tenant_id, email).
+    // This occurs when the same email re-authenticates with a different
+    // Supabase auth ID (e.g. different OAuth provider, or Supabase reset).
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: string }).code === "P2002"
+    ) {
+      const existingByEmail = await prisma.user.findFirst({
+        where: { email: supabaseUser.email! },
+        select: { id: true, tenantId: true, role: true },
+      });
+      if (existingByEmail) {
+        console.log(
+          `[Auth] Found existing user by email ${supabaseUser.email} (auth ID mismatch, returning existing)`
+        );
+        return existingByEmail;
+      }
+    }
+    throw error;
+  }
 }
 
 /**
