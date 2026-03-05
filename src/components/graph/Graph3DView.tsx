@@ -89,6 +89,15 @@ export function Graph3DView({
 
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
+  // Debounce nodeSize to prevent rapid WebGL geometry rebuilds when dragging
+  // the size slider. nodeRelSize changes cause three.js to regenerate sphere
+  // geometries for every node — doing this on every slider tick crashes WebGL.
+  const [debouncedNodeSize, setDebouncedNodeSize] = useState(nodeSize);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedNodeSize(nodeSize), 150);
+    return () => clearTimeout(timer);
+  }, [nodeSize]);
+
   const { data, isLoading } = useGraphData({
     pageId,
     depth,
@@ -140,9 +149,11 @@ const handleNodeClick = useCallback(
   const showLabelsRef = useRef(showLabels);
   const showNodesRef = useRef(showNodes);
   const showEdgesRef = useRef(showEdges);
+  const nodeSizeRef = useRef(nodeSize);
   useEffect(() => { showLabelsRef.current = showLabels; }, [showLabels]);
   useEffect(() => { showNodesRef.current = showNodes; }, [showNodes]);
   useEffect(() => { showEdgesRef.current = showEdges; }, [showEdges]);
+  useEffect(() => { nodeSizeRef.current = nodeSize; }, [nodeSize]);
 
   // Update d3 force simulation when spacing changes
   useEffect(() => {
@@ -186,7 +197,10 @@ const handleNodeClick = useCallback(
     [sizeMode]
   );
 
-  // Always-visible 3D text labels using SpriteText
+  // Always-visible 3D text labels using SpriteText.
+  // IMPORTANT: Uses nodeSizeRef instead of nodeSize in deps to prevent
+  // recreating all SpriteText objects (WebGL textures) on every slider tick,
+  // which would exhaust WebGL resources and crash the renderer.
   const nodeThreeObject = useCallback(
     (node: ForceGraphNodeObject) => {
       const label = node.label ?? "";
@@ -200,11 +214,11 @@ const handleNodeClick = useCallback(
       sprite.borderRadius = 2;
       sprite.material.opacity = showLabelsRef.current ? 0.6 : 0;
       sprite.material.transparent = true;
-      // Position slightly above the node sphere
-      sprite.position.y = nodeSize + 4;
+      // Position slightly above the node sphere (use ref to avoid full rebuild)
+      sprite.position.y = nodeSizeRef.current + 4;
       return sprite;
     },
-    [theme, nodeSize]
+    [theme]
   );
 
   if (isLoading) {
@@ -252,7 +266,7 @@ const handleNodeClick = useCallback(
         nodeId="id"
         nodeColor={nodeColor}
         nodeLabel={nodeLabel}
-        nodeRelSize={nodeSize}
+        nodeRelSize={debouncedNodeSize}
         nodeVal={nodeVal}
         nodeVisibility={() => showNodesRef.current}
         nodeThreeObject={nodeThreeObject}
