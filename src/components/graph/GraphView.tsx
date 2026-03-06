@@ -95,6 +95,23 @@ function getThemeMode(): ThemeMode {
   return "light";
 }
 
+/** Subscribe to data-theme attribute changes so the graph re-renders on toggle. */
+function useThemeMode(): ThemeMode {
+  const [theme, setTheme] = useState<ThemeMode>(getThemeMode);
+
+  useEffect(() => {
+    const el = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setTheme(getThemeMode());
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
+    setTheme(getThemeMode());
+    return () => observer.disconnect();
+  }, []);
+
+  return theme;
+}
+
 /**
  * Interactive knowledge graph visualization using react-force-graph.
  *
@@ -226,7 +243,7 @@ export function GraphView({
     []
   );
 
-  const theme = getThemeMode();
+  const theme = useThemeMode();
 
   // Use refs so toggling display options doesn't recreate callbacks
   // (which would restart the force simulation and cause wiggle)

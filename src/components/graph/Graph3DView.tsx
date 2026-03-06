@@ -64,6 +64,24 @@ function getThemeMode(): ThemeMode {
   return "light";
 }
 
+/** Subscribe to data-theme attribute changes so the 3D graph re-renders on toggle. */
+function useThemeMode(): ThemeMode {
+  const [theme, setTheme] = useState<ThemeMode>(getThemeMode);
+
+  useEffect(() => {
+    const el = document.documentElement;
+    const observer = new MutationObserver(() => {
+      setTheme(getThemeMode());
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ["data-theme"] });
+    // Sync in case the attribute changed before the observer attached
+    setTheme(getThemeMode());
+    return () => observer.disconnect();
+  }, []);
+
+  return theme;
+}
+
 /**
  * 3D knowledge graph visualization using react-force-graph-3d (WebGL/three.js).
  */
@@ -169,7 +187,7 @@ const handleNodeClick = useCallback(
     [router]
   );
 
-  const theme = getThemeMode();
+  const theme = useThemeMode();
   const centerId = highlightCenter ? pageId : undefined;
 
   // Use refs so toggling display options doesn't recreate callbacks
@@ -234,13 +252,14 @@ const handleNodeClick = useCallback(
       const label = node.label ?? "";
       const displayLabel = label.length > 20 ? label.substring(0, 20) + "..." : label;
       const sprite = new SpriteText(displayLabel);
-      sprite.color = theme === "dark" ? "#E5E7EB" : "#37352f";
-      sprite.textHeight = 3;
+      sprite.color = theme === "dark" ? "#F3F4F6" : "#1f2937";
+      sprite.textHeight = 5;
       sprite.fontFace = "Inter, system-ui, sans-serif";
-      sprite.backgroundColor = theme === "dark" ? "rgba(17,24,39,0.5)" : "rgba(255,255,255,0.5)";
-      sprite.padding = 1;
-      sprite.borderRadius = 2;
-      sprite.material.opacity = showLabelsRef.current ? 0.6 : 0;
+      sprite.fontWeight = "500";
+      sprite.backgroundColor = theme === "dark" ? "rgba(17,24,39,0.7)" : "rgba(255,255,255,0.7)";
+      sprite.padding = 2;
+      sprite.borderRadius = 3;
+      sprite.material.opacity = showLabelsRef.current ? 0.85 : 0;
       sprite.material.transparent = true;
       // Position slightly above the node sphere (use ref to avoid full rebuild)
       sprite.position.y = nodeSizeRef.current + 4;
@@ -300,7 +319,7 @@ const handleNodeClick = useCallback(
         nodeThreeObject={nodeThreeObject}
         nodeThreeObjectExtend={true}
         onNodeClick={handleNodeClick}
-        linkColor={() => (theme === "dark" ? "#6B7280" : "#D1D5DB")}
+        linkColor={() => (theme === "dark" ? "#9CA3AF" : "#D1D5DB")}
         linkWidth={1}
         linkDirectionalArrowLength={5}
         linkDirectionalArrowRelPos={1}
