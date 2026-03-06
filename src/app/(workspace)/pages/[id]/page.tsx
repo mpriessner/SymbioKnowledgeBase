@@ -21,13 +21,26 @@ export default function PageView({ params }: PageViewProps) {
   const { id } = use(params);
   const { data, isLoading, error } = usePage(id);
   const { addRecentPage } = useRecentPages();
-  const [showRightSidebar, setShowRightSidebar] = useState(true);
+  const [showRightSidebar, setShowRightSidebar] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      const saved = localStorage.getItem("skb-graph-sidebar-visible");
+      return saved !== null ? saved === "true" : true;
+    } catch { return true; }
+  });
   const [editor, setEditor] = useState<Editor | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   const handleEditorReady = useCallback((ed: Editor) => {
     setEditor(ed);
   }, []);
+
+  // Persist sidebar visibility to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem("skb-graph-sidebar-visible", String(showRightSidebar));
+    } catch { /* ignore */ }
+  }, [showRightSidebar]);
 
   // Record page visit for recent pages list
   const pageData = data?.data;

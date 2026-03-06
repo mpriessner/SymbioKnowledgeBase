@@ -35,7 +35,7 @@ interface LocalGraphSidebarProps {
 const MIN_DEPTH = 1;
 const MAX_DEPTH = 4;
 
-function loadSavedSettings(): { is3D: boolean; nodeSize: number } {
+function loadSavedSettings(): { is3D: boolean; nodeSize: number; isCollapsed: boolean } {
   try {
     const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
     if (raw) {
@@ -43,14 +43,15 @@ function loadSavedSettings(): { is3D: boolean; nodeSize: number } {
       return {
         is3D: typeof parsed.is3D === "boolean" ? parsed.is3D : false,
         nodeSize: typeof parsed.nodeSize === "number" ? parsed.nodeSize : 3,
+        isCollapsed: typeof parsed.isCollapsed === "boolean" ? parsed.isCollapsed : false,
       };
     }
   } catch { /* ignore */ }
-  return { is3D: false, nodeSize: 3 };
+  return { is3D: false, nodeSize: 3, isCollapsed: false };
 }
 
 export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGraphSidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => loadSavedSettings().isCollapsed);
   const [depth, setDepth] = useState(1);
   const graphRef = useRef<GraphRefHandle | null>(null);
 
@@ -58,8 +59,8 @@ export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGrap
   const [nodeSize, setNodeSize] = useState(() => loadSavedSettings().nodeSize);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ is3D, nodeSize }));
-  }, [is3D, nodeSize]);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ is3D, nodeSize, isCollapsed }));
+  }, [is3D, nodeSize, isCollapsed]);
 
   const { data, isLoading } = useGraphData({ pageId, depth, enabled: !isCollapsed });
 

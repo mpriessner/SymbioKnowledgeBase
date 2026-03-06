@@ -116,20 +116,24 @@ export function Graph3DView({
     };
   }, [data, overrideData]);
 
-  // Responsive sizing
+  // Responsive sizing — use ResizeObserver to detect container size changes
+  // (window resize alone misses layout-driven changes like sidebar open/close)
   useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
     const updateDimensions = () => {
-      if (containerRef.current) {
-        setDimensions({
-          width: width || containerRef.current.clientWidth,
-          height: height || containerRef.current.clientHeight,
-        });
+      const w = width || el.clientWidth;
+      const h = height || el.clientHeight;
+      if (w > 0 && h > 0) {
+        setDimensions({ width: w, height: h });
       }
     };
 
     updateDimensions();
-    window.addEventListener("resize", updateDimensions);
-    return () => window.removeEventListener("resize", updateDimensions);
+    const ro = new ResizeObserver(updateDimensions);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [width, height]);
 
 const handleNodeClick = useCallback(
