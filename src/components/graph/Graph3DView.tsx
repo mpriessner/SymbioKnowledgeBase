@@ -87,7 +87,7 @@ export function Graph3DView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const graphRef = useRef<any>(null);
 
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
 
   // Debounce nodeSize to prevent rapid WebGL geometry rebuilds when dragging
   // the size slider. nodeRelSize changes cause three.js to regenerate sphere
@@ -115,6 +115,30 @@ export function Graph3DView({
       })),
     };
   }, [data, overrideData]);
+
+  // Explicitly dispose Three.js WebGL renderer on unmount.
+  // The library's _destructor only pauses animation and clears data — it does
+  // NOT release the WebGL context. Browsers cap contexts at ~8-16, so leaked
+  // contexts from 2D/3D toggles or page navigation exhaust the limit and
+  // silently prevent new 3D graphs from rendering.
+  useEffect(() => {
+    return () => {
+      const fg = graphRef.current;
+      if (!fg) return;
+      try {
+        fg.pauseAnimation?.();
+        const renderer = fg.renderer?.();
+        if (renderer) {
+          renderer.dispose();
+          renderer.forceContextLoss?.();
+          // Remove the canvas element the renderer injected
+          const canvas = renderer.domElement;
+          canvas?.parentNode?.removeChild(canvas);
+        }
+      } catch { /* ignore cleanup errors */ }
+      graphRef.current = null;
+    };
+  }, []);
 
   // Responsive sizing — use ResizeObserver to detect container size changes
   // (window resize alone misses layout-driven changes like sidebar open/close)
@@ -262,7 +286,7 @@ const handleNodeClick = useCallback(
         </div>
       )}
 
-      <ForceGraph3D
+      {dimensions && <ForceGraph3D
         ref={graphRef}
         width={dimensions.width}
         height={dimensions.height}
@@ -287,7 +311,7 @@ const handleNodeClick = useCallback(
         d3AlphaDecay={0.02}
         d3VelocityDecay={0.3}
         backgroundColor={theme === "dark" ? "#111827" : "#ffffff"}
-      />
+      />}
     </div>
   );
 }

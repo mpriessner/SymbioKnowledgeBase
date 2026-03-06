@@ -208,6 +208,7 @@ export function LocalGraphSidebar({ pageId, onClose, className = "" }: LocalGrap
               <div className="absolute inset-0">
                 {is3D ? (
                   <Graph3DView
+                    key={`3d-${pageId}`}
                     pageId={pageId}
                     depth={depth}
                     highlightCenter={true}
