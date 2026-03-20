@@ -17,5 +17,8 @@ export function createCloudClient() {
     return null;
   }
 
-  return createBrowserClient(url, key);
+  // isSingleton: false is required because createBrowserClient uses a global
+  // singleton by default. Without this, it returns the cached LOCAL client
+  // (created first by client.ts) instead of creating a new cloud client.
+  return createBrowserClient(url, key, { isSingleton: false });
 }
