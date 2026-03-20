@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { createCloudClient } from "@/lib/supabase/cloud-client";
 import { loginSchema } from "@/lib/validation/auth";
 
 type FieldErrors = Partial<Record<string, string>>;
@@ -67,7 +68,10 @@ function LoginForm() {
   };
 
   const handleGoogleLogin = async () => {
-    const supabase = createClient();
+    // Use cloud Supabase for Google OAuth (works from localhost and remote/Tailscale)
+    // Falls back to local Supabase if cloud is not configured
+    const cloudClient = createCloudClient();
+    const supabase = cloudClient || createClient();
     if (!supabase) {
       setGeneralError("Authentication service is not configured.");
       return;
