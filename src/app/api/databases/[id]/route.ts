@@ -4,6 +4,7 @@ import { withTenant } from "@/lib/auth/withTenant";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { UpdateDatabaseSchema, DatabaseViewTypeSchema, ViewConfigSchema } from "@/types/database";
 import type { TenantContext } from "@/types/auth";
+import { syncDatabaseToFilesystem, deleteDatabaseFile } from "@/lib/sync/DatabaseSync";
 import { z } from "zod";
 
 const dbIdSchema = z.string().uuid("Database ID must be a valid UUID");
@@ -106,6 +107,11 @@ export const PUT = withTenant(
         where: { id: idParsed.data },
         data: updateData,
       });
+
+      // Fire-and-forget sync
+      syncDatabaseToFilesystem(context.tenantId, idParsed.data).catch((err) =>
+        console.error("[DatabaseSync] sync failed:", err)
+      );
 
       return successResponse({
         id: updated.id,
@@ -224,6 +230,11 @@ export const DELETE = withTenant(
 
       // Delete database (cascade deletes rows)
       await prisma.database.delete({ where: { id: idParsed.data } });
+
+      // Fire-and-forget sync
+      deleteDatabaseFile(context.tenantId, idParsed.data).catch((err) =>
+        console.error("[DatabaseSync] delete sync failed:", err)
+      );
 
       return new Response(null, { status: 204 });
     } catch (error) {

@@ -4,14 +4,15 @@ import { NextRequest } from "next/server";
 // Mock dependencies
 vi.mock("@/lib/search/query", () => ({
   searchBlocks: vi.fn(),
+  enhancedSearchBlocks: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/withTenant", () => ({
-  withTenant: (handler: (req: NextRequest, tenant: { tenantId: string; userId: string }, ctx: { params: Promise<Record<string, string>> }) => unknown) => {
+  withTenant: (handler: (req: NextRequest, tenant: { tenantId: string; userId: string; role: string }, ctx: { params: Promise<Record<string, string>> }) => unknown) => {
     return (req: NextRequest) => {
       return handler(
         req,
-        { tenantId: "test-tenant-id", userId: "test-user-id" },
+        { tenantId: "test-tenant-id", userId: "test-user-id", role: "owner" },
         { params: Promise.resolve({}) }
       );
     };
@@ -19,8 +20,8 @@ vi.mock("@/lib/auth/withTenant", () => ({
 }));
 
 import { GET } from "@/app/api/search/route";
-import { searchBlocks } from "@/lib/search/query";
-const mockSearchBlocks = vi.mocked(searchBlocks);
+import { enhancedSearchBlocks } from "@/lib/search/query";
+const mockEnhancedSearchBlocks = vi.mocked(enhancedSearchBlocks);
 
 describe("GET /api/search", () => {
   beforeEach(() => {
@@ -28,15 +29,16 @@ describe("GET /api/search", () => {
   });
 
   it("should return search results for valid query", async () => {
-    mockSearchBlocks.mockResolvedValue({
+    mockEnhancedSearchBlocks.mockResolvedValue({
       results: [
         {
           pageId: "page-1",
           pageTitle: "Test Page",
           pageIcon: null,
-          blockId: "block-1",
           snippet: "matching <mark>content</mark>",
-          rank: 0.85,
+          score: 0.85,
+          updatedAt: "2026-01-01T00:00:00.000Z",
+          matchedBlockIds: ["block-1"],
         },
       ],
       total: 1,
@@ -69,16 +71,17 @@ describe("GET /api/search", () => {
   });
 
   it("should use default limit and offset when not provided", async () => {
-    mockSearchBlocks.mockResolvedValue({ results: [], total: 0 });
+    mockEnhancedSearchBlocks.mockResolvedValue({ results: [], total: 0 });
 
     const request = new NextRequest(
       "http://localhost:3000/api/search?q=test"
     );
     await GET(request);
 
-    expect(mockSearchBlocks).toHaveBeenCalledWith(
+    expect(mockEnhancedSearchBlocks).toHaveBeenCalledWith(
       "test",
       "test-tenant-id",
+      expect.objectContaining({}),
       20,
       0
     );
@@ -105,7 +108,7 @@ describe("GET /api/search", () => {
   });
 
   it("should return empty data array for no results (not 404)", async () => {
-    mockSearchBlocks.mockResolvedValue({ results: [], total: 0 });
+    mockEnhancedSearchBlocks.mockResolvedValue({ results: [], total: 0 });
 
     const request = new NextRequest(
       "http://localhost:3000/api/search?q=nonexistent"
@@ -118,33 +121,35 @@ describe("GET /api/search", () => {
     expect(body.meta.total).toBe(0);
   });
 
-  it("should pass tenant_id to searchBlocks", async () => {
-    mockSearchBlocks.mockResolvedValue({ results: [], total: 0 });
+  it("should pass tenant_id to enhancedSearchBlocks", async () => {
+    mockEnhancedSearchBlocks.mockResolvedValue({ results: [], total: 0 });
 
     const request = new NextRequest(
       "http://localhost:3000/api/search?q=test"
     );
     await GET(request);
 
-    expect(mockSearchBlocks).toHaveBeenCalledWith(
+    expect(mockEnhancedSearchBlocks).toHaveBeenCalledWith(
       "test",
       "test-tenant-id",
+      expect.objectContaining({}),
       expect.any(Number),
       expect.any(Number)
     );
   });
 
   it("should handle custom limit and offset", async () => {
-    mockSearchBlocks.mockResolvedValue({ results: [], total: 0 });
+    mockEnhancedSearchBlocks.mockResolvedValue({ results: [], total: 0 });
 
     const request = new NextRequest(
       "http://localhost:3000/api/search?q=test&limit=5&offset=10"
     );
     await GET(request);
 
-    expect(mockSearchBlocks).toHaveBeenCalledWith(
+    expect(mockEnhancedSearchBlocks).toHaveBeenCalledWith(
       "test",
       "test-tenant-id",
+      expect.objectContaining({}),
       5,
       10
     );

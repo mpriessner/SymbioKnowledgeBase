@@ -13,13 +13,15 @@ export async function resolveWikilinks(
     return { resolved: [], unresolved: [] };
   }
 
-  // Single query to find all matching pages by title within tenant
+  // Single query to find all matching pages by title within tenant.
+  // Note: mode "insensitive" is intentionally omitted because it does not
+  // work with the `in` filter on the Prisma pg adapter. Case-insensitive
+  // matching is handled in the JavaScript lookup map below instead.
   const matchingPages = await prisma.page.findMany({
     where: {
       tenantId,
       title: {
         in: links.map((l) => l.pageName),
-        mode: "insensitive",
       },
     },
     select: {
@@ -34,9 +36,9 @@ export async function resolveWikilinks(
     pageByTitle.set(page.title.toLowerCase(), page);
   }
 
-  // Partition links into resolved and unresolved
+  // Partition links into resolved and unresolved (first pass: exact match)
   const resolved: ResolvedWikilinks["resolved"] = [];
-  const unresolved: ResolvedWikilinks["unresolved"] = [];
+  const stillUnresolved: ExtractedWikilink[] = [];
   const resolvedNames = new Set<string>();
 
   for (const link of links) {
@@ -55,10 +57,39 @@ export async function resolveWikilinks(
         displayText: link.displayText,
       });
     } else {
-      unresolved.push({
-        pageName: link.pageName,
-        displayText: link.displayText,
-      });
+      stillUnresolved.push(link);
+    }
+  }
+
+  // Second pass: try startsWith match for remaining unresolved links
+  // (handles cases like [[EXP-2026-0042]] matching "EXP-2026-0042: Suzuki Coupling...")
+  const unresolved: ResolvedWikilinks["unresolved"] = [];
+  if (stillUnresolved.length > 0) {
+    const startsWithResults = await Promise.all(
+      stillUnresolved.map((link) =>
+        prisma.page.findFirst({
+          where: {
+            tenantId,
+            title: { startsWith: link.pageName },
+          },
+          select: { id: true, title: true },
+        }).then((page) => ({ link, page }))
+      )
+    );
+
+    for (const { link, page } of startsWithResults) {
+      if (page) {
+        resolved.push({
+          pageName: link.pageName,
+          pageId: page.id,
+          displayText: link.displayText,
+        });
+      } else {
+        unresolved.push({
+          pageName: link.pageName,
+          displayText: link.displayText,
+        });
+      }
     }
   }
 

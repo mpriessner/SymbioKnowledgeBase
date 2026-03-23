@@ -7,13 +7,15 @@ import { test, expect } from "@playwright/test";
  *   docker compose -f docker-compose.prod.yml up -d
  *
  * Run with:
- *   npx playwright test tests/e2e/docker-prod.spec.ts
+ *   DOCKER_ENV=1 npx playwright test tests/e2e/docker-prod.spec.ts
  */
 test.describe("Production Docker Deployment", () => {
-  const BASE_URL = process.env.APP_URL || "http://localhost:3000";
+  // These tests are specific to Docker production deployments.
+  // Skip when running in local dev or CI without Docker.
+  test.skip(!process.env.DOCKER_ENV, "Skipped: not a Docker environment");
 
   test("health endpoint returns 200 with status ok", async ({ request }) => {
-    const response = await request.get(`${BASE_URL}/api/health`);
+    const response = await request.get("/api/health");
     expect(response.status()).toBe(200);
 
     const body = await response.json();
@@ -23,7 +25,7 @@ test.describe("Production Docker Deployment", () => {
   });
 
   test("app serves HTML at root", async ({ page }) => {
-    const response = await page.goto(BASE_URL);
+    const response = await page.goto("/");
     expect(response?.status()).toBe(200);
 
     const contentType = response?.headers()["content-type"];
@@ -31,7 +33,7 @@ test.describe("Production Docker Deployment", () => {
   });
 
   test("static assets are served with cache headers", async ({ request }) => {
-    const response = await request.get(`${BASE_URL}/favicon.ico`);
+    const response = await request.get("/favicon.ico");
     if (response.status() === 200) {
       const cacheControl = response.headers()["cache-control"];
       expect(cacheControl).toBeDefined();
@@ -39,8 +41,7 @@ test.describe("Production Docker Deployment", () => {
   });
 
   test("login page is accessible", async ({ page }) => {
-    await page.goto(`${BASE_URL}/login`);
-    const status = page.url();
-    expect(status).toContain(BASE_URL);
+    await page.goto("/login");
+    await expect(page).toHaveURL(/\/login/);
   });
 });

@@ -4,9 +4,14 @@ import chokidar from "chokidar";
 import { prisma } from "@/lib/db";
 import { markdownToTiptap } from "@/lib/markdown/deserializer";
 import { savePageBlocks } from "@/lib/markdown/helpers";
-import { MIRROR_ROOT, META_FILENAME, FS_DEBOUNCE_MS } from "./config";
+import { MIRROR_ROOT, META_FILENAME, DATABASES_DIR, INDEX_FILENAME, FS_DEBOUNCE_MS } from "./config";
 import { syncLock } from "./SyncLock";
 import type { SyncMetadata } from "./types";
+import {
+  handleDatabaseFileChange,
+  handleDatabaseFileAdd,
+  handleDatabaseFileDelete,
+} from "./DatabaseSync";
 
 type FSWatcher = ReturnType<typeof chokidar.watch>;
 
@@ -45,15 +50,30 @@ export function startFileWatcher(): FSWatcher {
   watcher
     .on("change", (filePath: string) => {
       if (!filePath.endsWith(".md")) return;
-      debouncedHandler(filePath, handleFileChange);
+      if (isRootIndexFile(filePath)) return;
+      if (isDatabaseFile(filePath)) {
+        debouncedHandler(filePath, handleDatabaseFileChange);
+      } else {
+        debouncedHandler(filePath, handleFileChange);
+      }
     })
     .on("add", (filePath: string) => {
       if (!filePath.endsWith(".md")) return;
-      debouncedHandler(filePath, handleFileAdd);
+      if (isRootIndexFile(filePath)) return;
+      if (isDatabaseFile(filePath)) {
+        debouncedHandler(filePath, handleDatabaseFileAdd);
+      } else {
+        debouncedHandler(filePath, handleFileAdd);
+      }
     })
     .on("unlink", (filePath: string) => {
       if (!filePath.endsWith(".md")) return;
-      debouncedHandler(filePath, handleFileDelete);
+      if (isRootIndexFile(filePath)) return;
+      if (isDatabaseFile(filePath)) {
+        debouncedHandler(filePath, handleDatabaseFileDelete);
+      } else {
+        debouncedHandler(filePath, handleFileDelete);
+      }
     })
     .on("error", (error: unknown) => {
       console.error("FileWatcher error:", error);
@@ -96,6 +116,27 @@ function debouncedHandler(
   }, FS_DEBOUNCE_MS);
 
   debounceTimers.set(filePath, timer);
+}
+
+/**
+ * Check if a file path is within the Databases/ directory.
+ * Relative path from the tenant root should start with "Databases/".
+ */
+function isDatabaseFile(filePath: string): boolean {
+  const relative = path.relative(MIRROR_ROOT, filePath);
+  const parts = relative.split(path.sep);
+  // parts[0] = tenantId, parts[1] = "Databases", parts[2] = "file.md"
+  return parts.length >= 3 && parts[1] === DATABASES_DIR;
+}
+
+/**
+ * Check if a file is the auto-generated _index.md at the tenant root level.
+ * Path pattern: MIRROR_ROOT/tenantId/_index.md
+ */
+function isRootIndexFile(filePath: string): boolean {
+  const relative = path.relative(MIRROR_ROOT, filePath);
+  const parts = relative.split(path.sep);
+  return parts.length === 2 && parts[1] === INDEX_FILENAME;
 }
 
 /**
@@ -344,10 +385,11 @@ async function updateMetaForNewPage(
     meta = JSON.parse(raw) as SyncMetadata;
   } catch {
     meta = {
-      version: 1,
+      version: 2,
       tenantId,
       lastFullSync: new Date().toISOString(),
       pages: {},
+      databases: {},
     };
   }
 

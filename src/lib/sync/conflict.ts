@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import { MIRROR_ROOT, META_FILENAME } from "./config";
+import { migrateMetadata } from "./types";
 import type { SyncMetadata } from "./types";
 
 /**
@@ -44,6 +45,39 @@ export async function hasFileChanged(
   }
 
   const entry = meta.pages[pageId];
+  if (!entry) return false;
+
+  const filePath = path.join(MIRROR_ROOT, tenantId, entry.filePath);
+  try {
+    const content = await fs.readFile(filePath, "utf-8");
+    const currentHash = crypto
+      .createHash("md5")
+      .update(content, "utf-8")
+      .digest("hex");
+    return currentHash !== entry.contentHash;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a database file has been modified since the last sync
+ * by comparing its current hash to the stored hash in metadata.
+ */
+export async function hasDatabaseFileChanged(
+  tenantId: string,
+  databaseId: string
+): Promise<boolean> {
+  const metaPath = path.join(MIRROR_ROOT, tenantId, META_FILENAME);
+  let meta: SyncMetadata;
+  try {
+    const raw = await fs.readFile(metaPath, "utf-8");
+    meta = migrateMetadata(JSON.parse(raw) as SyncMetadata);
+  } catch {
+    return false;
+  }
+
+  const entry = meta.databases?.[databaseId];
   if (!entry) return false;
 
   const filePath = path.join(MIRROR_ROOT, tenantId, entry.filePath);

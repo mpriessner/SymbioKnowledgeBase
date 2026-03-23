@@ -1,10 +1,21 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-// Mock react-force-graph completely to avoid AFRAME dependency
-vi.mock("react-force-graph", () => ({
-  ForceGraph2D: () => null,
+// Polyfill ResizeObserver for JSDOM
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === "undefined") {
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver;
+  }
+});
+
+// Mock react-force-graph-2d to avoid Canvas/WebGL dependency
+vi.mock("react-force-graph-2d", () => ({
+  default: () => null,
 }));
 
 // Mock next/dynamic to return a simple passthrough
@@ -15,6 +26,27 @@ vi.mock("next/dynamic", () => ({
       return null;
     };
   },
+}));
+
+// Mock GraphLegend since it relies on internal graph state
+vi.mock("@/components/graph/GraphLegend", () => ({
+  GraphLegend: ({ nodeCount, edgeCount }: { nodeCount: number; edgeCount: number }) => {
+    return <div>{nodeCount} pages, {edgeCount} connections</div>;
+  },
+}));
+
+// Mock GraphTooltip
+vi.mock("@/components/graph/GraphTooltip", () => ({
+  GraphTooltip: () => null,
+}));
+
+// Mock color palette
+vi.mock("@/lib/graph/colorPalette", () => ({
+  getNodeColor: () => "#000",
+  getNodeRadius: () => 4,
+  getNodeRadiusByContent: () => 4,
+  getEdgeColor: () => "#ccc",
+  graphColors: { light: { page: "#000", database: "#000", orphan: "#000", center: "#000" }, dark: { page: "#fff", database: "#fff", orphan: "#fff", center: "#fff" } },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -76,6 +108,7 @@ describe("GraphView", () => {
               oneLiner: null,
               linkCount: 1,
               updatedAt: "",
+              contentLength: 0,
             },
             {
               id: "2",
@@ -84,6 +117,7 @@ describe("GraphView", () => {
               oneLiner: null,
               linkCount: 1,
               updatedAt: "",
+              contentLength: 0,
             },
           ],
           edges: [{ source: "1", target: "2" }],

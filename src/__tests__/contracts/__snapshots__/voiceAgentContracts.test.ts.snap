@@ -1,0 +1,38 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Contract Snapshots > BulkContextResponseSchema shape matches snapshot 1`] = `
+[
+  "experimentCount",
+  "experiments",
+  "maxTotalSize",
+  "totalSize",
+]
+`;
+
+exports[`Contract Snapshots > CaptureLearningRequestSchema shape matches snapshot 1`] = `
+[
+  "debriefSummary",
+  "experimentId",
+  "learnings",
+]
+`;
+
+exports[`Contract Snapshots > DepthSearchResponseSchema shape matches snapshot 1`] = `
+[
+  "depth",
+  "results",
+  "scope",
+  "searchTimeMs",
+  "totalCount",
+]
+`;
+
+exports[`Contract Snapshots > ExperimentContextResponseSchema shape matches snapshot 1`] = `
+[
+  "contextSize",
+  "depth",
+  "experiment",
+  "institutionalKnowledge",
+  "truncated",
+]
+`;

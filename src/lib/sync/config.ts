@@ -18,5 +18,8 @@ export const INDEX_FILENAME = "_index.md";
 /** Debounce interval for FS→DB sync (ms) */
 export const FS_DEBOUNCE_MS = 500;
 
+/** Directory name for database markdown files within tenant mirror */
+export const DATABASES_DIR = "Databases";
+
 /** Debounce interval for DB→FS sync (ms) */
 export const DB_DEBOUNCE_MS = 200;

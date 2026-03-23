@@ -1,29 +1,29 @@
 # Supabase Configuration for SymbioKnowledgeBase
-# Uses the same ports as ExpTube (54321-54327) since they share the slot
-# ET_ELN uses 54331-54336
+# Own port range: 54351-54357 (separate from other projects)
+# ET_ELN uses 54331-54336, ExpTube uses 54341-54347, SciSymbioLens uses 54321-54327
 
 project_id = "SymbioKnowledgeBase"
 
 [api]
 enabled = true
-port = 54321
+port = 54351
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 54322
-shadow_port = 54320
+port = 54352
+shadow_port = 54350
 major_version = 17
 
 [studio]
 enabled = true
-port = 54323
+port = 54353
 api_url = "http://localhost"
 
 [inbucket]
 enabled = true
-port = 54324
+port = 54354
 
 [storage]
 enabled = true
@@ -32,7 +32,7 @@ file_size_limit = "50MiB"
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://localhost:3000", "http://localhost:3001", "com.scisymbiolens.app://auth-callback"]
+additional_redirect_urls = ["https://martins-macbook-pro.tail3a744f.ts.net", "http://localhost:3000", "http://localhost:3001", "com.scisymbiolens.app://auth-callback"]
 jwt_expiry = 3600
 enable_signup = true
 
@@ -53,7 +53,7 @@ skip_nonce_check = false
 
 [analytics]
 enabled = true
-port = 54327
+port = 54357
 backend = "postgres"
 
 [edge_runtime]

@@ -8,6 +8,9 @@ import { MIRROR_ROOT, META_FILENAME } from "./config";
 import { buildPagePaths, absolutePath } from "./FolderStructure";
 import { syncLock } from "./SyncLock";
 import { hasFileChanged, createConflictBackup } from "./conflict";
+import { fullDatabaseSync } from "./DatabaseSync";
+import { debouncedWriteIndex } from "./IndexGenerator";
+import { migrateMetadata } from "./types";
 import type { SyncMetadata, SyncPageData } from "./types";
 
 /**
@@ -79,7 +82,11 @@ export async function fullSync(tenantId: string): Promise<number> {
     orderBy: { position: "asc" },
   });
 
-  if (pages.length === 0) return 0;
+  if (pages.length === 0) {
+    const dbCount = await fullDatabaseSync(tenantId);
+    debouncedWriteIndex(tenantId);
+    return dbCount;
+  }
 
   const syncPages: SyncPageData[] = pages.map((p) => ({
     id: p.id,
@@ -97,7 +104,10 @@ export async function fullSync(tenantId: string): Promise<number> {
     })),
   }));
 
-  return syncPagesToFilesystem(tenantId, syncPages);
+  const pageCount = await syncPagesToFilesystem(tenantId, syncPages);
+  const dbCount = await fullDatabaseSync(tenantId);
+  debouncedWriteIndex(tenantId);
+  return pageCount + dbCount;
 }
 
 /**
@@ -118,10 +128,11 @@ export async function syncPagesToFilesystem(
     meta = JSON.parse(existing) as SyncMetadata;
   } catch {
     meta = {
-      version: 1,
+      version: 2,
       tenantId,
       lastFullSync: new Date().toISOString(),
       pages: {},
+      databases: {},
     };
   }
 
@@ -250,10 +261,11 @@ export async function syncPageToFilesystem(
       meta = JSON.parse(existing) as SyncMetadata;
     } catch {
       meta = {
-        version: 1,
+        version: 2,
         tenantId,
         lastFullSync: new Date().toISOString(),
         pages: {},
+        databases: {},
       };
     }
 
@@ -268,6 +280,8 @@ export async function syncPageToFilesystem(
   } finally {
     setTimeout(() => syncLock.release(absPath), 1000);
   }
+
+  debouncedWriteIndex(tenantId);
 }
 
 /**
@@ -299,6 +313,8 @@ export async function deletePageFile(
   } finally {
     setTimeout(() => syncLock.release(absPath), 1000);
   }
+
+  debouncedWriteIndex(tenantId);
 }
 
 /**
@@ -310,7 +326,15 @@ export async function readSyncMetadata(
   const metaPath = path.join(MIRROR_ROOT, tenantId, META_FILENAME);
   try {
     const content = await fs.readFile(metaPath, "utf-8");
-    return JSON.parse(content) as SyncMetadata;
+    const raw = JSON.parse(content) as SyncMetadata;
+    const migrated = migrateMetadata(raw);
+
+    // Persist the migration if the version was bumped
+    if (migrated.version !== raw.version) {
+      await atomicWrite(metaPath, JSON.stringify(migrated, null, 2));
+    }
+
+    return migrated;
   } catch {
     return null;
   }

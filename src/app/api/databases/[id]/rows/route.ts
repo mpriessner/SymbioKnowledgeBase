@@ -9,6 +9,7 @@ import {
   validateProperties,
   extractTitleFromProperties,
 } from "@/lib/database/propertyValidators";
+import { syncDatabaseToFilesystem } from "@/lib/sync/DatabaseSync";
 import { z } from "zod";
 
 const dbIdSchema = z.string().uuid("Database ID must be a valid UUID");
@@ -88,6 +89,11 @@ export const POST = withTenant(
 
         return { row, page };
       });
+
+      // Fire-and-forget sync
+      syncDatabaseToFilesystem(context.tenantId, idParsed.data).catch((err) =>
+        console.error("[DatabaseSync] sync failed:", err)
+      );
 
       return successResponse(
         {

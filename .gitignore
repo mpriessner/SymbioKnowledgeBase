@@ -50,3 +50,18 @@ next-env.d.ts
 supabase/.branches/
 supabase/.temp/
 supabase/snippets/
+
+# sync state
+data/sync-state.json
+
+# mirror data (generated from DB, not source-controlled)
+data/mirror/
+
+# test results
+test-results/
+
+# story docs with secrets
+docs/stories/S41-01-configure-cloud-supabase-oauth.md
+
+# playwright auth state
+tests/e2e/.auth/

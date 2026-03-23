@@ -1,9 +1,20 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-vi.mock("react-force-graph", () => ({
-  ForceGraph2D: () => null,
+// Polyfill ResizeObserver for JSDOM
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === "undefined") {
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof globalThis.ResizeObserver;
+  }
+});
+
+vi.mock("react-force-graph-2d", () => ({
+  default: () => null,
 }));
 
 vi.mock("next/dynamic", () => ({
@@ -12,6 +23,23 @@ vi.mock("next/dynamic", () => ({
       return null;
     };
   },
+}));
+
+// Mock GraphLegend, GraphTooltip, and color palette to avoid internal dependencies
+vi.mock("@/components/graph/GraphLegend", () => ({
+  GraphLegend: () => null,
+}));
+
+vi.mock("@/components/graph/GraphTooltip", () => ({
+  GraphTooltip: () => null,
+}));
+
+vi.mock("@/lib/graph/colorPalette", () => ({
+  getNodeColor: () => "#000",
+  getNodeRadius: () => 4,
+  getNodeRadiusByContent: () => 4,
+  getEdgeColor: () => "#ccc",
+  graphColors: { light: { page: "#000", database: "#000", orphan: "#000", center: "#000" }, dark: { page: "#fff", database: "#fff", orphan: "#fff", center: "#fff" } },
 }));
 
 vi.mock("next/navigation", () => ({

@@ -1,13 +1,29 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Advanced Block Types", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/pages/test-page-id");
-    await page.waitForSelector('[data-testid="block-editor"]');
+/**
+ * Helper: create a new page via the API and navigate to its editor.
+ * This ensures each test operates on a clean, empty page.
+ */
+async function navigateToNewPage(page: import("@playwright/test").Page) {
+  // Create a page via the API using the authenticated context
+  const response = await page.request.post("/api/pages", {
+    data: { title: `Test ${Date.now()}` },
   });
+  expect(response.ok()).toBeTruthy();
+  const body = await response.json();
+  const pageId = body.data.id;
 
+  // Navigate to the new page
+  await page.goto(`/pages/${pageId}`);
+  await page.waitForLoadState("networkidle");
+  await page.waitForSelector('[data-testid="block-editor"]', { timeout: 15000 });
+}
+
+test.describe("Advanced Block Types", () => {
   test.describe("To-Do List", () => {
     test("should insert a task list via slash menu", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/todo");
@@ -19,6 +35,8 @@ test.describe("Advanced Block Types", () => {
     });
 
     test("should toggle checkbox on click", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/todo");
@@ -33,6 +51,8 @@ test.describe("Advanced Block Types", () => {
 
   test.describe("Toggle Block", () => {
     test("should insert a toggle block via slash menu", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/toggle");
@@ -43,6 +63,8 @@ test.describe("Advanced Block Types", () => {
     });
 
     test("should collapse and expand on trigger click", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/toggle");
@@ -66,6 +88,8 @@ test.describe("Advanced Block Types", () => {
 
   test.describe("Callout Block", () => {
     test("should insert a callout via slash menu", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/callout");
@@ -76,6 +100,8 @@ test.describe("Advanced Block Types", () => {
     });
 
     test("should change callout variant", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/callout");
@@ -89,6 +115,8 @@ test.describe("Advanced Block Types", () => {
     });
 
     test("should change callout emoji", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/callout");
@@ -101,7 +129,7 @@ test.describe("Advanced Block Types", () => {
       await expect(picker).toBeVisible();
 
       const emojiOption = picker.locator("button").nth(1);
-      await emojiOption.click();
+      await emojiOption.click({ force: true });
 
       await expect(picker).not.toBeVisible();
     });
@@ -109,6 +137,8 @@ test.describe("Advanced Block Types", () => {
 
   test.describe("Code Block", () => {
     test("should insert a code block via slash menu", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/code");
@@ -119,6 +149,8 @@ test.describe("Advanced Block Types", () => {
     });
 
     test("should change language via selector", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/code");
@@ -130,6 +162,8 @@ test.describe("Advanced Block Types", () => {
     });
 
     test("should copy code to clipboard", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/code");
@@ -143,6 +177,8 @@ test.describe("Advanced Block Types", () => {
     });
 
     test("should insert tab as spaces inside code block", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
       await page.keyboard.type("/code");
@@ -157,13 +193,17 @@ test.describe("Advanced Block Types", () => {
 
   test.describe("Image Block", () => {
     test("should insert an image via slash menu", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
-      await page.keyboard.type("/image");
 
+      // Register dialog handler BEFORE triggering it
       page.on("dialog", async (dialog) => {
         await dialog.accept("https://via.placeholder.com/300");
       });
+
+      await page.keyboard.type("/image");
       await page.keyboard.press("Enter");
 
       const image = editor.locator("img");
@@ -173,13 +213,17 @@ test.describe("Advanced Block Types", () => {
 
   test.describe("Bookmark Block", () => {
     test("should insert a bookmark via slash menu", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
-      await page.keyboard.type("/bookmark");
 
+      // Register dialog handler BEFORE triggering it
       page.on("dialog", async (dialog) => {
         await dialog.accept("https://example.com");
       });
+
+      await page.keyboard.type("/bookmark");
       await page.keyboard.press("Enter");
 
       const bookmark = page.locator('[data-testid="bookmark-block"]');
@@ -187,13 +231,17 @@ test.describe("Advanced Block Types", () => {
     });
 
     test("should display bookmark with fetched metadata", async ({ page }) => {
+      await navigateToNewPage(page);
+
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
-      await page.keyboard.type("/bookmark");
 
+      // Register dialog handler BEFORE triggering it
       page.on("dialog", async (dialog) => {
         await dialog.accept("https://example.com");
       });
+
+      await page.keyboard.type("/bookmark");
       await page.keyboard.press("Enter");
 
       const bookmarkLink = page.locator('[data-testid="bookmark-link"]');

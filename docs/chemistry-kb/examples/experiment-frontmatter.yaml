@@ -1,0 +1,33 @@
+# Experiment Page Frontmatter - Complete Example
+title: "EXP-2026-0042: Suzuki Coupling of Aryl Bromide"
+icon: "\U0001F9EA"
+tags:
+  - "eln:EXP-2026-0042"
+  - "reaction:suzuki-coupling"
+  - "researcher:mueller"
+  - "substrate-class:heteroaryl"
+  - "scale:medium"
+  - "challenge:protodeboronation"
+  - "quality:4"
+eln_id: "EXP-2026-0042"
+researcher: "Dr. Anna Mueller"
+date: "2026-03-15"
+status: "completed"
+reaction_type: "Suzuki Coupling"
+substrate_class: "Heteroaryl Halides"
+scale_category: "medium"
+quality_score: 4
+
+---
+# Experiment Page Frontmatter - Minimal Example (no optional fields)
+title: "EXP-2026-0099: Planned Grignard Reaction"
+icon: "\U0001F9EA"
+tags:
+  - "eln:EXP-2026-0099"
+  - "quality:1"
+eln_id: "EXP-2026-0099"
+researcher: "Dr. Hans Weber"
+date: "2026-04-01"
+status: "planned"
+scale_category: "small"
+quality_score: 1

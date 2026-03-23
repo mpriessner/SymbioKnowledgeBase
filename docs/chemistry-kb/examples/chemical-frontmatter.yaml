@@ -1,0 +1,21 @@
+# Chemical Page Frontmatter - Complete Example
+title: "Pd(PPh3)4"
+icon: "\u2697\uFE0F"
+tags:
+  - "chemical"
+  - "cas:14221-01-3"
+cas_number: "14221-01-3"
+molecular_weight: 1155.56
+common_synonyms:
+  - "Tetrakis(triphenylphosphine)palladium(0)"
+  - "Tetrakis"
+  - "Pd(PPh3)4"
+
+---
+# Chemical Page Frontmatter - Minimal Example
+title: "Tetrahydrofuran"
+icon: "\u2697\uFE0F"
+tags:
+  - "chemical"
+  - "cas:109-99-9"
+cas_number: "109-99-9"

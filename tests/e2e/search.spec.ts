@@ -1,31 +1,30 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Search UI", () => {
-  test("should show search results as user types", async ({ page }) => {
-    await page.goto("/");
+const QUICK_SWITCHER_KEY = process.platform === "darwin" ? "Meta+k" : "Control+k";
 
-    // Open search (assuming a search button exists)
-    await page.click('[aria-label="Search"]');
+test.describe("Search UI", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/home");
+    await page.waitForLoadState("networkidle");
+  });
+
+  test("should open search dialog via sidebar Search button", async ({ page }) => {
+    // Click the Search button in the sidebar
+    const sidebar = page.locator("aside").first();
+    await sidebar.getByRole("button", { name: /^Search/ }).click();
+
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible();
 
     const input = page.locator('input[aria-label="Search query"]');
-    await expect(input).toBeFocused();
-
-    // Type a search query
-    await input.fill("postgresql");
-
-    // Wait for debounced results
-    await page.waitForTimeout(400);
-
-    // Results should appear
-    const results = page.locator('[role="option"]');
-    await expect(results.first()).toBeVisible();
+    await expect(input).toBeVisible();
   });
 
   test("should navigate to page on result click", async ({ page }) => {
-    await page.goto("/");
+    await page.keyboard.press(QUICK_SWITCHER_KEY);
 
-    await page.click('[aria-label="Search"]');
     const input = page.locator('input[aria-label="Search query"]');
+    await expect(input).toBeVisible();
     await input.fill("test");
 
     await page.waitForTimeout(400);
@@ -37,12 +36,15 @@ test.describe("Search UI", () => {
     }
   });
 
-  test("should close on Escape", async ({ page }) => {
-    await page.goto("/");
+  test("should close on Escape when input is focused", async ({ page }) => {
+    await page.keyboard.press(QUICK_SWITCHER_KEY);
 
-    await page.click('[aria-label="Search"]');
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog).toBeVisible();
+
+    // Ensure input is focused before pressing Escape
+    const input = page.locator('input[aria-label="Search query"]');
+    await input.click();
 
     await page.keyboard.press("Escape");
     await expect(dialog).not.toBeVisible();

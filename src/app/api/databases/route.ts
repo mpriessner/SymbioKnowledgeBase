@@ -4,6 +4,7 @@ import { withTenant } from "@/lib/auth/withTenant";
 import { successResponse, listResponse, errorResponse } from "@/lib/apiResponse";
 import { CreateDatabaseSchema } from "@/types/database";
 import type { TenantContext } from "@/types/auth";
+import { syncDatabaseToFilesystem } from "@/lib/sync/DatabaseSync";
 
 /**
  * POST /api/databases — Create a new database
@@ -56,6 +57,11 @@ export const POST = withTenant(
           viewConfig: viewConfig ? JSON.parse(JSON.stringify(viewConfig)) : undefined,
         },
       });
+
+      // Fire-and-forget sync
+      syncDatabaseToFilesystem(context.tenantId, database.id).catch((err) =>
+        console.error("[DatabaseSync] sync failed:", err)
+      );
 
       return successResponse(
         {

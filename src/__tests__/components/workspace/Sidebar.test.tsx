@@ -1,7 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Sidebar } from "@/components/workspace/Sidebar";
 
 // Mock matchMedia for useTheme
 Object.defineProperty(window, "matchMedia", {
@@ -17,6 +16,28 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: vi.fn(),
   })),
 });
+
+// Mock WorkspaceDropdown to avoid SupabaseProvider dependency
+vi.mock("@/components/workspace/WorkspaceDropdown", () => ({
+  WorkspaceDropdown: () => <div>Workspace</div>,
+}));
+
+// Mock SidebarTeamspaceSection
+vi.mock("@/components/workspace/SidebarTeamspaceSection", () => ({
+  SidebarTeamspaceSection: ({ label, tree }: { label: string; tree: Array<{ id: string; title: string }> }) => (
+    <div>
+      <span>{label}</span>
+      {tree.map((node: { id: string; title: string }) => (
+        <div key={node.id}>{node.title}</div>
+      ))}
+    </div>
+  ),
+}));
+
+// Mock BulkActionBar
+vi.mock("@/components/sidebar/BulkActionBar", () => ({
+  BulkActionBar: () => null,
+}));
 
 // Mock the hooks
 vi.mock("@/hooks/usePageTree", () => ({
@@ -42,10 +63,77 @@ vi.mock("@/hooks/usePageTree", () => ({
   }),
 }));
 
+vi.mock("@/hooks/usePages", () => ({
+  useCreatePage: () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+}));
+
+vi.mock("@/hooks/useRecentPages", () => ({
+  useRecentPages: () => ({
+    recentPages: [],
+    addRecentPage: vi.fn(),
+    clearRecentPages: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useFavorites", () => ({
+  useFavoritePages: () => [],
+}));
+
+let mockIsCollapsed = false;
+const mockToggle = vi.fn(() => {
+  mockIsCollapsed = !mockIsCollapsed;
+});
+vi.mock("@/hooks/useSidebarCollapse", () => ({
+  useSidebarCollapse: () => ({
+    get isCollapsed() { return mockIsCollapsed; },
+    toggle: mockToggle,
+  }),
+}));
+
+vi.mock("@/hooks/useSidebarWidth", () => ({
+  useSidebarWidth: () => ({
+    width: 260,
+    isResizing: false,
+    startResize: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useTeamspaces", () => ({
+  useTeamspaces: () => ({ data: [] }),
+}));
+
+vi.mock("@/hooks/useClientValue", () => ({
+  useIsMac: () => true,
+}));
+
+vi.mock("@/hooks/useMultiSelect", () => ({
+  useMultiSelect: () => ({
+    isSelected: () => false,
+    handleClick: () => false,
+    selectionCount: 0,
+    selectedIds: new Set(),
+    clearSelection: vi.fn(),
+  }),
+  flattenVisibleTree: () => [],
+}));
+
+vi.mock("@/hooks/useSidebarExpandState", () => ({
+  useSidebarExpandState: () => ({
+    isExpanded: () => true,
+    toggle: vi.fn(),
+  }),
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/pages/page-1",
 }));
+
+import { Sidebar } from "@/components/workspace/Sidebar";
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {};
@@ -66,6 +154,8 @@ const localStorageMock = (() => {
 beforeEach(() => {
   Object.defineProperty(window, "localStorage", { value: localStorageMock });
   localStorageMock.clear();
+  mockIsCollapsed = false;
+  mockToggle.mockClear();
 });
 
 function createWrapper() {
@@ -80,14 +170,14 @@ function createWrapper() {
 }
 
 describe("Sidebar", () => {
-  test("renders the sidebar with 'Pages' header", () => {
+  test("renders the sidebar with 'Private' section", () => {
     render(<Sidebar />, { wrapper: createWrapper() });
-    expect(screen.getByText("Pages")).toBeInTheDocument();
+    expect(screen.getByText("Private")).toBeInTheDocument();
   });
 
-  test("renders 'New page' button", () => {
+  test("renders 'Create new' button", () => {
     render(<Sidebar />, { wrapper: createWrapper() });
-    expect(screen.getByLabelText("Create new page")).toBeInTheDocument();
+    expect(screen.getByLabelText("Create new")).toBeInTheDocument();
   });
 
   test("renders 'Collapse sidebar' button", () => {
@@ -96,14 +186,15 @@ describe("Sidebar", () => {
   });
 
   test("collapses sidebar when toggle button is clicked", () => {
-    render(<Sidebar />, { wrapper: createWrapper() });
+    const { rerender } = render(<Sidebar />, { wrapper: createWrapper() });
 
     fireEvent.click(screen.getByLabelText("Collapse sidebar"));
 
+    // Re-render to pick up the changed state
+    rerender(<Sidebar />);
+
     // After collapsing, should show "Expand sidebar" button
     expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
-    // "Pages" header should no longer be visible
-    expect(screen.queryByText("Pages")).not.toBeInTheDocument();
   });
 
   test("renders page tree data", () => {

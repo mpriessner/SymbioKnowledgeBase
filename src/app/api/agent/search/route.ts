@@ -2,9 +2,24 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { withAgentAuth } from "@/lib/agent/auth";
 import type { AgentContext } from "@/lib/agent/auth";
-import { listResponse, errorResponse } from "@/lib/apiResponse";
+import { listResponse, successResponse, errorResponse } from "@/lib/apiResponse";
 import { generatePagePath } from "@/lib/agent/pageTree";
 import { z } from "zod";
+import {
+  depthSearch,
+  type SearchDepth,
+  type SearchScope,
+} from "@/lib/search/depthSearch";
+
+const VALID_DEPTHS = new Set(["default", "medium", "deep"]);
+const VALID_SCOPES = new Set(["private", "team", "all"]);
+const VALID_CATEGORIES = new Set([
+  "experiments",
+  "chemicals",
+  "reactionTypes",
+  "researchers",
+  "substrateClasses",
+]);
 
 const searchQuerySchema = z.object({
   q: z.string().min(1).max(500),
@@ -52,6 +67,70 @@ export const GET = withAgentAuth(
   async (req: NextRequest, ctx: AgentContext) => {
     try {
       const { searchParams } = new URL(req.url);
+
+      // If depth param is present, use the new depth-aware search
+      const depth = searchParams.get("depth");
+      if (depth) {
+        const q = searchParams.get("q");
+        const scope = (searchParams.get("scope") ?? "all") as SearchScope;
+        const category = searchParams.get("category") ?? undefined;
+        const limitParam = searchParams.get("limit");
+        const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+
+        if (!q || q.trim().length === 0) {
+          return errorResponse(
+            "VALIDATION_ERROR",
+            "q query parameter is required",
+            undefined,
+            400
+          );
+        }
+        if (!VALID_DEPTHS.has(depth)) {
+          return errorResponse(
+            "VALIDATION_ERROR",
+            `Invalid depth "${depth}". Must be one of: default, medium, deep`,
+            undefined,
+            400
+          );
+        }
+        if (!VALID_SCOPES.has(scope)) {
+          return errorResponse(
+            "VALIDATION_ERROR",
+            `Invalid scope "${scope}". Must be one of: private, team, all`,
+            undefined,
+            400
+          );
+        }
+        if (category && !VALID_CATEGORIES.has(category)) {
+          return errorResponse(
+            "VALIDATION_ERROR",
+            `Invalid category "${category}". Must be one of: experiments, chemicals, reactionTypes, researchers, substrateClasses`,
+            undefined,
+            400
+          );
+        }
+        if (limit !== undefined && (isNaN(limit) || limit < 1 || limit > 100)) {
+          return errorResponse(
+            "VALIDATION_ERROR",
+            "limit must be between 1 and 100",
+            undefined,
+            400
+          );
+        }
+
+        const result = await depthSearch({
+          tenantId: ctx.tenantId,
+          query: q.trim(),
+          depth: depth as SearchDepth,
+          scope,
+          category,
+          limit,
+        });
+
+        return successResponse(result);
+      }
+
+      // Legacy search (no depth param) — existing behavior
       const queryParams = Object.fromEntries(searchParams.entries());
 
       const parsed = searchQuerySchema.safeParse(queryParams);

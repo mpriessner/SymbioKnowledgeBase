@@ -9,6 +9,7 @@ import {
   validateProperties,
   extractTitleFromProperties,
 } from "@/lib/database/propertyValidators";
+import { syncDatabaseToFilesystem } from "@/lib/sync/DatabaseSync";
 import { z } from "zod";
 
 const dbIdSchema = z.string().uuid("Database ID must be a valid UUID");
@@ -144,6 +145,11 @@ export const PUT = withTenant(
         return updatedRow;
       });
 
+      // Fire-and-forget sync
+      syncDatabaseToFilesystem(context.tenantId, idParsed.data).catch((err) =>
+        console.error("[DatabaseSync] sync failed:", err)
+      );
+
       return successResponse({
         id: result.id,
         databaseId: result.databaseId,
@@ -186,6 +192,11 @@ export const DELETE = withTenant(
       }
 
       await prisma.dbRow.delete({ where: { id: rowIdParsed.data } });
+
+      // Fire-and-forget sync
+      syncDatabaseToFilesystem(context.tenantId, idParsed.data).catch((err) =>
+        console.error("[DatabaseSync] sync failed:", err)
+      );
 
       return new Response(null, { status: 204 });
     } catch (error) {

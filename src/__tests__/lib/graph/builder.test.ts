@@ -10,6 +10,9 @@ vi.mock("@/lib/db", () => ({
     pageLink: {
       findMany: vi.fn(),
     },
+    block: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
   },
 }));
 

@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+
+// Mock lucide-react icons
+vi.mock("lucide-react", () => ({
+  Search: () => null,
+}));
+
 import { GraphControls } from "@/components/graph/GraphControls";
 
 describe("GraphControls", () => {
@@ -8,6 +14,8 @@ describe("GraphControls", () => {
       afterDate: null,
       beforeDate: null,
       minLinkCount: 0,
+      showNodes: true,
+      showEdges: true,
       showLabels: true,
       showEdgeLabels: false,
     },
@@ -45,7 +53,11 @@ describe("GraphControls", () => {
 
   it("should render stats", () => {
     render(<GraphControls {...defaultProps} />);
-    expect(screen.getByText("42 pages, 67 connections")).toBeInTheDocument();
+    expect(screen.getByText("42")).toBeInTheDocument();
+    expect(screen.getByText("Pages")).toBeInTheDocument();
+    expect(screen.getByText("67")).toBeInTheDocument();
+    // "Links" appears both in the "Size by" toggle and stats section
+    expect(screen.getAllByText("Links")).toHaveLength(2);
   });
 
   it('should show "(filtered)" indicator when filters active', () => {

@@ -72,9 +72,23 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Refresh session if expired — required for Server Components
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Use a timeout to prevent hanging when Supabase is unreachable
+  // (e.g. SUPABASE_INTERNAL_URL points to Docker-internal address while running on host)
+  try {
+    const getUserWithTimeout = Promise.race([
+      supabase.auth.getUser(),
+      new Promise<{ data: { user: null } }>((resolve) =>
+        setTimeout(() => resolve({ data: { user: null } }), 5000)
+      ),
+    ]);
 
-  return { user, response: supabaseResponse };
+    const {
+      data: { user },
+    } = await getUserWithTimeout;
+
+    return { user, response: supabaseResponse };
+  } catch {
+    // Auth check failed — treat as unauthenticated
+    return { user: null, response: supabaseResponse };
+  }
 }

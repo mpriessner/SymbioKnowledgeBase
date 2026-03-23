@@ -1,0 +1,124 @@
+# Wikilink Resolution Test Cases
+# These test cases validate the naming conventions and resolution rules
+# defined in docs/chemistry-kb/NAMING-CONVENTIONS.md
+
+test_cases:
+  - id: 1
+    description: "Exact match - experiment page by full title"
+    wikilink: "[[EXP-2026-0042: Suzuki Coupling of Aryl Bromide]]"
+    expected_title: "EXP-2026-0042: Suzuki Coupling of Aryl Bromide"
+    match_type: exact
+    page_type: EXPERIMENT
+
+  - id: 2
+    description: "Synonym match - chemical abbreviation resolves to full name"
+    wikilink: "[[THF]]"
+    expected_title: "Tetrahydrofuran"
+    match_type: synonym
+    page_type: CHEMICAL
+    setup:
+      page_title: "Tetrahydrofuran"
+      frontmatter:
+        common_synonyms: ["THF", "Oxolane", "1,4-Epoxybutane"]
+
+  - id: 3
+    description: "Case-insensitive match - reaction type in lowercase"
+    wikilink: "[[suzuki coupling]]"
+    expected_title: "Suzuki Coupling"
+    match_type: exact
+    page_type: REACTION_TYPE
+
+  - id: 4
+    description: "Disambiguation - chemical with CAS number"
+    wikilink: "[[Ethanol (64-17-5)]]"
+    expected_title: "Ethanol (64-17-5)"
+    match_type: exact
+    page_type: CHEMICAL
+
+  - id: 5
+    description: "Researcher with doctoral title"
+    wikilink: "[[Dr. Anna Mueller]]"
+    expected_title: "Dr. Anna Mueller"
+    match_type: exact
+    page_type: RESEARCHER
+
+  - id: 6
+    description: "Researcher without doctoral title"
+    wikilink: "[[Sarah Chen]]"
+    expected_title: "Sarah Chen"
+    match_type: exact
+    page_type: RESEARCHER
+
+  - id: 7
+    description: "Substrate class - plural form"
+    wikilink: "[[Heteroaryl Halides]]"
+    expected_title: "Heteroaryl Halides"
+    match_type: exact
+    page_type: SUBSTRATE_CLASS
+
+  - id: 8
+    description: "Chemical with special characters - parentheses"
+    wikilink: "[[Pd(PPh3)4]]"
+    expected_title: "Pd(PPh3)4"
+    match_type: exact
+    page_type: CHEMICAL
+
+  - id: 9
+    description: "No match - returns null for unknown page"
+    wikilink: "[[Unknown Chemical XYZ]]"
+    expected_title: null
+    match_type: none
+
+  - id: 10
+    description: "Multiple synonyms - DMF resolves to full chemical name"
+    wikilink: "[[DMF]]"
+    expected_title: "N,N-Dimethylformamide"
+    match_type: synonym
+    page_type: CHEMICAL
+    setup:
+      page_title: "N,N-Dimethylformamide"
+      frontmatter:
+        common_synonyms: ["DMF", "Dimethylformamide"]
+
+  - id: 11
+    description: "Case-insensitive synonym match"
+    wikilink: "[[thf]]"
+    expected_title: "Tetrahydrofuran"
+    match_type: synonym
+    page_type: CHEMICAL
+    setup:
+      page_title: "Tetrahydrofuran"
+      frontmatter:
+        common_synonyms: ["THF", "Oxolane"]
+
+  - id: 12
+    description: "Chemical with hyphen in name"
+    wikilink: "[[4-Bromopyridine]]"
+    expected_title: "4-Bromopyridine"
+    match_type: exact
+    page_type: CHEMICAL
+
+  - id: 13
+    description: "Multi-person reaction name with hyphen"
+    wikilink: "[[Buchwald-Hartwig Amination]]"
+    expected_title: "Buchwald-Hartwig Amination"
+    match_type: exact
+    page_type: REACTION_TYPE
+
+  - id: 14
+    description: "Chemical synonym - EtOH resolves to Ethanol"
+    wikilink: "[[EtOH]]"
+    expected_title: "Ethanol"
+    match_type: synonym
+    page_type: CHEMICAL
+    setup:
+      page_title: "Ethanol"
+      frontmatter:
+        common_synonyms: ["EtOH", "Ethyl alcohol"]
+
+  - id: 15
+    description: "Case-insensitive exact match - chemical name"
+    wikilink: "[[tetrahydrofuran]]"
+    expected_title: "Tetrahydrofuran"
+    match_type: exact
+    page_type: CHEMICAL

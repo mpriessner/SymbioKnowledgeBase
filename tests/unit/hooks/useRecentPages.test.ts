@@ -1,18 +1,26 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useRecentPages } from "@/hooks/useRecentPages";
 
 describe("useRecentPages", () => {
   beforeEach(() => {
     localStorage.clear();
+    // Reset module cache so the shared state doesn't leak between tests
+    vi.resetModules();
   });
 
-  it("should start with empty list", () => {
+  async function getHook() {
+    const mod = await import("@/hooks/useRecentPages");
+    return mod.useRecentPages;
+  }
+
+  it("should start with empty list", async () => {
+    const useRecentPages = await getHook();
     const { result } = renderHook(() => useRecentPages());
     expect(result.current.recentPages).toEqual([]);
   });
 
-  it("should add a page to recent list", () => {
+  it("should add a page to recent list", async () => {
+    const useRecentPages = await getHook();
     const { result } = renderHook(() => useRecentPages());
 
     act(() => {
@@ -27,7 +35,8 @@ describe("useRecentPages", () => {
     expect(result.current.recentPages[0].id).toBe("page-1");
   });
 
-  it("should maintain max 5 recent pages", () => {
+  it("should maintain max 5 recent pages", async () => {
+    const useRecentPages = await getHook();
     const { result } = renderHook(() => useRecentPages());
 
     act(() => {
@@ -43,7 +52,8 @@ describe("useRecentPages", () => {
     expect(result.current.recentPages).toHaveLength(5);
   });
 
-  it("should deduplicate existing pages (move to front)", () => {
+  it("should deduplicate existing pages (move to front)", async () => {
+    const useRecentPages = await getHook();
     const { result } = renderHook(() => useRecentPages());
 
     act(() => {
@@ -56,7 +66,8 @@ describe("useRecentPages", () => {
     expect(result.current.recentPages[0].id).toBe("a");
   });
 
-  it("should persist to localStorage", () => {
+  it("should persist to localStorage", async () => {
+    const useRecentPages = await getHook();
     const { result } = renderHook(() => useRecentPages());
 
     act(() => {
@@ -74,7 +85,8 @@ describe("useRecentPages", () => {
     expect(stored[0].id).toBe("page-1");
   });
 
-  it("should clear recent pages", () => {
+  it("should clear recent pages", async () => {
+    const useRecentPages = await getHook();
     const { result } = renderHook(() => useRecentPages());
 
     act(() => {
