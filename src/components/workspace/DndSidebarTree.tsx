@@ -29,8 +29,14 @@ interface DndSidebarTreeProps {
   multiSelect?: MultiSelectProps;
 }
 
-interface DropPosition {
+export interface DropPosition {
   type: "before" | "after" | "child";
+  /** The depth level where the item will land (for indicator line positioning) */
+  targetDepth: number;
+  /** True when cursor is dragged right to nest as child */
+  isNesting: boolean;
+  /** True when cursor is dragged left to promote to parent level */
+  isPromoting: boolean;
 }
 
 /**
@@ -173,10 +179,6 @@ export function DndSidebarTree({ tree, multiSelect }: DndSidebarTreeProps) {
         return;
       }
 
-      // Determine drop position based on pointer position relative to the over element.
-      // Uses BOTH vertical (Y) and horizontal (X) position:
-      //   - Dragging to the RIGHT of the target's content area = nest as child
-      //   - Vertical top/bottom edges = before/after (sibling reorder)
       const overRect = over.rect;
       const pointerX = (event.activatorEvent as PointerEvent)?.clientX ?? 0;
       const pointerY = (event.activatorEvent as PointerEvent)?.clientY ?? 0;
@@ -195,39 +197,74 @@ export function DndSidebarTree({ tree, multiSelect }: DndSidebarTreeProps) {
 
         // Calculate the target's content start position.
         // Each depth level adds 16px indent, plus 12px base padding.
-        // The nestThreshold is relative to the target's CONTENT position,
-        // not the sidebar edge. This ensures nesting works at any depth.
-        const targetContentLeft = overRect.left + 12 + overDepth * 16;
+        const sidebarLeft = overRect.left;
+        const targetContentLeft = sidebarLeft + 12 + overDepth * 16;
 
         // Check if target already has children
         const targetNode = findNodeWithParent(tree, overIdStr);
         const isParentNode = targetNode?.node && targetNode.node.children.length > 0;
 
-        // "wantsNest" is true when the cursor is >30px to the right of the
-        // target's content area. This works consistently at all depths because
-        // we account for the target's indentation.
+        // Dead zone: if mostly vertical movement, ignore horizontal position
+        // to prevent accidental nesting during fast vertical drags
+        const verticalDelta = Math.abs(deltaY);
+        const horizontalDelta = Math.abs(deltaX);
+        const isVerticalDrag = verticalDelta > horizontalDelta * 1.5;
+
+        // Nest detection: cursor >30px right of target's content edge
         const nestThreshold = 30;
-        const wantsNest = currentX > targetContentLeft + nestThreshold;
+        const wantsNest = !isVerticalDrag && currentX > targetContentLeft + nestThreshold;
+
+        // Promote detection: cursor left of target's content start (drag left to un-nest)
+        const promoteThreshold = 16; // One indent level
+        const wantsPromote = !isVerticalDrag && overDepth > 0 && currentX < targetContentLeft - promoteThreshold;
+
+        // Calculate how many levels to promote based on horizontal distance
+        let promoteDepth = overDepth;
+        if (wantsPromote) {
+          const pixelsLeft = targetContentLeft - currentX;
+          const levelsBack = Math.min(
+            Math.floor(pixelsLeft / 16),
+            overDepth // Can't go above root
+          );
+          promoteDepth = Math.max(0, overDepth - levelsBack);
+        }
+
+        // Determine drop type and target depth
+        let dropType: "before" | "after" | "child";
+        let targetDepth: number;
 
         if (isParentNode) {
           // For parent nodes: wider middle zone + horizontal nesting
           if (relativeY < height * 0.2 && !wantsNest) {
-            setDropPosition({ type: "before" });
+            dropType = "before";
+            targetDepth = wantsPromote ? promoteDepth : overDepth;
           } else if (relativeY > height * 0.8 && !wantsNest) {
-            setDropPosition({ type: "after" });
+            dropType = "after";
+            targetDepth = wantsPromote ? promoteDepth : overDepth;
           } else {
-            setDropPosition({ type: "child" });
+            dropType = "child";
+            targetDepth = overDepth + 1;
           }
         } else {
           // For leaf nodes: horizontal offset is the primary nesting signal
           if (wantsNest) {
-            setDropPosition({ type: "child" });
+            dropType = "child";
+            targetDepth = overDepth + 1;
           } else if (relativeY < height * 0.5) {
-            setDropPosition({ type: "before" });
+            dropType = "before";
+            targetDepth = wantsPromote ? promoteDepth : overDepth;
           } else {
-            setDropPosition({ type: "after" });
+            dropType = "after";
+            targetDepth = wantsPromote ? promoteDepth : overDepth;
           }
         }
+
+        setDropPosition({
+          type: dropType,
+          targetDepth,
+          isNesting: wantsNest || dropType === "child",
+          isPromoting: wantsPromote,
+        });
       }
     },
     [tree]
@@ -260,6 +297,30 @@ export function DndSidebarTree({ tree, multiSelect }: DndSidebarTreeProps) {
         newPosition = targetInfo.node.children.length; // Append at end
         // Auto-expand the target so the moved node is visible
         expandState.expand(targetId);
+      } else if (dropPosition.isPromoting && dropPosition.targetDepth < ((active.data?.current as { depth?: number })?.depth ?? 0)) {
+        // Promote: move to an ancestor level based on how far left user dragged
+        // Walk up the tree from the target to find the ancestor at the target depth
+        let ancestor: { node: PageTreeNode; parent: PageTreeNode | null } | null = targetInfo;
+        let currentDepth = (active.data?.current as { depth?: number })?.depth ?? 0;
+
+        // Walk up to find the right parent for the target depth
+        while (ancestor && currentDepth > dropPosition.targetDepth) {
+          if (ancestor.parent) {
+            ancestor = findNodeWithParent(tree, ancestor.parent.id);
+          } else {
+            ancestor = null;
+          }
+          currentDepth--;
+        }
+
+        if (ancestor) {
+          newParentId = ancestor.parent?.id ?? null;
+          newPosition = ancestor.node.position + (dropPosition.type === "after" ? 1 : 0);
+        } else {
+          // Promoted to root level
+          newParentId = null;
+          newPosition = targetInfo.node.position + (dropPosition.type === "after" ? 1 : 0);
+        }
       } else if (dropPosition.type === "before") {
         // Drop before target (same parent, target's position)
         newParentId = targetInfo.parent?.id ?? null;
@@ -336,16 +397,21 @@ export function DndSidebarTree({ tree, multiSelect }: DndSidebarTreeProps) {
       {/* Drag overlay — ghost element following cursor */}
       <DragOverlay dropAnimation={null}>
         {activeNode && (
-          <div className="flex items-center h-8 px-3 bg-white border border-blue-200 rounded-md shadow-lg opacity-90">
-            {dropPosition?.type === "child" && (
+          <div className="flex items-center h-8 px-3 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-md shadow-lg opacity-90">
+            {dropPosition?.isNesting && (
               <svg className="w-3 h-3 text-blue-500 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            )}
+            {dropPosition?.isPromoting && (
+              <svg className="w-3 h-3 text-orange-500 mr-1 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
               </svg>
             )}
             <span className="text-sm mr-2">
               {activeNode.icon || "📄"}
             </span>
-            <span className="text-sm text-gray-700 truncate max-w-[180px]">
+            <span className="text-sm text-gray-700 dark:text-gray-200 truncate max-w-[180px]">
               {activeNode.title}
             </span>
           </div>

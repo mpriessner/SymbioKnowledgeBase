@@ -13,10 +13,7 @@ import {
 } from "@/components/sidebar/PageContextMenu";
 import type { PageTreeNode } from "@/types/page";
 import type { MultiSelectProps } from "@/components/workspace/Sidebar";
-
-interface DropPosition {
-  type: "before" | "after" | "child";
-}
+import type { DropPosition } from "@/components/workspace/DndSidebarTree";
 
 interface SortableSidebarTreeNodeProps {
   node: PageTreeNode;
@@ -195,18 +192,51 @@ export function SortableSidebarTreeNode({
   // Row background: selected > active > drop-target > default
   const rowBg = (() => {
     if (isNodeSelected) return "bg-blue-50 dark:bg-blue-900/20 text-blue-900 dark:text-blue-100";
-    if (isActive) return "bg-blue-100 text-blue-900";
-    return "hover:bg-gray-100 text-gray-700";
+    if (isActive) return "bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100";
+    return "hover:bg-gray-100 dark:hover:bg-white/5 text-gray-700 dark:text-[var(--sidebar-text)]";
   })();
 
+  // Calculate the indicator line indentation based on targetDepth
+  const indicatorLeft = isDropTarget && dropPosition
+    ? 12 + (dropPosition.targetDepth ?? depth) * 16
+    : paddingLeft;
+
+  // Show indent guides during any active drag
+  const isDraggingAny = activeId !== null;
+  const maxGuideDepth = 4;
+
   return (
-    <div>
+    <div className="relative">
+      {/* Indent guide lines — visible only during drag */}
+      {isDraggingAny && isDropTarget && depth > 0 && (
+        <>
+          {Array.from({ length: Math.min(depth + 2, maxGuideDepth) }, (_, i) => (
+            <div
+              key={i}
+              className={`absolute top-0 bottom-0 w-px pointer-events-none transition-colors duration-100 ${
+                dropPosition && i === dropPosition.targetDepth
+                  ? "bg-blue-400 dark:bg-blue-500"
+                  : "bg-gray-200 dark:bg-gray-700"
+              }`}
+              style={{ left: `${14 + i * 16}px` }}
+            />
+          ))}
+        </>
+      )}
+
       {/* Drop indicator line: before */}
       {isDropTarget && dropPosition?.type === "before" && (
-        <div
-          className="h-0.5 rounded-full bg-blue-500 mx-2"
-          style={{ marginLeft: `${paddingLeft}px` }}
-        />
+        <div className="relative">
+          <div
+            className="h-0.5 rounded-full bg-blue-500 mx-2"
+            style={{ marginLeft: `${indicatorLeft}px` }}
+          />
+          {/* Small circle at the start of the indicator */}
+          <div
+            className="absolute top-[-2.5px] w-[6px] h-[6px] rounded-full bg-blue-500 border border-white dark:border-gray-900"
+            style={{ left: `${indicatorLeft + 4}px` }}
+          />
+        </div>
       )}
 
       {/* Node row — setNodeRef scoped to just the row so collision detection
@@ -219,7 +249,7 @@ export function SortableSidebarTreeNode({
           transition-colors duration-100
           ${isDragging ? "opacity-40" : ""}
           ${rowBg}
-          ${isDropTarget && dropPosition?.type === "child" ? "bg-blue-100 ring-2 ring-blue-400 ring-inset" : ""}
+          ${isDropTarget && dropPosition?.type === "child" ? "bg-blue-100 dark:bg-blue-900/30 ring-2 ring-blue-400 dark:ring-blue-500 ring-inset" : ""}
         `}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
@@ -380,10 +410,17 @@ export function SortableSidebarTreeNode({
 
       {/* Drop indicator line: after */}
       {isDropTarget && dropPosition?.type === "after" && (
-        <div
-          className="h-0.5 rounded-full bg-blue-500 mx-2"
-          style={{ marginLeft: `${paddingLeft}px` }}
-        />
+        <div className="relative">
+          <div
+            className="h-0.5 rounded-full bg-blue-500 mx-2"
+            style={{ marginLeft: `${indicatorLeft}px` }}
+          />
+          {/* Small circle at the start of the indicator */}
+          <div
+            className="absolute top-[-2.5px] w-[6px] h-[6px] rounded-full bg-blue-500 border border-white dark:border-gray-900"
+            style={{ left: `${indicatorLeft + 4}px` }}
+          />
+        </div>
       )}
 
       {/* Recursive children */}
