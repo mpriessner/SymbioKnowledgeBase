@@ -226,6 +226,13 @@ async function findOrCreatePage(
   });
 
   if (existing) {
+    // Ensure existing page is assigned to teamspace if provided
+    if (options?.teamspaceId) {
+      await prisma.page.update({
+        where: { id: existing.id },
+        data: { spaceType: "TEAM", teamspaceId: options.teamspaceId },
+      });
+    }
     return { id: existing.id, created: false };
   }
 
@@ -255,7 +262,7 @@ async function findOrCreatePage(
       tenantId,
       pageId: page.id,
       type: "DOCUMENT",
-      content: tiptap as Record<string, unknown>,
+      content: tiptap as unknown as import("@/generated/prisma/client").Prisma.InputJsonValue,
       position: 0,
     },
   });
@@ -269,9 +276,54 @@ export async function setupChemistryKbHierarchy(
   options?: SetupOptions
 ): Promise<HierarchyResult> {
   console.log(`[chemistry-kb] Setting up hierarchy for tenant ${tenantId}...`);
-  const pageOptions = options?.teamspaceId
-    ? { teamspaceId: options.teamspaceId }
-    : undefined;
+
+  // Auto-create or find Chemistry KB teamspace if no explicit teamspaceId provided
+  let teamspaceId = options?.teamspaceId;
+  if (!teamspaceId) {
+    const existing = await prisma.teamspace.findFirst({
+      where: { tenantId, name: "Chemistry KB" },
+      select: { id: true },
+    });
+    if (existing) {
+      teamspaceId = existing.id;
+      console.log(`[chemistry-kb] Found existing teamspace: ${teamspaceId}`);
+    } else {
+      const created = await prisma.teamspace.create({
+        data: {
+          tenantId,
+          name: "Chemistry KB",
+          slug: "chemistry-kb",
+          description:
+            "Institutional chemistry knowledge — experiments, best practices, and procedures",
+          icon: "\u{1F4DA}",
+        },
+      });
+      teamspaceId = created.id;
+      console.log(`[chemistry-kb] Created teamspace: ${teamspaceId}`);
+
+      // Add all active tenant users as members
+      const users = await prisma.user.findMany({
+        where: { tenantId, deactivatedAt: null },
+        select: { id: true, role: true },
+      });
+      for (const user of users) {
+        await prisma.teamspaceMember.upsert({
+          where: {
+            teamspaceId_userId: { teamspaceId, userId: user.id },
+          },
+          create: {
+            teamspaceId,
+            userId: user.id,
+            role: user.role === "ADMIN" ? "ADMIN" : "MEMBER",
+          },
+          update: {},
+        });
+      }
+      console.log(`[chemistry-kb] Added ${users.length} users as teamspace members`);
+    }
+  }
+
+  const pageOptions = { teamspaceId };
 
   // 1. Create root page
   const root = await findOrCreatePage(
@@ -330,6 +382,6 @@ export async function setupChemistryKbHierarchy(
     chemicalsId: categoryIds.chemicals,
     researchersId: categoryIds.researchers,
     substrateClassesId: categoryIds.substrateClasses,
-    teamspaceId: options?.teamspaceId,
+    teamspaceId,
   };
 }

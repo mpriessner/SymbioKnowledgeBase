@@ -21,6 +21,10 @@ export const GET = withAgentAuth(
       const { searchParams } = new URL(req.url);
       const experimentId = searchParams.get("experimentId");
       const depth = (searchParams.get("depth") ?? "default") as SearchDepth;
+      const includeParam = searchParams.get("include");
+      const include = includeParam
+        ? includeParam.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined;
 
       if (!experimentId) {
         return errorResponse(
@@ -43,7 +47,8 @@ export const GET = withAgentAuth(
       const context = await assembleExperimentContext(
         ctx.tenantId,
         experimentId,
-        depth
+        depth,
+        include
       );
 
       if (!context) {

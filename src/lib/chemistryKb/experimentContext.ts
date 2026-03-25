@@ -209,7 +209,8 @@ async function getLinkedPagesByCategory(
 export async function assembleExperimentContext(
   tenantId: string,
   experimentId: string,
-  depth: SearchDepth = "default"
+  depth: SearchDepth = "default",
+  include?: string[]
 ): Promise<ExperimentContext | null> {
   const maxSize = MAX_SIZES[depth];
 
@@ -305,11 +306,8 @@ export async function assembleExperimentContext(
         expertise: extractSection(resMarkdown, "Expertise|Specialization") || undefined,
       };
     }
-  }
 
-  // Deep depth: add related experiments via graph traversal
-  if (depth === "deep") {
-    // Find experiments with same reaction type (via backlinks from reaction type page)
+    // Medium+: add related experiments (1-hop via reaction type backlinks)
     if (reactionTypes[0]) {
       const relatedExpLinks = await prisma.pageLink.findMany({
         where: { targetPageId: reactionTypes[0].id, tenantId },
@@ -329,8 +327,10 @@ export async function assembleExperimentContext(
           oneLiner: l.sourcePage.oneLiner,
         }));
     }
+  }
 
-    // Expand institutional knowledge from related experiment pages
+  // Deep depth: expand institutional knowledge from related experiment pages
+  if (depth === "deep") {
     for (const related of result.institutionalKnowledge.relatedExperiments.slice(0, 3)) {
       const relMarkdown = await getPageMarkdown(related.id, tenantId);
       const relPitfalls = extractBulletPoints(relMarkdown, "Challenges|Issues|Pitfalls");
@@ -343,6 +343,24 @@ export async function assembleExperimentContext(
     result.institutionalKnowledge.bestPractices = [...new Set(result.institutionalKnowledge.bestPractices)];
     result.institutionalKnowledge.commonPitfalls = [...new Set(result.institutionalKnowledge.commonPitfalls)];
     result.institutionalKnowledge.tips = [...new Set(result.institutionalKnowledge.tips)];
+  }
+
+  // Apply `include` filter: strip fields the caller didn't request
+  if (include && include.length > 0) {
+    if (!include.includes("procedures")) {
+      delete result.experiment.procedures;
+    }
+    if (!include.includes("chemicals")) {
+      result.experiment.chemicals = [];
+    }
+    if (!include.includes("bestPractices")) {
+      result.institutionalKnowledge.bestPractices = [];
+      result.institutionalKnowledge.commonPitfalls = [];
+      result.institutionalKnowledge.tips = [];
+    }
+    if (!include.includes("relatedExperiments")) {
+      result.institutionalKnowledge.relatedExperiments = [];
+    }
   }
 
   // Truncate if over budget (trim institutional knowledge first, keep procedures)

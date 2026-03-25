@@ -30,10 +30,19 @@ function getInitialWidth(): number {
  * Manages the resizable width of the sidebar with localStorage persistence.
  */
 export function useSidebarWidth() {
-  const [width, setWidth] = useState(getInitialWidth);
+  // Always start with DEFAULT_WIDTH to match SSR, then hydrate from localStorage
+  const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(DEFAULT_WIDTH);
+
+  // Hydrate from localStorage after mount (avoids SSR mismatch)
+  useEffect(() => {
+    const stored = getInitialWidth();
+    if (stored !== DEFAULT_WIDTH) {
+      setWidth(stored);
+    }
+  }, []);
 
   // Save width to localStorage
   const saveWidth = useCallback((newWidth: number) => {

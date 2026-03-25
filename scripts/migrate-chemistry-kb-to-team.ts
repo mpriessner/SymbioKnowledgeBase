@@ -115,6 +115,9 @@ async function main() {
         data: {
           tenantId,
           name: TEAMSPACE_NAME,
+          slug: "chemistry-kb",
+          description:
+            "Institutional chemistry knowledge — experiments, best practices, and procedures",
           icon: "\u{1F4DA}",
         },
       });

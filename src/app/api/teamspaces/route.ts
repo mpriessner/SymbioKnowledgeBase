@@ -102,24 +102,28 @@ export const GET = withTenant(
       const memberships = await prisma.teamspaceMember.findMany({
         where: { userId: ctx.userId },
         include: {
-          teamspace: {
-            include: {
-              _count: { select: { members: true, pages: true } },
-            },
-          },
+          teamspace: true,
         },
         orderBy: { teamspace: { name: "asc" } },
       });
 
-      const data = memberships.map((m) => ({
-        id: m.teamspace.id,
-        name: m.teamspace.name,
-        icon: m.teamspace.icon,
-        role: m.role,
-        member_count: m.teamspace._count.members,
-        page_count: m.teamspace._count.pages,
-        created_at: m.teamspace.createdAt.toISOString(),
-      }));
+      const data = await Promise.all(
+        memberships.map(async (m) => {
+          const [memberCount, pageCount] = await Promise.all([
+            prisma.teamspaceMember.count({ where: { teamspaceId: m.teamspace.id } }),
+            prisma.page.count({ where: { teamspaceId: m.teamspace.id } }),
+          ]);
+          return {
+            id: m.teamspace.id,
+            name: m.teamspace.name,
+            icon: m.teamspace.icon,
+            role: m.role,
+            member_count: memberCount,
+            page_count: pageCount,
+            created_at: m.teamspace.createdAt.toISOString(),
+          };
+        })
+      );
 
       return listResponse(data, data.length, data.length, 0);
     } catch (error) {

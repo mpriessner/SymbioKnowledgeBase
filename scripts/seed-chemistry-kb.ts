@@ -38,7 +38,8 @@ async function findOrCreatePage(
   oneLiner: string,
   markdown: string,
   parentId: string | null,
-  forceUpdate = false
+  forceUpdate = false,
+  teamspaceId?: string
 ): Promise<{ id: string; created: boolean; updated?: boolean }> {
   const existing = await prisma.page.findFirst({
     where: { tenantId, title, parentId },
@@ -48,6 +49,13 @@ async function findOrCreatePage(
   if (existing && forceUpdate) {
     // Update existing page content with new template output
     const { content: tiptap } = markdownToTiptap(markdown);
+    // Also ensure teamspace assignment
+    if (teamspaceId) {
+      await prisma.page.update({
+        where: { id: existing.id },
+        data: { spaceType: "TEAM", teamspaceId },
+      });
+    }
     await prisma.block.deleteMany({ where: { pageId: existing.id, tenantId } });
     await prisma.block.create({
       data: {
@@ -63,6 +71,13 @@ async function findOrCreatePage(
   }
 
   if (existing) {
+    // Ensure teamspace assignment even when not force-updating content
+    if (teamspaceId) {
+      await prisma.page.update({
+        where: { id: existing.id },
+        data: { spaceType: "TEAM", teamspaceId },
+      });
+    }
     return { id: existing.id, created: false };
   }
 
@@ -80,6 +95,7 @@ async function findOrCreatePage(
       oneLiner,
       parentId,
       position: nextPosition,
+      ...(teamspaceId ? { spaceType: "TEAM" as const, teamspaceId } : {}),
     },
   });
 
@@ -148,7 +164,8 @@ async function main() {
       exp.summary,
       markdown,
       hierarchy.experimentsId,
-      force
+      force,
+      hierarchy.teamspaceId
     );
     console.log(`  ${result.created ? "CREATED" : result.updated ? "UPDATED" : "EXISTS"}: ${exp.title}`);
   }
@@ -164,7 +181,8 @@ async function main() {
       chem.summary,
       markdown,
       hierarchy.chemicalsId,
-      force
+      force,
+      hierarchy.teamspaceId
     );
     console.log(`  ${result.created ? "CREATED" : result.updated ? "UPDATED" : "EXISTS"}: ${chem.name}`);
   }
@@ -179,7 +197,8 @@ async function main() {
     sampleSuzukiCoupling.summary,
     suzukiMarkdown,
     hierarchy.reactionTypesId,
-    force
+    force,
+    hierarchy.teamspaceId
   );
   console.log(`  ${suzukiResult.created ? "CREATED" : suzukiResult.updated ? "UPDATED" : "EXISTS"}: ${sampleSuzukiCoupling.name}`);
 
@@ -193,7 +212,8 @@ async function main() {
     sampleDrMueller.summary,
     muellerMarkdown,
     hierarchy.researchersId,
-    force
+    force,
+    hierarchy.teamspaceId
   );
   console.log(`  ${muellerResult.created ? "CREATED" : muellerResult.updated ? "UPDATED" : "EXISTS"}: ${sampleDrMueller.name}`);
 
@@ -207,7 +227,8 @@ async function main() {
     sampleHeteroarylHalides.summary,
     halideMarkdown,
     hierarchy.substrateClassesId,
-    force
+    force,
+    hierarchy.teamspaceId
   );
   console.log(`  ${halideResult.created ? "CREATED" : halideResult.updated ? "UPDATED" : "EXISTS"}: ${sampleHeteroarylHalides.name}`);
 

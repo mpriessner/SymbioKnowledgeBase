@@ -224,7 +224,7 @@ export function ApiKeysSection() {
                   </p>
                   <p className="text-xs text-[var(--text-secondary)]">
                     {key.key_prefix}... &middot; Scopes:{" "}
-                    {key.scopes.join(", ")} &middot; Last used:{" "}
+                    {(key.scopes ?? []).join(", ") || "all"} &middot; Last used:{" "}
                     {key.last_used_at
                       ? new Date(key.last_used_at).toLocaleDateString()
                       : "never"}

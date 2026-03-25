@@ -359,11 +359,13 @@ model DbRow {
 // ─── Teamspaces ─────────────────────────────────────────────────
 
 model Teamspace {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  name      String
-  icon      String?
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String
+  slug        String?  @map("slug")
+  description String?  @map("description")
+  icon        String?
+  createdAt   DateTime @default(now()) @map("created_at")
 
   // Relations
   tenant  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -372,6 +374,7 @@ model Teamspace {
 
   // Indexes
   @@unique([tenantId, name], map: "uq_teamspaces_tenant_name")
+  @@unique([tenantId, slug], map: "uq_teamspaces_tenant_slug")
   @@index([tenantId], map: "idx_teamspaces_tenant_id")
 
   @@map("teamspaces")

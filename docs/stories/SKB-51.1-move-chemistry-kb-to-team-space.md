@@ -2,7 +2,7 @@
 
 **Epic:** Epic 51 - Chemistry KB Voice Agent Integration
 **Story ID:** SKB-51.1
-**Story Points:** 3 | **Priority:** High | **Status:** Planned
+**Story Points:** 3 | **Priority:** High | **Status:** Mostly Complete
 **Depends On:** EPIC-45 (Chemistry KB Data Model must exist)
 
 ---
@@ -16,56 +16,77 @@ As an organization admin, I want the Chemistry KB to live in a shared Team space
 ## Acceptance Criteria
 
 1. **Teamspace Creation**
-   - [ ] New teamspace "Chemistry KB" created with `spaceType: TEAM`
-   - [ ] Teamspace has default role assignments: org admins = ADMIN, all members = MEMBER
-   - [ ] Teamspace `slug`: `chemistry-kb`
-   - [ ] Teamspace `description`: "Institutional chemistry knowledge — experiments, best practices, and procedures"
+   - [x] New teamspace "Chemistry KB" created with `spaceType: TEAM`
+   - [x] Teamspace has default role assignments: org admins = ADMIN, all members = MEMBER
+   - [ ] Teamspace `slug`: `chemistry-kb` — **BLOCKED: Teamspace model missing `slug` field (needs schema migration)**
+   - [ ] Teamspace `description` — **BLOCKED: Teamspace model missing `description` field (needs schema migration)**
 
 2. **Page Migration**
-   - [ ] Chemistry KB root page and all descendants moved from PRIVATE to TEAM space
-   - [ ] `page.spaceType` updated to `TEAM` for all migrated pages
-   - [ ] `page.teamspaceId` set to the Chemistry KB teamspace ID
-   - [ ] Page hierarchy (parent-child relationships) preserved exactly
-   - [ ] Page positions within each level preserved
+   - [x] Chemistry KB root page and all descendants moved from PRIVATE to TEAM space
+   - [x] `page.spaceType` updated to `TEAM` for all migrated pages
+   - [x] `page.teamspaceId` set to the Chemistry KB teamspace ID
+   - [x] Page hierarchy (parent-child relationships) preserved exactly
+   - [x] Page positions within each level preserved
 
 3. **Migration Script**
-   - [ ] Script: `scripts/migrate-chemistry-kb-to-team.ts`
-   - [ ] Accepts `--tenant <id>` argument
-   - [ ] Accepts `--dry-run` flag to preview changes without writing
-   - [ ] Idempotent: running twice produces same result
-   - [ ] Outputs migration summary:
+   - [x] Script: `scripts/migrate-chemistry-kb-to-team.ts`
+   - [x] Accepts `--tenant <id>` argument
+   - [x] Accepts `--dry-run` flag to preview changes without writing
+   - [x] Idempotent: running twice produces same result
+   - [x] Outputs migration summary:
      ```
      Migrating Chemistry KB to Team Space...
      Teamspace: chemistry-kb (created / already exists)
      Pages to migrate: 15
-     Root: Chemistry Knowledge Base → TEAM
-     Category: Experiments → TEAM
+     Root: Chemistry Knowledge Base -> TEAM
+     Category: Experiments -> TEAM
      ...
      Migration complete. 15 pages moved to Team space.
      ```
 
 4. **setupChemistryKbHierarchy Update**
-   - [ ] `setupChemistryKbHierarchy()` in `src/lib/chemistryKb/setupHierarchy.ts` updated to create pages with `spaceType: TEAM`
-   - [ ] New parameter: `teamspaceId` (required)
-   - [ ] Function creates or finds the Chemistry KB teamspace before creating pages
+   - [x] `setupChemistryKbHierarchy()` in `src/lib/chemistryKb/setupHierarchy.ts` updated to create pages with `spaceType: TEAM`
+   - [x] New parameter: `teamspaceId` (optional, via `SetupOptions`)
+   - [ ] Function creates or finds the Chemistry KB teamspace before creating pages — **GAP: caller must provide existing teamspaceId**
 
 5. **Sidebar Display**
-   - [ ] Chemistry KB appears in a "Team" section of the sidebar, not "Private"
-   - [ ] All org members can see the Chemistry KB in their sidebar
-   - [ ] Icon and title unchanged
+   - [x] Backend: `getPageTreeBySpace()` returns `{ private, team, agent }` structure
+   - [ ] Frontend: Sidebar components need to call `getPageTreeBySpace()` and display Team section separately
+   - [x] Icon and title unchanged
 
 6. **Access Control**
-   - [ ] MEMBER role: can read all pages, can create pages under Experiments category
-   - [ ] ADMIN role: can edit any page, manage categories, promote content
-   - [ ] GUEST role: read-only access
-   - [ ] Existing PRIVATE experiment pages remain private (not migrated)
+   - [x] Role model exists (TeamspaceMember with OWNER/ADMIN/MEMBER/GUEST roles)
+   - [ ] Permission enforcement middleware — **NOT IMPLEMENTED: no middleware checking user's teamspace role before page access**
+   - [ ] MEMBER/ADMIN/GUEST role enforcement on page mutation endpoints
+   - [x] Existing PRIVATE experiment pages remain private (not migrated)
+
+---
+
+## Implementation Status (2026-03-24)
+
+### What's Built
+- Migration script with full CLI (--tenant, --dry-run, idempotent)
+- Page model has `spaceType` (PRIVATE/TEAM/AGENT) and `teamspaceId` fields
+- Teamspace/TeamspaceMember models with role enum
+- `getPageTreeBySpace()` for backend tree filtering
+- setupHierarchy accepts optional teamspaceId
+
+### Remaining Gaps
+1. **Schema migration**: Add `slug` and `description` fields to Teamspace model
+2. **Auto-create teamspace**: setupHierarchy should create teamspace if not found
+3. **Sidebar frontend**: Wire `getPageTreeBySpace()` into sidebar components
+4. **Access control middleware**: Enforce roles on page endpoints
 
 ---
 
 ## Technical Implementation Notes
 
 ### Database Changes
-No schema changes needed. Existing fields used:
+Schema migration needed for Teamspace model:
+- Add `slug: String @unique` with composite index `[tenantId, slug]`
+- Add `description: String?`
+
+Existing fields already used:
 - `Page.spaceType` — Change from `PRIVATE` to `TEAM`
 - `Page.teamspaceId` — Set to new teamspace ID
 - `Teamspace` model — Create new record
@@ -100,9 +121,11 @@ await prisma.page.updateMany({
 ```
 
 ### Key Files
-- `scripts/migrate-chemistry-kb-to-team.ts` — CREATE
-- `src/lib/chemistryKb/setupHierarchy.ts` — MODIFY (add teamspaceId param)
-- `src/lib/pages/getPageTree.ts` — VERIFY (getPageTreeBySpace should show TEAM pages)
+- `scripts/migrate-chemistry-kb-to-team.ts` — DONE
+- `src/lib/chemistryKb/setupHierarchy.ts` — DONE (teamspaceId param)
+- `src/lib/pages/getPageTree.ts` — DONE (getPageTreeBySpace)
+- `src/app/api/teamspaces/route.ts` — DONE (CRUD)
+- `src/app/api/teamspaces/[id]/members/route.ts` — DONE (member management)
 
 ---
 
@@ -122,9 +145,9 @@ await prisma.page.updateMany({
 
 ## Definition of Done
 
-- [ ] Migration script passes on test tenant
+- [x] Migration script passes on test tenant
 - [ ] Chemistry KB appears in Team section of sidebar
-- [ ] All org members can view Chemistry KB pages
-- [ ] setupChemistryKbHierarchy creates TEAM pages
+- [x] All org members can view Chemistry KB pages
+- [x] setupChemistryKbHierarchy creates TEAM pages
 - [ ] Unit tests for migration logic
-- [ ] Dry-run mode works correctly
+- [x] Dry-run mode works correctly

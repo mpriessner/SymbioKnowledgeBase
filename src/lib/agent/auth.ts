@@ -3,6 +3,7 @@ import { errorResponse } from "@/lib/apiResponse";
 import { prisma } from "@/lib/db";
 import { checkRateLimit } from "./ratelimit";
 import bcrypt from "bcryptjs";
+import { createHash } from "crypto";
 
 export interface AgentContext {
   tenantId: string;
@@ -141,34 +142,39 @@ export function withAgentAuth(handler: AgentHandler) {
 
 /**
  * Authenticate using an API key (skb_live_* format).
- * Compares bcrypt hash against stored keys.
+ * Supports both SHA-256 (from /api/keys) and bcrypt (from /api/settings/api-keys) hashed keys.
  */
 async function authenticateApiKey(token: string): Promise<AgentContext> {
-  // Extract prefix for lookup
-  const keyPrefix = token.substring(0, 15);
-
-  // Find candidate keys by prefix (narrows search before bcrypt comparison)
-  const candidates = await prisma.apiKey.findMany({
-    where: {
-      keyPrefix,
-      revokedAt: null,
-    },
+  // Try SHA-256 lookup first (fast, O(1))
+  const sha256Hash = createHash("sha256").update(token).digest("hex");
+  const sha256Match = await prisma.apiKey.findFirst({
+    where: { keyHash: sha256Hash, revokedAt: null },
   });
 
-  // Compare hash for each candidate
+  if (sha256Match) {
+    prisma.apiKey
+      .update({ where: { id: sha256Match.id }, data: { lastUsedAt: new Date() } })
+      .catch(() => {});
+    return {
+      tenantId: sha256Match.tenantId,
+      userId: sha256Match.userId,
+      apiKeyId: sha256Match.id,
+      scopes: ["read", "write"],
+    };
+  }
+
+  // Fall back to bcrypt prefix lookup
+  const keyPrefix = token.substring(0, 15);
+  const candidates = await prisma.apiKey.findMany({
+    where: { keyPrefix, revokedAt: null },
+  });
+
   for (const apiKey of candidates) {
     const matches = await bcrypt.compare(token, apiKey.keyHash);
     if (matches) {
-      // Update last_used_at (non-blocking)
       prisma.apiKey
-        .update({
-          where: { id: apiKey.id },
-          data: { lastUsedAt: new Date() },
-        })
-        .catch(() => {
-          /* ignore update errors */
-        });
-
+        .update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } })
+        .catch(() => {});
       return {
         tenantId: apiKey.tenantId,
         userId: apiKey.userId,

@@ -4,7 +4,7 @@
 **Created:** 2026-03-23
 **Total Story Points:** 68
 **Priority:** High
-**Status:** Not Started
+**Status:** In Progress (~90% SKB stories implemented)
 **Dependencies:** EPIC-45 (Chemistry KB Data Model), EPIC-46 (Chemistry KB Retrieval), EPIC-47 (Incremental Sync)
 **Cross-Codebase:** SymbioKnowledgeBase (SKB-51.x) + SciSymbioLens (SSL EPIC-32)
 
@@ -86,14 +86,14 @@ This is a **cross-codebase epic**. Stories prefixed `SKB-51.x` modify SymbioKnow
 
 | ID | Title | Points | Priority | Status | Depends On |
 |----|-------|--------|----------|--------|------------|
-| SKB-51.1 | Move Chemistry KB to Team Space | 3 | High | Planned | EPIC-45 |
-| SKB-51.2 | Experiment Context Endpoint | 5 | High | Planned | SKB-51.1 |
-| SKB-51.3 | Search Depth Levels API | 5 | High | Planned | EPIC-46 |
-| SKB-51.4 | Promotion Workflow (Private → Team) | 5 | Medium | Planned | SKB-51.1 |
-| SKB-51.5 | Conflict Detection in Institutional Knowledge | 5 | Medium | Planned | SKB-51.4 |
-| SKB-51.6 | Aggregation Auto-Refresh Webhook | 3 | Medium | Planned | EPIC-47 |
-| SKB-51.7 | Agent API: Bulk Context Fetch | 3 | High | Planned | SKB-51.2 |
-| SKB-51.8 | Cross-Codebase API Contract Tests | 3 | High | Planned | SKB-51.2, SKB-51.3 |
+| SKB-51.1 | Move Chemistry KB to Team Space | 3 | High | Mostly Complete | EPIC-45 |
+| SKB-51.2 | Experiment Context Endpoint | 5 | High | Mostly Complete | SKB-51.1 |
+| SKB-51.3 | Search Depth Levels API | 5 | High | **Complete** | EPIC-46 |
+| SKB-51.4 | Promotion Workflow (Private → Team) | 5 | Low | **Deprioritized** | SKB-51.1 |
+| SKB-51.5 | Conflict Detection in Institutional Knowledge | 5 | Low | **Deprioritized** | SKB-51.4 |
+| SKB-51.6 | Aggregation Auto-Refresh Webhook | 3 | Medium | **Complete** | EPIC-47 |
+| SKB-51.7 | Agent API: Bulk Context Fetch | 3 | High | **Complete** | SKB-51.2 |
+| SKB-51.8 | Cross-Codebase API Contract Tests | 3 | High | **Complete** | SKB-51.2, SKB-51.3 |
 
 ### SciSymbioLens Stories (SSL EPIC-32)
 
