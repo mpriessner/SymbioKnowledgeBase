@@ -278,7 +278,7 @@ async function main() {
   const existingCategory = await prisma.page.findFirst({
     where: {
       tenantId: TENANT_ID,
-      title: "Experiments",
+      title: "Demo Experiments",
       spaceType: SpaceType.TEAM,
     },
     select: { id: true },
@@ -286,9 +286,9 @@ async function main() {
 
   if (existingCategory) {
     experimentsCategoryId = existingCategory.id;
-    console.log(`  Found existing "Experiments" category: ${experimentsCategoryId}`);
+    console.log(`  Found existing "Demo Experiments" category: ${experimentsCategoryId}`);
   } else {
-    console.log(`  Creating "Experiments" category page...`);
+    console.log(`  Creating "Demo Experiments" category page...`);
     if (!DRY_RUN) {
       await prisma.page.upsert({
         where: { id: experimentsCategoryId },
@@ -296,15 +296,15 @@ async function main() {
         create: {
           id: experimentsCategoryId,
           tenantId: TENANT_ID,
-          title: "Experiments",
+          title: "Demo Experiments",
           icon: "🧪",
-          oneLiner: "All experiment protocols and results",
+          oneLiner: "Demo experiment protocols for voice agent testing",
           spaceType: SpaceType.TEAM,
           position: 0,
         },
       });
     }
-    console.log(`  Created "Experiments" category: ${experimentsCategoryId}`);
+    console.log(`  Created "Demo Experiments" category: ${experimentsCategoryId}`);
   }
 
   // 2. Create experiment pages
