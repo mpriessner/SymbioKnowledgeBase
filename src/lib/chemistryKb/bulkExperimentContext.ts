@@ -25,11 +25,24 @@ export interface BulkExperimentItem {
   truncated: boolean;
 }
 
+export interface SharedContextItem {
+  name: string;
+  category: "chemical" | "reactionType" | "researcher";
+  usedBy: string[];
+}
+
+export interface SharedContext {
+  chemicals: SharedContextItem[];
+  reactionTypes: SharedContextItem[];
+  researchers: SharedContextItem[];
+}
+
 export interface BulkContextResponse {
   experiments: BulkExperimentItem[];
   totalSize: number;
   maxTotalSize: number;
   experimentCount: number;
+  sharedContext?: SharedContext;
 }
 
 // ─── Budget Allocation ───────────────────────────────────────────────────────
@@ -120,10 +133,83 @@ export async function assembleBulkContext(
     totalSize += Math.min(contextSize, budget);
   }
 
+  // Build shared context from items appearing in 2+ experiments
+  const sharedContext = extractSharedContext(items);
+
   return {
     experiments: items,
     totalSize,
     maxTotalSize,
     experimentCount: experiments.length,
+    ...(sharedContext ? { sharedContext } : {}),
   };
+}
+
+// ─── Shared Context Extraction ────────────────────────────────────────────────
+
+/**
+ * Identify chemicals, reaction types, and researchers shared across experiments.
+ * Returns undefined if fewer than 2 successful experiments (nothing to deduplicate).
+ */
+function extractSharedContext(
+  items: BulkExperimentItem[]
+): SharedContext | undefined {
+  const successItems = items.filter((item) => item.context);
+  if (successItems.length < 2) return undefined;
+
+  const chemicalMap = new Map<string, string[]>();
+  const reactionTypeMap = new Map<string, string[]>();
+  const researcherMap = new Map<string, string[]>();
+
+  for (const item of successItems) {
+    const ctx = item.context!;
+    const expId = item.experimentId;
+
+    for (const chem of ctx.experiment.chemicals) {
+      const existing = chemicalMap.get(chem.name) ?? [];
+      existing.push(expId);
+      chemicalMap.set(chem.name, existing);
+    }
+
+    if (ctx.experiment.reactionType) {
+      const name = ctx.experiment.reactionType.name;
+      const existing = reactionTypeMap.get(name) ?? [];
+      existing.push(expId);
+      reactionTypeMap.set(name, existing);
+    }
+
+    if (ctx.experiment.researcher) {
+      const name = ctx.experiment.researcher.name;
+      const existing = researcherMap.get(name) ?? [];
+      existing.push(expId);
+      researcherMap.set(name, existing);
+    }
+  }
+
+  const chemicals: SharedContextItem[] = [];
+  const reactionTypes: SharedContextItem[] = [];
+  const researchers: SharedContextItem[] = [];
+
+  for (const [name, usedBy] of chemicalMap) {
+    if (usedBy.length >= 2) {
+      chemicals.push({ name, category: "chemical", usedBy });
+    }
+  }
+  for (const [name, usedBy] of reactionTypeMap) {
+    if (usedBy.length >= 2) {
+      reactionTypes.push({ name, category: "reactionType", usedBy });
+    }
+  }
+  for (const [name, usedBy] of researcherMap) {
+    if (usedBy.length >= 2) {
+      researchers.push({ name, category: "researcher", usedBy });
+    }
+  }
+
+  // Only include if there's something shared
+  if (chemicals.length === 0 && reactionTypes.length === 0 && researchers.length === 0) {
+    return undefined;
+  }
+
+  return { chemicals, reactionTypes, researchers };
 }

@@ -221,4 +221,108 @@ describe("assembleBulkContext", () => {
     const sumUsed = result.experiments.reduce((s, e) => s + e.used, 0);
     expect(result.totalSize).toBe(sumUsed);
   });
+
+  test("extracts shared chemicals across experiments", async () => {
+    // Two experiments that both link to THF
+    let findFirstCallCount = 0;
+    mockPageFindFirst.mockImplementation(() => {
+      findFirstCallCount++;
+      // Calls 1 & 2 are the experiment page lookups
+      if (findFirstCallCount === 1)
+        return Promise.resolve({ id: "exp-1", title: "EXP-001: Suzuki A", oneLiner: "A" });
+      if (findFirstCallCount === 2)
+        return Promise.resolve({ id: "exp-2", title: "EXP-002: Suzuki B", oneLiner: "B" });
+      return Promise.resolve(null);
+    });
+
+    // Links for exp-1: THF + Pd(PPh3)4; links for exp-2: THF + K2CO3
+    let linkCallCount = 0;
+    mockPageLinkFindMany.mockImplementation(() => {
+      linkCallCount++;
+      // Calls are: exp-1 chemicals, exp-1 reactionTypes, exp-1 researchers,
+      //            exp-2 chemicals, exp-2 reactionTypes, exp-2 researchers
+      if (linkCallCount === 1) {
+        return Promise.resolve([
+          { targetPage: { id: "chem-thf", title: "THF", oneLiner: "Solvent", parentId: "cat-chem" } },
+          { targetPage: { id: "chem-pd", title: "Pd(PPh3)4", oneLiner: "Catalyst", parentId: "cat-chem" } },
+        ]);
+      }
+      if (linkCallCount === 4) {
+        return Promise.resolve([
+          { targetPage: { id: "chem-thf", title: "THF", oneLiner: "Solvent", parentId: "cat-chem" } },
+          { targetPage: { id: "chem-k2co3", title: "K2CO3", oneLiner: "Base", parentId: "cat-chem" } },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    // Mock parent page for category filtering
+    mockPageFindMany.mockImplementation((args: { where?: { id?: { in?: string[] } } }) => {
+      if (args?.where?.id?.in) {
+        return Promise.resolve(
+          args.where.id.in.map((id: string) =>
+            id === "cat-chem" ? { id: "cat-chem", title: "Chemicals" } : { id, title: "Other" }
+          )
+        );
+      }
+      return Promise.resolve([]);
+    });
+
+    const result = await assembleBulkContext(
+      TENANT_ID,
+      [
+        { experimentId: "EXP-001", depth: "default" },
+        { experimentId: "EXP-002", depth: "default" },
+      ],
+      45000
+    );
+
+    expect(result.sharedContext).toBeDefined();
+    expect(result.sharedContext!.chemicals).toHaveLength(1);
+    expect(result.sharedContext!.chemicals[0].name).toBe("THF");
+    expect(result.sharedContext!.chemicals[0].usedBy).toEqual(["EXP-001", "EXP-002"]);
+  });
+
+  test("no shared context when experiments have no overlap", async () => {
+    // Two experiments with completely different chemicals
+    let findFirstCallCount = 0;
+    mockPageFindFirst.mockImplementation(() => {
+      findFirstCallCount++;
+      if (findFirstCallCount === 1)
+        return Promise.resolve({ id: "exp-1", title: "EXP-001", oneLiner: "A" });
+      if (findFirstCallCount === 2)
+        return Promise.resolve({ id: "exp-2", title: "EXP-002", oneLiner: "B" });
+      return Promise.resolve(null);
+    });
+
+    // No shared links
+    mockPageLinkFindMany.mockResolvedValue([]);
+
+    const result = await assembleBulkContext(
+      TENANT_ID,
+      [
+        { experimentId: "EXP-001", depth: "default" },
+        { experimentId: "EXP-002", depth: "default" },
+      ],
+      45000
+    );
+
+    expect(result.sharedContext).toBeUndefined();
+  });
+
+  test("single experiment has no shared context", async () => {
+    mockPageFindFirst.mockResolvedValueOnce({
+      id: "p1",
+      title: "EXP-001",
+      oneLiner: "A",
+    });
+
+    const result = await assembleBulkContext(
+      TENANT_ID,
+      [{ experimentId: "EXP-001", depth: "default" }],
+      30000
+    );
+
+    expect(result.sharedContext).toBeUndefined();
+  });
 });

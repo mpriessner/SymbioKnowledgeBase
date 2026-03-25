@@ -5,6 +5,7 @@ exports[`Contract Snapshots > BulkContextResponseSchema shape matches snapshot 1
   "experimentCount",
   "experiments",
   "maxTotalSize",
+  "sharedContext",
   "totalSize",
 ]
 `;

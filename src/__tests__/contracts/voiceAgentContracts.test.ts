@@ -173,6 +173,60 @@ describe("BulkContextResponseSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test("validates bulk response with sharedContext", () => {
+    const response = {
+      experiments: [
+        {
+          experimentId: "EXP-001",
+          context: buildMockExperimentContext(),
+          allocated: 27000,
+          used: 24500,
+          truncated: false,
+        },
+        {
+          experimentId: "EXP-002",
+          context: buildMockExperimentContext(),
+          allocated: 18000,
+          used: 15000,
+          truncated: false,
+        },
+      ],
+      totalSize: 39500,
+      maxTotalSize: 45000,
+      experimentCount: 2,
+      sharedContext: {
+        chemicals: [
+          { name: "THF", category: "chemical", usedBy: ["EXP-001", "EXP-002"] },
+        ],
+        reactionTypes: [],
+        researchers: [],
+      },
+    };
+
+    const result = BulkContextResponseSchema.safeParse(response);
+    expect(result.success).toBe(true);
+  });
+
+  test("validates bulk response without sharedContext (backward compat)", () => {
+    const response = {
+      experiments: [
+        {
+          experimentId: "EXP-001",
+          context: buildMockExperimentContext(),
+          allocated: 45000,
+          used: 24500,
+          truncated: false,
+        },
+      ],
+      totalSize: 24500,
+      maxTotalSize: 45000,
+      experimentCount: 1,
+    };
+
+    const result = BulkContextResponseSchema.safeParse(response);
+    expect(result.success).toBe(true);
+  });
 });
 
 // ─── DepthSearchResponseSchema ───────────────────────────────────────────────

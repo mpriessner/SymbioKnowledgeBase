@@ -95,11 +95,24 @@ export const BulkContextRequestSchema = z.object({
   maxTotalSize: z.number().int().min(1000).max(100000).default(45000),
 });
 
+export const SharedContextItemSchema = z.object({
+  name: z.string(),
+  category: z.enum(["chemical", "reactionType", "researcher"]),
+  usedBy: z.array(z.string()),
+});
+
+export const SharedContextSchema = z.object({
+  chemicals: z.array(SharedContextItemSchema),
+  reactionTypes: z.array(SharedContextItemSchema),
+  researchers: z.array(SharedContextItemSchema),
+});
+
 export const BulkContextResponseSchema = z.object({
   experiments: z.array(BulkExperimentItemSchema),
   totalSize: z.number(),
   maxTotalSize: z.number(),
   experimentCount: z.number(),
+  sharedContext: SharedContextSchema.optional(),
 });
 
 // ─── Depth Search ────────────────────────────────────────────────────────────
