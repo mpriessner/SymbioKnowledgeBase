@@ -2,7 +2,7 @@
 
 **Epic:** EPIC-52 — Chemistry KB Content Harmonization & Cross-Platform Sync
 **Story ID:** SKB-52.8
-**Story Points:** 3 | **Priority:** High | **Status:** Planned
+**Story Points:** 3 | **Priority:** High | **Status:** Done (SKB side) / Blocked (waiting on EXPTUBE_API_URL)
 **Depends On:** SKB-52.7 (Auto-Ingest — the create action it wires up)
 
 ---

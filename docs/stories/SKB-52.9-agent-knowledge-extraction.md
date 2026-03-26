@@ -2,7 +2,7 @@
 
 **Epic:** EPIC-52 — Chemistry KB Content Harmonization & Cross-Platform Sync
 **Story ID:** SKB-52.9
-**Story Points:** 8 | **Priority:** Medium | **Status:** Future
+**Story Points:** 8 | **Priority:** Medium | **Status:** Done (Phase 1 — ChemELN Procedure Analysis)
 **Depends On:** SKB-52.7 (Auto-Ingest), SKB-52.8 (Reconciliation Sync)
 
 ---
