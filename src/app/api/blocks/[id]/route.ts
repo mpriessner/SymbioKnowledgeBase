@@ -20,7 +20,6 @@ export const GET = withTenant(
         where: {
           id: blockId,
           tenantId: ctx.tenantId,
-          deletedAt: null,
         },
       });
 
@@ -67,7 +66,6 @@ export const PUT = withTenant(
         where: {
           id: blockId,
           tenantId: ctx.tenantId,
-          deletedAt: null,
         },
       });
 
@@ -114,7 +112,6 @@ export const DELETE = withTenant(
         where: {
           id: blockId,
           tenantId: ctx.tenantId,
-          deletedAt: null,
         },
       });
 

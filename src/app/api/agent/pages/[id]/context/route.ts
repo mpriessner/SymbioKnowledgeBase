@@ -46,7 +46,6 @@ export const GET = withAgentAuth(
               pageId: id,
               tenantId: ctx.tenantId,
               type: "DOCUMENT",
-              deletedAt: null,
             },
           }),
           // Parent page

@@ -43,7 +43,7 @@ async function buildGlobalGraph(tenantId: string): Promise<GraphData> {
     }),
     // Aggregate plainText length per page for content-based sizing
     prisma.block.findMany({
-      where: { tenantId, deletedAt: null },
+      where: { tenantId },
       select: { pageId: true, plainText: true },
     }),
   ]);
@@ -169,7 +169,6 @@ async function buildLocalGraph(
       where: {
         pageId: { in: discoveredIds },
         tenantId,
-        deletedAt: null,
       },
       select: { pageId: true, plainText: true },
     }),

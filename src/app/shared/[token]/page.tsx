@@ -14,7 +14,6 @@ async function getShareLink(token: string) {
       page: {
         include: {
           blocks: {
-            where: { deletedAt: null },
             orderBy: { position: "asc" },
           },
           teamspace: { select: { name: true } },

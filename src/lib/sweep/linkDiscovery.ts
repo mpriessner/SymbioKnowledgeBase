@@ -76,7 +76,7 @@ export async function discoverUnlinkedReferences(
 ): Promise<LinkSuggestion[]> {
   // Load page's plain text
   const blocks = await prisma.block.findMany({
-    where: { pageId: page.id, type: "DOCUMENT", deletedAt: null },
+    where: { pageId: page.id, type: "DOCUMENT" },
     select: { plainText: true },
     take: 1,
   });

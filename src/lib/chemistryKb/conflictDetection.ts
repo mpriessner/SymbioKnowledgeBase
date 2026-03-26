@@ -104,7 +104,7 @@ export async function detectConflicts(
   if (!newPage) return emptyReport;
 
   const newBlock = await prisma.block.findFirst({
-    where: { pageId: newPageId, tenantId, type: "DOCUMENT", deletedAt: null },
+    where: { pageId: newPageId, tenantId, type: "DOCUMENT" },
     select: { content: true },
   });
 
@@ -136,7 +136,6 @@ export async function detectConflicts(
         pageId: existing.id,
         tenantId,
         type: "DOCUMENT",
-        deletedAt: null,
       },
       select: { content: true },
     });
@@ -251,7 +250,6 @@ export async function scanCategoryConflicts(
         pageId: page.id,
         tenantId,
         type: "DOCUMENT",
-        deletedAt: null,
       },
       select: { content: true },
     });

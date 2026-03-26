@@ -140,8 +140,9 @@ describe("buildGraphData", () => {
         { sourcePageId: "hop2", targetPageId: "hop3" },
       ] as Awaited<ReturnType<typeof prisma.pageLink.findMany>>);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockPageFindMany.mockImplementation(
-        async (args: { where?: { id?: { in?: string[] } } }) => {
+        (async (args: any) => {
           const ids = args?.where?.id?.in || [];
           return ids.map((id: string) => ({
             id,
@@ -149,7 +150,7 @@ describe("buildGraphData", () => {
             icon: null,
             updatedAt: new Date(),
           }));
-        }
+        }) as any
       );
 
       // Depth 1: center + hop1a + hop1b
@@ -170,8 +171,9 @@ describe("buildGraphData", () => {
         { sourcePageId: "hop1", targetPageId: "hop2" },
       ] as Awaited<ReturnType<typeof prisma.pageLink.findMany>>);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockPageFindMany.mockImplementation(
-        async (args: { where?: { id?: { in?: string[] } } }) => {
+        (async (args: any) => {
           const ids = args?.where?.id?.in || [];
           return ids.map((id: string) => ({
             id,
@@ -179,7 +181,7 @@ describe("buildGraphData", () => {
             icon: null,
             updatedAt: new Date(),
           }));
-        }
+        }) as any
       );
 
       const result = await buildGraphData(tenantId, "center", 1);
@@ -198,8 +200,9 @@ describe("buildGraphData", () => {
         { sourcePageId: "hop1", targetPageId: "center" },
       ] as Awaited<ReturnType<typeof prisma.pageLink.findMany>>);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       mockPageFindMany.mockImplementation(
-        async (args: { where?: { id?: { in?: string[] } } }) => {
+        (async (args: any) => {
           const ids = args?.where?.id?.in || [];
           return ids.map((id: string) => ({
             id,
@@ -207,7 +210,7 @@ describe("buildGraphData", () => {
             icon: null,
             updatedAt: new Date(),
           }));
-        }
+        }) as any
       );
 
       const result = await buildGraphData(tenantId, "center", 1);

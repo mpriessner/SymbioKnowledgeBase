@@ -20,6 +20,7 @@ export interface HierarchyResult {
   rootId: string;
   indexId: string;
   experimentsId: string;
+  archiveId: string;
   reactionTypesId: string;
   chemicalsId: string;
   researchersId: string;
@@ -101,6 +102,43 @@ export const CATEGORY_PAGES: CategoryPageConfig[] = [
 
 - [[Reaction Types]]: See experiments grouped by reaction type
 - [[Researchers]]: See experiments grouped by researcher`,
+  },
+  {
+    key: "archive",
+    title: "Archive",
+    icon: "\u{1F4E6}",
+    oneLiner:
+      "Archived experiments — trashed or completed experiments preserved for institutional knowledge.",
+    markdown: `# Archive
+
+> Archived experiments — trashed or completed experiments preserved for institutional knowledge.
+
+## Purpose
+
+Experiments moved here from the active Experiments list. Unlike a trash folder, archived experiments are **never automatically deleted** because even failed or abandoned experiments carry valuable institutional knowledge.
+
+## What's Here
+
+- Experiments trashed in ChemELN or ExpTube (synced automatically)
+- Experiments manually archived from the KB
+- Completed experiments moved here for long-term reference
+
+## For AI Agents
+
+Archived experiments are still searchable and can be used for:
+- Cross-experiment pattern detection
+- Identifying recurring challenges across experiment types
+- Learning from negative results
+
+## Actions
+
+- **Restore**: Move an experiment back to the active Experiments list
+- **Purge**: Permanently delete (use with caution — knowledge is lost forever)
+
+## Related Pages
+
+- [[Experiments]]: Active experiments
+- [[Reaction Types]]: See learnings aggregated by reaction type`,
   },
   {
     key: "reactionTypes",
@@ -378,6 +416,7 @@ export async function setupChemistryKbHierarchy(
     rootId: root.id,
     indexId: index.id,
     experimentsId: categoryIds.experiments,
+    archiveId: categoryIds.archive,
     reactionTypesId: categoryIds.reactionTypes,
     chemicalsId: categoryIds.chemicals,
     researchersId: categoryIds.researchers,

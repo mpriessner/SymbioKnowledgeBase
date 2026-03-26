@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState, useLayoutEffect } from "react";
-import { Pencil, Copy, Link, Star, Trash2 } from "lucide-react";
+import { Pencil, Copy, Link, Star, Trash2, Archive, RotateCcw } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { useDeletePage } from "@/hooks/usePages";
@@ -24,6 +24,8 @@ interface PageContextMenuProps {
   selectedIds?: Set<string>;
   /** Multi-select: count of selected pages */
   selectionCount?: number;
+  /** Whether this page is inside the Archive folder */
+  isArchived?: boolean;
 }
 
 interface MenuItem {
@@ -34,12 +36,23 @@ interface MenuItem {
   divider?: boolean;
 }
 
-function getSingleMenuItems(isFavorite: boolean): MenuItem[] {
+function getSingleMenuItems(isFavorite: boolean, isArchived: boolean): MenuItem[] {
+  if (isArchived) {
+    return [
+      { icon: RotateCcw, label: "Restore to Experiments", action: "restore" },
+      { icon: Pencil, label: "Rename", action: "rename" },
+      { icon: Copy, label: "Duplicate", action: "duplicate" },
+      { icon: Link, label: "Copy link", action: "copyLink" },
+      { icon: Star, label: isFavorite ? "Remove from favorites" : "Add to favorites", action: "favorite", divider: true },
+      { icon: Trash2, label: "Purge permanently", action: "purge", danger: true },
+    ];
+  }
   return [
     { icon: Pencil, label: "Rename", action: "rename" },
     { icon: Copy, label: "Duplicate", action: "duplicate" },
     { icon: Link, label: "Copy link", action: "copyLink" },
     { icon: Star, label: isFavorite ? "Remove from favorites" : "Add to favorites", action: "favorite", divider: true },
+    { icon: Archive, label: "Move to Archive", action: "archive" },
     { icon: Trash2, label: "Delete", action: "delete", danger: true },
   ];
 }
@@ -90,9 +103,11 @@ export function PageContextMenu({
   onDuplicate,
   selectedIds,
   selectionCount = 0,
+  isArchived = false,
 }: PageContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<"delete" | "purge" | "bulkDelete">("delete");
   const [menuDimensions, setMenuDimensions] = useState({ width: 180, height: 200 });
   const [isDeleting, setIsDeleting] = useState(false);
   const deletePage = useDeletePage();
@@ -105,7 +120,7 @@ export function PageContextMenu({
   const isBulk = selectionCount > 1 && selectedIds?.has(pageId);
   const menuItems = isBulk
     ? getBulkMenuItems(selectionCount)
-    : getSingleMenuItems(isFavorite);
+    : getSingleMenuItems(isFavorite, isArchived);
 
   // Measure menu dimensions after render
   useLayoutEffect(() => {
@@ -178,7 +193,35 @@ export function PageContextMenu({
           onClose();
           break;
 
+        case "archive":
+          try {
+            await fetch(`/api/pages/${pageId}/archive`, { method: "POST" });
+            window.location.reload();
+          } catch (error) {
+            console.error("Failed to archive page:", error);
+          }
+          onClose();
+          break;
+
+        case "restore":
+          try {
+            await fetch(`/api/pages/${pageId}/restore`, {
+              method: "POST",
+            });
+            window.location.reload();
+          } catch (error) {
+            console.error("Failed to restore page:", error);
+          }
+          onClose();
+          break;
+
+        case "purge":
+          setConfirmAction("purge");
+          setShowDeleteConfirm(true);
+          break;
+
         case "delete":
+          setConfirmAction("delete");
           setShowDeleteConfirm(true);
           break;
 
@@ -202,6 +245,7 @@ export function PageContextMenu({
           break;
 
         case "bulkDelete":
+          setConfirmAction("bulkDelete");
           setShowDeleteConfirm(true);
           break;
       }
@@ -212,7 +256,20 @@ export function PageContextMenu({
   const handleConfirmDelete = useCallback(async () => {
     setIsDeleting(true);
 
-    if (isBulk && selectedIds) {
+    if (confirmAction === "purge") {
+      // Purge permanently via API
+      try {
+        await fetch(`/api/pages/${pageId}/purge`, { method: "DELETE" });
+        if (pathname === `/pages/${pageId}`) {
+          router.push("/home");
+        }
+        window.location.reload();
+      } catch (error) {
+        console.error("Failed to purge page:", error);
+        setIsDeleting(false);
+        return;
+      }
+    } else if (isBulk && selectedIds) {
       // Bulk delete all selected pages
       let navigateAway = false;
       for (const id of selectedIds) {
@@ -245,15 +302,17 @@ export function PageContextMenu({
     setIsDeleting(false);
     setShowDeleteConfirm(false);
     onClose();
-  }, [isBulk, selectedIds, deletePage, pageId, pathname, router, onClose]);
+  }, [confirmAction, isBulk, selectedIds, deletePage, pageId, pathname, router, onClose]);
 
   if (showDeleteConfirm) {
     const deleteCount = isBulk ? selectionCount : 1;
+    const isPurge = confirmAction === "purge";
+    const actionLabel = isPurge ? "Purge permanently" : (deleteCount > 1 ? `Delete ${deleteCount} pages` : "Delete");
     return (
       <Modal
         isOpen={true}
         onClose={() => setShowDeleteConfirm(false)}
-        title={deleteCount > 1 ? `Delete ${deleteCount} pages` : "Delete page"}
+        title={isPurge ? "Purge page permanently" : (deleteCount > 1 ? `Delete ${deleteCount} pages` : "Delete page")}
         footer={
           <>
             <Button
@@ -267,12 +326,17 @@ export function PageContextMenu({
               onClick={handleConfirmDelete}
               loading={isDeleting || deletePage.isPending}
             >
-              {deleteCount > 1 ? `Delete ${deleteCount} pages` : "Delete"}
+              {actionLabel}
             </Button>
           </>
         }
       >
-        {isBulk ? (
+        {isPurge ? (
+          <p className="text-[var(--text-secondary)]">
+            Permanently delete <span className="font-medium text-[var(--text-primary)]">&quot;{pageTitle}&quot;</span>?
+            This will remove all knowledge and cannot be undone.
+          </p>
+        ) : isBulk ? (
           <p className="text-[var(--text-secondary)]">
             Delete <span className="font-medium text-[var(--text-primary)]">{selectionCount} pages</span>?
             This cannot be undone.

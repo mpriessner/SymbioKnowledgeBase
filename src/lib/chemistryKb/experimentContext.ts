@@ -88,7 +88,6 @@ async function findExperimentPage(
     where: {
       tenantId,
       type: "DOCUMENT",
-      deletedAt: null,
       plainText: { contains: experimentId },
     },
     select: {
@@ -106,7 +105,7 @@ async function getPageMarkdown(
   tenantId: string
 ): Promise<string> {
   const block = await prisma.block.findFirst({
-    where: { pageId, tenantId, type: "DOCUMENT", deletedAt: null },
+    where: { pageId, tenantId, type: "DOCUMENT" },
     select: { content: true },
   });
   if (!block) return "";
@@ -133,7 +132,7 @@ function extractSection(markdown: string, sectionName: string): string {
     }
     if (capturing) {
       // Stop at next heading of same or higher level
-      if (/^#{1,3}\s+/.test(line)) break;
+      if (/^#{2,3}\s+/.test(line)) break;
       captured.push(line);
     }
   }
@@ -269,8 +268,8 @@ export async function assembleExperimentContext(
     result.experiment.chemicals = chemicals.map((c, i) => ({
       name: c.title,
       oneLiner: c.oneLiner,
-      safety: extractSection(chemMarkdowns[i].markdown, "Safety|Hazard") || undefined,
-      handling: extractSection(chemMarkdowns[i].markdown, "Handling|Storage") || undefined,
+      safety: extractSection(chemMarkdowns[i].markdown, "Safety|Hazard|Institutional Knowledge") || undefined,
+      handling: extractSection(chemMarkdowns[i].markdown, "Handling|Storage|Practical Usage") || undefined,
     }));
 
     // Get reaction type best practices
@@ -279,13 +278,13 @@ export async function assembleExperimentContext(
       result.experiment.reactionType = {
         name: reactionTypes[0].title,
         oneLiner: reactionTypes[0].oneLiner,
-        bestPractices: extractSection(rtMarkdown, "Best Practices|Institutional Knowledge") || undefined,
+        bestPractices: extractSection(rtMarkdown, "What Works Well|Best Practices|Institutional Knowledge") || undefined,
       };
 
       // Extract institutional knowledge from reaction type page
       result.institutionalKnowledge.bestPractices = extractBulletPoints(
         rtMarkdown,
-        "Best Practices|Institutional Knowledge"
+        "What Works Well|Best Practices|Institutional Knowledge"
       );
       result.institutionalKnowledge.commonPitfalls = extractBulletPoints(
         rtMarkdown,
@@ -293,7 +292,7 @@ export async function assembleExperimentContext(
       );
       result.institutionalKnowledge.tips = extractBulletPoints(
         rtMarkdown,
-        "Tips|Recommendations|Practical Notes"
+        "Tips|Recommendations|Practical Notes|Substrate-Specific Advice"
       );
     }
 
@@ -303,7 +302,7 @@ export async function assembleExperimentContext(
       result.experiment.researcher = {
         name: researchers[0].title,
         oneLiner: researchers[0].oneLiner,
-        expertise: extractSection(resMarkdown, "Expertise|Specialization") || undefined,
+        expertise: extractSection(resMarkdown, "Expertise|Specialization|Expertise Areas") || undefined,
       };
     }
 
@@ -333,8 +332,8 @@ export async function assembleExperimentContext(
   if (depth === "deep") {
     for (const related of result.institutionalKnowledge.relatedExperiments.slice(0, 3)) {
       const relMarkdown = await getPageMarkdown(related.id, tenantId);
-      const relPitfalls = extractBulletPoints(relMarkdown, "Challenges|Issues|Pitfalls");
-      const relTips = extractBulletPoints(relMarkdown, "Tips|Notes|Practical");
+      const relPitfalls = extractBulletPoints(relMarkdown, "Challenges Encountered|Challenges|Issues|Pitfalls");
+      const relTips = extractBulletPoints(relMarkdown, "What Worked Well|Recommendations|Substrate-Specific|Tips|Notes|Practical");
       result.institutionalKnowledge.commonPitfalls.push(...relPitfalls);
       result.institutionalKnowledge.tips.push(...relTips);
     }

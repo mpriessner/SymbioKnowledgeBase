@@ -101,7 +101,7 @@ export class SummaryService {
         id: true,
         title: true,
         blocks: {
-          where: { type: "DOCUMENT", deletedAt: null },
+          where: { type: "DOCUMENT" },
           select: { plainText: true },
           take: 1,
         },
@@ -180,7 +180,7 @@ export class SummaryService {
         title: true,
         oneLiner: true,
         blocks: {
-          where: { type: "DOCUMENT", deletedAt: null },
+          where: { type: "DOCUMENT" },
           select: { plainText: true },
           take: 1,
         },

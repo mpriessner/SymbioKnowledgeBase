@@ -151,7 +151,7 @@ export const PUT = withTenant(
         );
       }
 
-      // Verify the page exists and belongs to this tenant
+      // Verify the page exists and belongs to this tenant (not trashed)
       const existingPage = await prisma.page.findFirst({
         where: { id: idParsed.data, tenantId: context.tenantId },
         select: { id: true, title: true, spaceType: true },

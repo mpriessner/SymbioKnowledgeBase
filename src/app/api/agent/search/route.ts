@@ -157,7 +157,7 @@ export const GET = withAgentAuth(
         FROM blocks b
         JOIN pages p ON p.id = b.page_id
         WHERE b.tenant_id = ${ctx.tenantId}
-          AND b.deleted_at IS NULL
+
           AND b.search_vector @@ websearch_to_tsquery('english', ${q})
         ORDER BY score DESC
         LIMIT ${limit} OFFSET ${offset}
@@ -167,7 +167,7 @@ export const GET = withAgentAuth(
         SELECT COUNT(DISTINCT b.page_id)::int as count
         FROM blocks b
         WHERE b.tenant_id = ${ctx.tenantId}
-          AND b.deleted_at IS NULL
+
           AND b.search_vector @@ websearch_to_tsquery('english', ${q})
       `;
 

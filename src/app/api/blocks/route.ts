@@ -41,7 +41,6 @@ export const POST = withTenant(
           pageId,
           tenantId: ctx.tenantId,
           position: { gte: position },
-          deletedAt: null,
         },
         data: {
           position: { increment: 1 },

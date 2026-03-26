@@ -109,7 +109,6 @@ export const GET = withAgentAuth(
             pageId: id,
             tenantId: ctx.tenantId,
             type: "DOCUMENT",
-            deletedAt: null,
           },
         }),
         prisma.pageLink.findMany({
@@ -218,7 +217,6 @@ export const PUT = withAgentAuth(
           pageId: id,
           tenantId: ctx.tenantId,
           type: "DOCUMENT",
-          deletedAt: null,
         },
       });
 

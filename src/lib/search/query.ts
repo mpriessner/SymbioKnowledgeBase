@@ -79,7 +79,7 @@ export async function enhancedSearchBlocks(
         ELSE p.title
       END AS snippet
     FROM pages p
-    LEFT JOIN blocks b ON b.page_id = p.id AND b.deleted_at IS NULL
+    LEFT JOIN blocks b ON b.page_id = p.id
     WHERE p.tenant_id::text = $2
       AND (p.title ILIKE $1 OR b.plain_text ILIKE $1)
     ORDER BY p.id, rank DESC
@@ -88,7 +88,7 @@ export async function enhancedSearchBlocks(
   const countSql = `
     SELECT COUNT(DISTINCT p.id) AS total
     FROM pages p
-    LEFT JOIN blocks b ON b.page_id = p.id AND b.deleted_at IS NULL
+    LEFT JOIN blocks b ON b.page_id = p.id
     WHERE p.tenant_id::text = $2
       AND (p.title ILIKE $1 OR b.plain_text ILIKE $1)
   `;
@@ -141,7 +141,6 @@ async function ftsSearch(
   const whereConditions: string[] = [
     `b.search_vector @@ plainto_tsquery('english', $1)`,
     `b.tenant_id::text = $2`,
-    `b.deleted_at IS NULL`,
   ];
 
   const params: (string | number)[] = [sanitizedQuery, tenantId];
@@ -165,17 +164,17 @@ async function ftsSearch(
       switch (type) {
         case "code":
           contentTypeConditions.push(
-            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.deleted_at IS NULL AND b2.content::jsonb->>'type' = 'codeBlock')`
+            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb->>'type' = 'codeBlock')`
           );
           break;
         case "images":
           contentTypeConditions.push(
-            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.deleted_at IS NULL AND b2.content::jsonb->>'type' = 'image')`
+            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb->>'type' = 'image')`
           );
           break;
         case "links":
           contentTypeConditions.push(
-            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.deleted_at IS NULL AND b2.content::jsonb::text LIKE '%"type":"link"%')`
+            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb::text LIKE '%"type":"link"%')`
           );
           break;
       }

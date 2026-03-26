@@ -26,9 +26,9 @@ import {
 import {
   ALL_SAMPLE_CHEMICALS,
   ALL_SAMPLE_EXPERIMENTS,
-  sampleDrMueller,
-  sampleSuzukiCoupling,
-  sampleHeteroarylHalides,
+  ALL_SAMPLE_RESEARCHERS,
+  ALL_SAMPLE_REACTION_TYPES,
+  ALL_SAMPLE_SUBSTRATE_CLASSES,
 } from "../src/lib/chemistryKb/sampleData";
 
 async function findOrCreatePage(
@@ -49,13 +49,14 @@ async function findOrCreatePage(
   if (existing && forceUpdate) {
     // Update existing page content with new template output
     const { content: tiptap } = markdownToTiptap(markdown);
-    // Also ensure teamspace assignment
-    if (teamspaceId) {
-      await prisma.page.update({
-        where: { id: existing.id },
-        data: { spaceType: "TEAM", teamspaceId },
-      });
-    }
+    // Update oneLiner + teamspace assignment
+    await prisma.page.update({
+      where: { id: existing.id },
+      data: {
+        oneLiner: oneLiner || null,
+        ...(teamspaceId ? { spaceType: "TEAM" as const, teamspaceId } : {}),
+      },
+    });
     await prisma.block.deleteMany({ where: { pageId: existing.id, tenantId } });
     await prisma.block.create({
       data: {
@@ -187,59 +188,64 @@ async function main() {
     console.log(`  ${result.created ? "CREATED" : result.updated ? "UPDATED" : "EXISTS"}: ${chem.name}`);
   }
 
-  // Step 4: Create reaction type page
+  // Step 4: Create reaction type pages
   console.log("\nStep 4: Creating reaction type pages...");
-  const suzukiMarkdown = generateReactionTypePage(sampleSuzukiCoupling);
-  const suzukiResult = await findOrCreatePage(
-    tenantId,
-    sampleSuzukiCoupling.name,
-    "🔬",
-    sampleSuzukiCoupling.summary,
-    suzukiMarkdown,
-    hierarchy.reactionTypesId,
-    force,
-    hierarchy.teamspaceId
-  );
-  console.log(`  ${suzukiResult.created ? "CREATED" : suzukiResult.updated ? "UPDATED" : "EXISTS"}: ${sampleSuzukiCoupling.name}`);
+  for (const rt of ALL_SAMPLE_REACTION_TYPES) {
+    const markdown = generateReactionTypePage(rt);
+    const result = await findOrCreatePage(
+      tenantId,
+      rt.name,
+      "🔬",
+      rt.summary,
+      markdown,
+      hierarchy.reactionTypesId,
+      force,
+      hierarchy.teamspaceId
+    );
+    console.log(`  ${result.created ? "CREATED" : result.updated ? "UPDATED" : "EXISTS"}: ${rt.name}`);
+  }
 
-  // Step 5: Create researcher page
+  // Step 5: Create researcher pages
   console.log("\nStep 5: Creating researcher pages...");
-  const muellerMarkdown = generateResearcherPage(sampleDrMueller);
-  const muellerResult = await findOrCreatePage(
-    tenantId,
-    sampleDrMueller.name,
-    "👩‍🔬",
-    sampleDrMueller.summary,
-    muellerMarkdown,
-    hierarchy.researchersId,
-    force,
-    hierarchy.teamspaceId
-  );
-  console.log(`  ${muellerResult.created ? "CREATED" : muellerResult.updated ? "UPDATED" : "EXISTS"}: ${sampleDrMueller.name}`);
+  for (const researcher of ALL_SAMPLE_RESEARCHERS) {
+    const markdown = generateResearcherPage(researcher);
+    const result = await findOrCreatePage(
+      tenantId,
+      researcher.name,
+      "👩‍🔬",
+      researcher.summary,
+      markdown,
+      hierarchy.researchersId,
+      force,
+      hierarchy.teamspaceId
+    );
+    console.log(`  ${result.created ? "CREATED" : result.updated ? "UPDATED" : "EXISTS"}: ${researcher.name}`);
+  }
 
-  // Step 6: Create substrate class page
+  // Step 6: Create substrate class pages
   console.log("\nStep 6: Creating substrate class pages...");
-  const halideMarkdown = generateSubstrateClassPage(sampleHeteroarylHalides);
-  const halideResult = await findOrCreatePage(
-    tenantId,
-    sampleHeteroarylHalides.name,
-    "🧬",
-    sampleHeteroarylHalides.summary,
-    halideMarkdown,
-    hierarchy.substrateClassesId,
-    force,
-    hierarchy.teamspaceId
-  );
-  console.log(`  ${halideResult.created ? "CREATED" : halideResult.updated ? "UPDATED" : "EXISTS"}: ${sampleHeteroarylHalides.name}`);
+  for (const sc of ALL_SAMPLE_SUBSTRATE_CLASSES) {
+    const markdown = generateSubstrateClassPage(sc);
+    const result = await findOrCreatePage(
+      tenantId,
+      sc.name,
+      "🧬",
+      sc.summary,
+      markdown,
+      hierarchy.substrateClassesId,
+      force,
+      hierarchy.teamspaceId
+    );
+    console.log(`  ${result.created ? "CREATED" : result.updated ? "UPDATED" : "EXISTS"}: ${sc.name}`);
+  }
 
   // Summary
-  const totalCreated = [
-    ...ALL_SAMPLE_EXPERIMENTS.map(() => 1),
-    ...ALL_SAMPLE_CHEMICALS.map(() => 1),
-    1, // reaction type
-    1, // researcher
-    1, // substrate class
-  ].length;
+  const totalCreated =
+    ALL_SAMPLE_EXPERIMENTS.length +
+    ALL_SAMPLE_CHEMICALS.length +
+    ALL_SAMPLE_REACTION_TYPES.length +
+    ALL_SAMPLE_RESEARCHERS.length +
+    ALL_SAMPLE_SUBSTRATE_CLASSES.length;
 
   console.log(`\n=== Done! Created up to ${totalCreated} chemistry pages ===`);
   console.log("Visit http://localhost:3000/home to see your Chemistry KB in the sidebar.");

@@ -42,7 +42,6 @@ export const GET = withTenant(
         where: {
           pageId,
           tenantId: ctx.tenantId,
-          deletedAt: null,
         },
         orderBy: { position: "asc" },
       });
@@ -105,7 +104,6 @@ export const PUT = withTenant(
           pageId,
           tenantId: ctx.tenantId,
           type: "DOCUMENT",
-          deletedAt: null,
         },
         select: { id: true, content: true, plainText: true },
       });

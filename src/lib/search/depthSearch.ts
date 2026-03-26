@@ -108,7 +108,7 @@ async function getSnippet(
   maxLength: number = 200
 ): Promise<string | undefined> {
   const block = await prisma.block.findFirst({
-    where: { pageId, tenantId, type: "DOCUMENT", deletedAt: null },
+    where: { pageId, tenantId, type: "DOCUMENT" },
     select: { plainText: true },
   });
 
@@ -191,7 +191,6 @@ export async function depthSearch(
       where: {
         tenantId,
         type: "DOCUMENT",
-        deletedAt: null,
         plainText: { contains: query, mode: "insensitive" as const },
         page: { ...scopeFilter },
       },
@@ -308,7 +307,7 @@ export async function depthSearch(
 
       // Extract institutional knowledge bullet points from content
       const block = await prisma.block.findFirst({
-        where: { pageId: match.id, tenantId, type: "DOCUMENT", deletedAt: null },
+        where: { pageId: match.id, tenantId, type: "DOCUMENT" },
         select: { content: true },
       });
       if (block) {

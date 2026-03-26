@@ -1,16 +1,22 @@
 "use client";
 
-import { useCallback, useState, useRef, useEffect } from "react";
+import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useRouter, usePathname } from "next/navigation";
 import { useCreatePage, useUpdatePage } from "@/hooks/usePages";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { MoreHorizontal, Check } from "lucide-react";
+import { MoreHorizontal, Check, ArrowUpDown } from "lucide-react";
 import {
   PageContextMenu,
   usePageContextMenu,
 } from "@/components/sidebar/PageContextMenu";
+import { useCategorySortPreference } from "@/hooks/useCategorySortPreference";
+import {
+  sortPageTreeNodes,
+  getCategoryKey,
+  SORT_OPTIONS,
+} from "@/lib/pages/sortPages";
 import type { PageTreeNode } from "@/types/page";
 import type { MultiSelectProps } from "@/components/workspace/Sidebar";
 import type { DropPosition } from "@/components/workspace/DndSidebarTree";
@@ -28,6 +34,8 @@ interface SortableSidebarTreeNodeProps {
   overId: string | null;
   dropPosition: DropPosition | null;
   multiSelect?: MultiSelectProps;
+  /** Whether this node is inside the Archive folder */
+  isInsideArchive?: boolean;
 }
 
 export function SortableSidebarTreeNode({
@@ -40,6 +48,7 @@ export function SortableSidebarTreeNode({
   overId,
   dropPosition,
   multiSelect,
+  isInsideArchive = false,
 }: SortableSidebarTreeNodeProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -55,6 +64,41 @@ export function SortableSidebarTreeNode({
 
   const isNodeSelected = multiSelect?.isSelected(node.id) ?? false;
   const showCheckboxes = (multiSelect?.selectionCount ?? 0) > 0;
+
+  // Sort preference for this node's children (only relevant if it has children)
+  const categoryKey = getCategoryKey(node.title);
+  const { sortPref, updateSort } = useCategorySortPreference(node.id, categoryKey);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const sortMenuRef = useRef<HTMLDivElement>(null);
+  const sortButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Sort children based on preference
+  const sortedChildren = useMemo(() => {
+    if (!node.children.length) return node.children;
+    return sortPageTreeNodes(node.children, sortPref);
+  }, [node.children, sortPref]);
+
+  // Close sort menu on click outside
+  useEffect(() => {
+    if (!showSortMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        sortMenuRef.current &&
+        !sortMenuRef.current.contains(e.target as Node) &&
+        sortButtonRef.current &&
+        !sortButtonRef.current.contains(e.target as Node)
+      ) {
+        setShowSortMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showSortMenu]);
+
+  const handleSortClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowSortMenu((prev) => !prev);
+  }, []);
 
   // Check if title is truncated
   useEffect(() => {
@@ -375,6 +419,21 @@ export function SortableSidebarTreeNode({
 
         {/* Action buttons — always right-aligned via ml-auto */}
         <div className="ml-auto flex items-center flex-shrink-0">
+          {/* Sort button — only for parent nodes with children */}
+          {hasChildren && (
+            <button
+              ref={sortButtonRef}
+              className={`relative w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 ${
+                isHovered && !activeId ? "visible" : "invisible"
+              }`}
+              onClick={handleSortClick}
+              aria-label={`Sort children of ${node.title}`}
+              title="Sort"
+              tabIndex={isHovered && !activeId ? 0 : -1}
+            >
+              <ArrowUpDown className="w-3 h-3 text-gray-400" />
+            </button>
+          )}
           <button
             className={`w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 ${
               isHovered && !activeId ? "visible" : "invisible"
@@ -423,10 +482,50 @@ export function SortableSidebarTreeNode({
         </div>
       )}
 
+      {/* Sort dropdown menu */}
+      {showSortMenu && hasChildren && (
+        <div
+          ref={sortMenuRef}
+          className="fixed z-50 min-w-[180px] rounded-lg border border-[var(--border-default)]
+                     bg-[var(--bg-primary)] py-1 shadow-lg shadow-black/20"
+          style={{
+            left: `${(sortButtonRef.current?.getBoundingClientRect().left ?? 0)}px`,
+            top: `${(sortButtonRef.current?.getBoundingClientRect().bottom ?? 0) + 4}px`,
+          }}
+        >
+          <div className="px-3 py-1.5 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+            Sort by
+          </div>
+          {SORT_OPTIONS.map((option) => {
+            const isActive =
+              sortPref.field === option.pref.field &&
+              sortPref.direction === option.pref.direction;
+            return (
+              <button
+                key={`${option.pref.field}-${option.pref.direction}`}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-sm transition-colors
+                  ${isActive
+                    ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20"
+                    : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                  }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  updateSort(option.pref);
+                  setShowSortMenu(false);
+                }}
+              >
+                {isActive && <span className="text-xs">&#10003;</span>}
+                <span className={isActive ? "" : "ml-5"}>{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Recursive children */}
       {hasChildren && isExpanded && (
         <div role="group">
-          {node.children.map((child) => (
+          {sortedChildren.map((child) => (
             <SortableSidebarTreeNode
               key={child.id}
               node={child}
@@ -438,6 +537,7 @@ export function SortableSidebarTreeNode({
               overId={overId}
               dropPosition={dropPosition}
               multiSelect={multiSelect}
+              isInsideArchive={isInsideArchive || node.title === "Archive"}
             />
           ))}
         </div>
@@ -454,6 +554,7 @@ export function SortableSidebarTreeNode({
           onDuplicate={handleDuplicate}
           selectedIds={multiSelect?.selectedIds}
           selectionCount={multiSelect?.selectionCount ?? 0}
+          isArchived={isInsideArchive}
         />
       )}
     </div>

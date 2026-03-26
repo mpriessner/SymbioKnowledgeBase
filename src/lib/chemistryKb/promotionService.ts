@@ -163,7 +163,6 @@ export async function promotePage(
       pageId: request.sourcePageId,
       tenantId,
       type: "DOCUMENT",
-      deletedAt: null,
     },
     select: { content: true },
   });
@@ -353,7 +352,6 @@ export async function captureLearning(
       pageId: expPage.id,
       tenantId,
       type: "DOCUMENT",
-      deletedAt: null,
     },
     select: { id: true, content: true },
   });
@@ -415,7 +413,6 @@ export async function captureLearning(
           pageId: reactionTypePage.id,
           tenantId,
           type: "DOCUMENT",
-          deletedAt: null,
         },
         select: { id: true, content: true },
       });

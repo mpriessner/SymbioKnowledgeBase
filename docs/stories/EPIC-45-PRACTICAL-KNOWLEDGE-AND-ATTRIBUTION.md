@@ -2,6 +2,7 @@
 
 **Epic ID:** EPIC-45
 **Created:** 2026-03-21
+**Status:** Deprioritized (2026-03-25) — Superseded by EPIC-52
 **Total Story Points:** 20
 **Priority:** High
 **Status:** Planned
