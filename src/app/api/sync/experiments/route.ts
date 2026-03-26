@@ -16,7 +16,7 @@ const SYNC_SERVICE_KEY = process.env.SYNC_SERVICE_KEY;
 
 const syncPayloadSchema = z.object({
   eln_experiment_id: z.string().min(1),
-  action: z.enum(["create", "delete", "restore", "update", "purge"]),
+  action: z.enum(["create", "delete", "restore", "update", "purge", "archive"]),
   source: z.string().min(1),
   correlation_id: z.string().optional(),
   fields: z.record(z.string(), z.string()).optional(),
@@ -151,6 +151,7 @@ async function handleAction(
     case "create":
       return handleCreate(elnId, tenantId, payload.fields || {}, logPrefix);
     case "delete":
+    case "archive":
       return handleArchive(elnId, tenantId, logPrefix);
     case "restore":
       return handleRestore(elnId, tenantId, logPrefix);
@@ -263,13 +264,20 @@ async function handleCreate(
     ? fields.title
     : `${elnId}: ${fields.title}`;
 
+  // Determine target folder: archived/trashed experiments go to Archive
+  const isArchived =
+    fields.source_status === "archived" ||
+    fields.source_status === "trashed" ||
+    !!fields.source_deleted_at;
+  const targetParentId = isArchived ? hierarchy.archiveId : hierarchy.experimentsId;
+
   // Generate page content
   const markdown = generateExperimentKbMarkdown(elnId, { ...fields, title });
   const { content: tiptap } = markdownToTiptap(markdown);
 
-  // Find next position under Experiments category
+  // Find next position under target folder
   const maxPosition = await prisma.page.aggregate({
-    where: { tenantId, parentId: hierarchy.experimentsId },
+    where: { tenantId, parentId: targetParentId },
     _max: { position: true },
   });
   const nextPosition = (maxPosition._max.position ?? -1) + 1;
@@ -281,7 +289,7 @@ async function handleCreate(
       title,
       icon: "\u{1F9EA}",
       oneLiner: fields.summary || null,
-      parentId: hierarchy.experimentsId,
+      parentId: targetParentId,
       position: nextPosition,
       spaceType: "TEAM",
       teamspaceId: hierarchy.teamspaceId || undefined,
@@ -302,8 +310,9 @@ async function handleCreate(
   // Process wikilinks (creates PageLink records for [[references]])
   await processAgentWikilinks(page.id, tenantId, tiptap);
 
-  console.log(`${logPrefix} Created: ${title} (${page.id})`);
-  return { status: 201, body: { status: "created", id: page.id, title } };
+  const folder = isArchived ? "Archive" : "Experiments";
+  console.log(`${logPrefix} Created: ${title} (${page.id}) in ${folder}`);
+  return { status: 201, body: { status: "created", id: page.id, title, folder } };
 }
 
 async function handleArchive(
