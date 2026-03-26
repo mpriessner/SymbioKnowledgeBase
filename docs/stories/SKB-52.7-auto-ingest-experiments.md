@@ -2,14 +2,14 @@
 
 **Epic:** EPIC-52 — Chemistry KB Content Harmonization & Cross-Platform Sync
 **Story ID:** SKB-52.7
-**Story Points:** 3 | **Priority:** High | **Status:** Planned
+**Story Points:** 3 | **Priority:** High | **Status:** Done (SKB side) / Blocked (waiting on ExpTube to send events)
 **Depends On:** SKB-52.4 (Incoming Sync Endpoint — Complete)
 
 ---
 
 ## User Story
 
-As a researcher using ChemELN or ExpTube,
+As a researcher using any SciSymbioAI platform (SciSymbio Lens, ExpTube, or ChemELN),
 I want experiments I create to automatically appear in the Chemistry Knowledge Base,
 So that I can immediately start adding institutional knowledge (tips, pitfalls, best practices) without manually creating pages.
 
@@ -17,13 +17,15 @@ So that I can immediately start adding institutional knowledge (tips, pitfalls, 
 
 ## Problem
 
-The sync endpoint (`POST /api/sync/experiments`) currently supports `delete`, `restore`, `update`, and `purge` actions — but not `create`. When a new experiment is created in ChemELN or ExpTube, there is no way for those platforms to push the experiment into SKB. The user's experiments (e.g., "Titration 6", "Test 6") exist in ChemELN but have no corresponding KB pages.
+The sync endpoint (`POST /api/sync/experiments`) supports all lifecycle actions including `create`. **The SKB-side implementation is already complete.** What's missing is ExpTube sending the `create` events to SKB.
 
-The pull-based sync infrastructure (`IncrementalSyncRunner`) can discover new experiments, but it requires ChemELN API credentials and is designed as a batch process — not a real-time webhook receiver.
+Per the revised architecture (SKB-52.12), **ExpTube is the sole sender** of sync events to SKB. All experiments from SciSymbio Lens and ChemELN flow through ExpTube, so ExpTube is the single source of truth.
 
 ## Solution
 
-Add a `create` action to the existing sync endpoint. When ChemELN or ExpTube creates/completes an experiment, they send a webhook to SKB with the experiment data. SKB creates a templated KB page under the Experiments category with scaffolded sections for institutional knowledge.
+**SKB endpoint: Done.** The `create` action handler exists in `src/app/api/sync/experiments/route.ts`.
+
+**Remaining work:** ExpTube needs to add `_propagateToSKB()` calls (see `docs/cross-platform/AGENT-PROMPT-EXPTUBE.md`) when experiments are created. This is an ExpTube-side task.
 
 ---
 
@@ -35,7 +37,7 @@ Add a `create` action to the existing sync endpoint. When ChemELN or ExpTube cre
   {
     "eln_experiment_id": "EXP-2025-0042",
     "action": "create",
-    "source": "chemeln",
+    "source": "exptube",
     "fields": {
       "title": "Titration of NaOH with HCl",
       "researcher": "Dr. Anna Mueller",
@@ -151,7 +153,7 @@ tags:
      -d '{
        "eln_experiment_id": "EXP-2025-0042",
        "action": "create",
-       "source": "chemeln",
+       "source": "exptube",
        "fields": {
          "title": "Titration of NaOH with HCl",
          "researcher": "Dr. Anna Mueller",
@@ -173,5 +175,4 @@ tags:
 
 - Full template generation with reagents/procedures/characterization (that's the seed script's job)
 - Automatic entity page creation (chemicals, reaction types) — handled by SKB-52.8
-- ExpTube webhook configuration — that's an ExpTube-side task
-- ChemELN webhook configuration — that's a ChemELN-side task
+- ExpTube sending sync events to SKB — that's an ExpTube-side task (see `docs/cross-platform/AGENT-PROMPT-EXPTUBE.md`)
