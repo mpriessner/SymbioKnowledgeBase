@@ -9,7 +9,10 @@ import { successResponse, errorResponse } from "@/lib/apiResponse";
 export const GET = withTenant(async (req, ctx) => {
   const { userId, tenantId } = ctx;
 
-  // Ensure user has a TenantMember record for their primary tenant
+  // Ensure user has a TenantMember record for their primary tenant.
+  // Auto-repair of a MISSING membership is least-privilege (audit S4): create as
+  // "member", reserving "owner" for genuine tenant creators (the POST path).
+  // `update: {}` preserves an existing role, so this never re-promotes a member.
   await prisma.tenantMember.upsert({
     where: {
       userId_tenantId: { userId, tenantId },
@@ -18,7 +21,7 @@ export const GET = withTenant(async (req, ctx) => {
     create: {
       userId,
       tenantId,
-      role: "owner",
+      role: "member",
     },
   });
 
