@@ -17,10 +17,12 @@ import {
 } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-// Fallback to the default Docker Compose DB if DATABASE_URL is not set or has no password
-const DATABASE_URL =
-  process.env.DATABASE_URL ||
-  "postgresql://symbio:symbio_dev_password@localhost:5432/symbio?schema=public";
+// DATABASE_URL must be supplied via the environment (no committed credential fallback).
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error("DATABASE_URL is required (set it in your .env / environment)");
+  process.exit(1);
+}
 
 const adapter = new PrismaPg({ connectionString: DATABASE_URL });
 const prisma = new PrismaClient({ adapter });

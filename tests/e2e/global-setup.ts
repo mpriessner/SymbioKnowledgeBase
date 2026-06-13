@@ -15,32 +15,32 @@ async function globalSetup(config: FullConfig) {
     fs.mkdirSync(authDir, { recursive: true });
   }
 
-  // Ensure user exists in Supabase (idempotent - signup returns existing user or creates new)
-  // Try multiple Supabase ports (54351 for SKB, 54321 for default)
-  const supabasePorts = [54351, 54321];
-  const anonKeys = [
-    "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH",
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0",
-  ];
+  // Ensure user exists in Supabase (idempotent - signup returns existing user or creates new).
+  // Source the anon key + port from the environment. The default port 54341 is the LIVE
+  // ExpTube Supabase the app actually authenticates against (NOT the dead local 54351 stack).
+  // No production/demo JWT is hardcoded as a fallback — the anon key must come from env.
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabasePort = process.env.TEST_SUPABASE_PORT || "54341";
 
-  for (let i = 0; i < supabasePorts.length; i++) {
+  if (!anonKey) {
+    console.warn(
+      "[global-setup] NEXT_PUBLIC_SUPABASE_ANON_KEY not set — skipping Supabase user signup; login may fail if the user does not already exist."
+    );
+  } else {
     try {
-      const resp = await fetch(
-        `http://127.0.0.1:${supabasePorts[i]}/auth/v1/signup`,
-        {
-          method: "POST",
-          headers: {
-            apikey: anonKeys[i],
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
-        }
-      );
+      const resp = await fetch(`http://127.0.0.1:${supabasePort}/auth/v1/signup`, {
+        method: "POST",
+        headers: {
+          apikey: anonKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
+      });
       if (resp.ok) {
-        console.log(`[global-setup] Ensured user on Supabase port ${supabasePorts[i]}`);
+        console.log(`[global-setup] Ensured user on Supabase port ${supabasePort}`);
       }
     } catch {
-      // Port not available, try next
+      // Supabase not reachable at the configured port; login step below will surface it.
     }
   }
 
