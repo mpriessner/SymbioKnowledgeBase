@@ -4,7 +4,11 @@ import bcrypt from "bcryptjs";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
-describe("Tenant Isolation", () => {
+// These tests need a live Postgres (via prisma) AND a running Next.js server.
+// Skip the whole suite cleanly when no database is configured.
+const HAS_DB = Boolean(process.env.DATABASE_URL);
+
+describe.skipIf(!HAS_DB)("Tenant Isolation", () => {
   let userASessionCookie: string;
   let userBSessionCookie: string;
 
@@ -18,6 +22,7 @@ describe("Tenant Isolation", () => {
 
     await prisma.user.create({
       data: {
+        id: crypto.randomUUID(),
         name: "User A",
         email: "test-isolation-a@example.com",
         passwordHash,
@@ -32,6 +37,7 @@ describe("Tenant Isolation", () => {
 
     await prisma.user.create({
       data: {
+        id: crypto.randomUUID(),
         name: "User B",
         email: "test-isolation-b@example.com",
         passwordHash,

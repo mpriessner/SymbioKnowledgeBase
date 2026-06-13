@@ -6,6 +6,14 @@ const mockFindFirst = vi.fn();
 const mockAggregate = vi.fn();
 const mockCreate = vi.fn();
 const mockBlockCreate = vi.fn();
+const mockPageUpdate = vi.fn();
+// setupChemistryKbHierarchy auto-creates (or finds) a "Chemistry KB" teamspace
+// when no explicit teamspaceId is passed, so the teamspace / user /
+// teamspaceMember models must be mocked too.
+const mockTeamspaceFindFirst = vi.fn();
+const mockTeamspaceCreate = vi.fn();
+const mockUserFindMany = vi.fn();
+const mockTeamspaceMemberUpsert = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -13,9 +21,20 @@ vi.mock("@/lib/db", () => ({
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
       aggregate: (...args: unknown[]) => mockAggregate(...args),
       create: (...args: unknown[]) => mockCreate(...args),
+      update: (...args: unknown[]) => mockPageUpdate(...args),
     },
     block: {
       create: (...args: unknown[]) => mockBlockCreate(...args),
+    },
+    teamspace: {
+      findFirst: (...args: unknown[]) => mockTeamspaceFindFirst(...args),
+      create: (...args: unknown[]) => mockTeamspaceCreate(...args),
+    },
+    user: {
+      findMany: (...args: unknown[]) => mockUserFindMany(...args),
+    },
+    teamspaceMember: {
+      upsert: (...args: unknown[]) => mockTeamspaceMemberUpsert(...args),
     },
   },
 }));
@@ -39,12 +58,22 @@ function makePageId(index: number) {
   return `page-${index}-uuid`;
 }
 
+const DEFAULT_TEAMSPACE_ID = "teamspace-default-uuid";
+
 beforeEach(() => {
   vi.clearAllMocks();
 
   // Default: no existing pages found
   mockFindFirst.mockResolvedValue(null);
   mockAggregate.mockResolvedValue({ _max: { position: null } });
+  mockPageUpdate.mockResolvedValue({ id: "page-updated" });
+
+  // Default: the "Chemistry KB" teamspace already exists, so the auto-create
+  // path (teamspace.create / user.findMany / teamspaceMember.upsert) is skipped.
+  mockTeamspaceFindFirst.mockResolvedValue({ id: DEFAULT_TEAMSPACE_ID });
+  mockTeamspaceCreate.mockResolvedValue({ id: DEFAULT_TEAMSPACE_ID });
+  mockUserFindMany.mockResolvedValue([]);
+  mockTeamspaceMemberUpsert.mockResolvedValue({ id: "member-uuid" });
 
   let callCount = 0;
   mockCreate.mockImplementation(({ data }) => {
@@ -66,26 +95,39 @@ beforeEach(() => {
 });
 
 describe("setupChemistryKbHierarchy", () => {
-  test("creates all 7 pages with correct structure", async () => {
+  // 1 root + N category pages + 1 index page. Derived from CATEGORY_PAGES so the
+  // count tracks the source (currently 6 categories: experiments, archive,
+  // reactionTypes, chemicals, researchers, substrateClasses).
+  const EXPECTED_PAGE_COUNT = 1 + CATEGORY_PAGES.length + 1;
+  const INDEX_CALL_INDEX = CATEGORY_PAGES.length + 1; // 0-based: after root + categories
+
+  test("creates all pages with correct structure", async () => {
     const result = await setupChemistryKbHierarchy(TEST_TENANT_ID);
 
-    // 7 pages total: 1 root + 5 categories + 1 index
-    expect(mockCreate).toHaveBeenCalledTimes(7);
+    expect(mockCreate).toHaveBeenCalledTimes(EXPECTED_PAGE_COUNT);
 
     // Verify result contains all page IDs
     expect(result.rootId).toBeDefined();
     expect(result.indexId).toBeDefined();
     expect(result.experimentsId).toBeDefined();
+    expect(result.archiveId).toBeDefined();
     expect(result.reactionTypesId).toBeDefined();
     expect(result.chemicalsId).toBeDefined();
     expect(result.researchersId).toBeDefined();
     expect(result.substrateClassesId).toBeDefined();
 
-    // All page IDs should be different
-    const allIds = Object.values(result).filter(
-      (v) => typeof v === "string"
-    );
-    expect(new Set(allIds).size).toBe(7);
+    // All page IDs should be different (root + categories + index)
+    const allIds = [
+      result.rootId,
+      result.indexId,
+      result.experimentsId,
+      result.archiveId,
+      result.reactionTypesId,
+      result.chemicalsId,
+      result.researchersId,
+      result.substrateClassesId,
+    ];
+    expect(new Set(allIds).size).toBe(EXPECTED_PAGE_COUNT);
   });
 
   test("root page is created with null parentId", async () => {
@@ -101,8 +143,8 @@ describe("setupChemistryKbHierarchy", () => {
   test("category pages are created with root as parent", async () => {
     const result = await setupChemistryKbHierarchy(TEST_TENANT_ID);
 
-    // Calls 2-6 are category pages (experiments, reactionTypes, chemicals, researchers, substrateClasses)
-    for (let i = 1; i <= 5; i++) {
+    // Calls 1..CATEGORY_PAGES.length are the category pages (call 0 is root).
+    for (let i = 1; i <= CATEGORY_PAGES.length; i++) {
       const call = mockCreate.mock.calls[i][0];
       expect(call.data.parentId).toBe(result.rootId);
       expect(call.data.tenantId).toBe(TEST_TENANT_ID);
@@ -113,7 +155,7 @@ describe("setupChemistryKbHierarchy", () => {
     const result = await setupChemistryKbHierarchy(TEST_TENANT_ID);
 
     // Last create call is the index page
-    const indexCall = mockCreate.mock.calls[6][0];
+    const indexCall = mockCreate.mock.calls[INDEX_CALL_INDEX][0];
     expect(indexCall.data.title).toBe("Chemistry KB Index");
     expect(indexCall.data.parentId).toBe(result.rootId);
   });
@@ -170,7 +212,7 @@ describe("setupChemistryKbHierarchy", () => {
   test("creates a DOCUMENT block for each page", async () => {
     await setupChemistryKbHierarchy(TEST_TENANT_ID);
 
-    expect(mockBlockCreate).toHaveBeenCalledTimes(7);
+    expect(mockBlockCreate).toHaveBeenCalledTimes(EXPECTED_PAGE_COUNT);
 
     for (const call of mockBlockCreate.mock.calls) {
       expect(call[0].data.type).toBe("DOCUMENT");
@@ -187,11 +229,18 @@ describe("setupChemistryKbHierarchy", () => {
     vi.clearAllMocks();
     mockAggregate.mockResolvedValue({ _max: { position: null } });
     mockBlockCreate.mockResolvedValue({ id: "block-uuid" });
+    mockPageUpdate.mockResolvedValue({ id: "page-updated" });
+    // Re-establish teamspace mocks wiped by clearAllMocks.
+    mockTeamspaceFindFirst.mockResolvedValue({ id: DEFAULT_TEAMSPACE_ID });
+    mockTeamspaceCreate.mockResolvedValue({ id: DEFAULT_TEAMSPACE_ID });
+    mockUserFindMany.mockResolvedValue([]);
+    mockTeamspaceMemberUpsert.mockResolvedValue({ id: "member-uuid" });
 
     // Simulate all pages already existing
     const existingPages: Record<string, string> = {
       "Chemistry KB": result1.rootId,
       Experiments: result1.experimentsId,
+      Archive: result1.archiveId,
       "Reaction Types": result1.reactionTypesId,
       Chemicals: result1.chemicalsId,
       Researchers: result1.researchersId,
@@ -216,6 +265,7 @@ describe("setupChemistryKbHierarchy", () => {
     expect(result2.rootId).toBe(result1.rootId);
     expect(result2.indexId).toBe(result1.indexId);
     expect(result2.experimentsId).toBe(result1.experimentsId);
+    expect(result2.archiveId).toBe(result1.archiveId);
     expect(result2.reactionTypesId).toBe(result1.reactionTypesId);
     expect(result2.chemicalsId).toBe(result1.chemicalsId);
     expect(result2.researchersId).toBe(result1.researchersId);
@@ -238,21 +288,42 @@ describe("setupChemistryKbHierarchy", () => {
     expect(result.teamspaceId).toBe(teamspaceId);
   });
 
-  test("creates pages in PRIVATE space by default (no options)", async () => {
-    await setupChemistryKbHierarchy(TEST_TENANT_ID);
+  test("assigns pages to the auto-resolved Chemistry KB teamspace by default", async () => {
+    // With no explicit teamspaceId, setup now finds (or creates) a dedicated
+    // "Chemistry KB" teamspace and assigns every page to it as TEAM space.
+    const result = await setupChemistryKbHierarchy(TEST_TENANT_ID);
 
-    // No spaceType or teamspaceId should be set (defaults to PRIVATE)
+    expect(mockTeamspaceFindFirst).toHaveBeenCalled();
     for (const call of mockCreate.mock.calls) {
-      expect(call[0].data.spaceType).toBeUndefined();
-      expect(call[0].data.teamspaceId).toBeUndefined();
+      expect(call[0].data.spaceType).toBe("TEAM");
+      expect(call[0].data.teamspaceId).toBe(DEFAULT_TEAMSPACE_ID);
     }
+    expect(result.teamspaceId).toBe(DEFAULT_TEAMSPACE_ID);
   });
 
-  test("CATEGORY_PAGES has exactly 5 entries", () => {
-    expect(CATEGORY_PAGES).toHaveLength(5);
+  test("creates the Chemistry KB teamspace when it does not yet exist", async () => {
+    // Force the not-found branch so the create + member-seeding path runs.
+    mockTeamspaceFindFirst.mockResolvedValueOnce(null);
+    mockTeamspaceCreate.mockResolvedValueOnce({ id: "newly-created-teamspace" });
+    mockUserFindMany.mockResolvedValueOnce([
+      { id: "u1", role: "ADMIN" },
+      { id: "u2", role: "USER" },
+    ]);
+
+    const result = await setupChemistryKbHierarchy(TEST_TENANT_ID);
+
+    expect(mockTeamspaceCreate).toHaveBeenCalledTimes(1);
+    // Each active tenant user is added as a member of the new teamspace.
+    expect(mockTeamspaceMemberUpsert).toHaveBeenCalledTimes(2);
+    expect(result.teamspaceId).toBe("newly-created-teamspace");
+  });
+
+  test("CATEGORY_PAGES has the expected category keys", () => {
+    expect(CATEGORY_PAGES).toHaveLength(6);
     const keys = CATEGORY_PAGES.map((p) => p.key);
     expect(keys).toEqual([
       "experiments",
+      "archive",
       "reactionTypes",
       "chemicals",
       "researchers",

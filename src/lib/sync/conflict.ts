@@ -27,6 +27,15 @@ export interface ConflictInfo {
 const recentConflicts: ConflictInfo[] = [];
 const MAX_CONFLICT_LOG = 100;
 
+/** True only for a "file does not exist" error (ENOENT). */
+function isFileNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: string }).code === "ENOENT"
+  );
+}
+
 /**
  * Check if a file has been modified since the last sync
  * by comparing its current hash to the stored hash in metadata.
@@ -40,8 +49,16 @@ export async function hasFileChanged(
   try {
     const raw = await fs.readFile(metaPath, "utf-8");
     meta = JSON.parse(raw) as SyncMetadata;
-  } catch {
-    return false;
+  } catch (err) {
+    // No metadata file yet → nothing to compare against (genuinely "unchanged").
+    // Any OTHER error (corrupt JSON, permissions) must NOT be swallowed as
+    // "unchanged" or we'd overwrite without a backup — assume changed.
+    if (isFileNotFound(err)) return false;
+    console.error(
+      `[Sync Conflict] Failed to read sync metadata for tenant ${tenantId}; assuming changed:`,
+      err
+    );
+    return true;
   }
 
   const entry = meta.pages[pageId];
@@ -55,8 +72,16 @@ export async function hasFileChanged(
       .update(content, "utf-8")
       .digest("hex");
     return currentHash !== entry.contentHash;
-  } catch {
-    return false;
+  } catch (err) {
+    // File legitimately absent → no on-disk edit to preserve.
+    if (isFileNotFound(err)) return false;
+    // A real read error: treat as changed so the caller backs the file up
+    // instead of clobbering it blind.
+    console.error(
+      `[Sync Conflict] Failed to read mirror file for page ${pageId}; assuming changed:`,
+      err
+    );
+    return true;
   }
 }
 
@@ -73,8 +98,13 @@ export async function hasDatabaseFileChanged(
   try {
     const raw = await fs.readFile(metaPath, "utf-8");
     meta = migrateMetadata(JSON.parse(raw) as SyncMetadata);
-  } catch {
-    return false;
+  } catch (err) {
+    if (isFileNotFound(err)) return false;
+    console.error(
+      `[Sync Conflict] Failed to read sync metadata for tenant ${tenantId}; assuming changed:`,
+      err
+    );
+    return true;
   }
 
   const entry = meta.databases?.[databaseId];
@@ -88,8 +118,13 @@ export async function hasDatabaseFileChanged(
       .update(content, "utf-8")
       .digest("hex");
     return currentHash !== entry.contentHash;
-  } catch {
-    return false;
+  } catch (err) {
+    if (isFileNotFound(err)) return false;
+    console.error(
+      `[Sync Conflict] Failed to read mirror file for database ${databaseId}; assuming changed:`,
+      err
+    );
+    return true;
   }
 }
 

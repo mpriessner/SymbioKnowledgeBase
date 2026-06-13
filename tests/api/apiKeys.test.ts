@@ -4,7 +4,11 @@ import bcrypt from "bcryptjs";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
-describe("API Key Management", () => {
+// These tests need a live Postgres (via prisma) AND a running Next.js server.
+// Skip the whole suite cleanly when no database is configured.
+const HAS_DB = Boolean(process.env.DATABASE_URL);
+
+describe.skipIf(!HAS_DB)("API Key Management", () => {
   let sessionCookie: string;
   let userId: string;
   let tenantId: string;
@@ -21,6 +25,7 @@ describe("API Key Management", () => {
 
     const user = await prisma.user.create({
       data: {
+        id: crypto.randomUUID(),
         name: "API Key Test User",
         email: "test-apikey@example.com",
         passwordHash,
@@ -180,7 +185,7 @@ describe("API Key Management", () => {
   });
 });
 
-describe("API Key Tenant Isolation", () => {
+describe.skipIf(!HAS_DB)("API Key Tenant Isolation", () => {
   let userASessionCookie: string;
   let userBSessionCookie: string;
   let tenantAId: string;
@@ -197,6 +202,7 @@ describe("API Key Tenant Isolation", () => {
 
     await prisma.user.create({
       data: {
+        id: crypto.randomUUID(),
         name: "Key User A",
         email: "test-keyiso-a@example.com",
         passwordHash,
@@ -212,6 +218,7 @@ describe("API Key Tenant Isolation", () => {
 
     await prisma.user.create({
       data: {
+        id: crypto.randomUUID(),
         name: "Key User B",
         email: "test-keyiso-b@example.com",
         passwordHash,

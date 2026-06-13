@@ -307,7 +307,16 @@ export async function deletePageFile(
 
   syncLock.acquire(absPath);
   try {
-    await fs.unlink(absPath).catch(() => {});
+    // A missing file is fine (already gone); any other unlink failure is logged
+    // rather than silently swallowed so a stuck/failing delete is diagnosable.
+    await fs.unlink(absPath).catch((err: unknown) => {
+      if ((err as { code?: string })?.code !== "ENOENT") {
+        console.error(
+          `[SyncService] Failed to delete mirror file ${absPath} for page ${pageId}:`,
+          err
+        );
+      }
+    });
     delete meta.pages[pageId];
     await atomicWrite(metaPath, JSON.stringify(meta, null, 2));
   } finally {

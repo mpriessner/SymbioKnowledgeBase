@@ -3,7 +3,11 @@ import { prisma } from "@/lib/db";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
-describe("POST /api/auth/register", () => {
+// These tests need a live Postgres (via prisma) AND a running Next.js server.
+// Skip the whole suite cleanly when no database is configured.
+const HAS_DB = Boolean(process.env.DATABASE_URL);
+
+describe.skipIf(!HAS_DB)("POST /api/auth/register", () => {
   afterAll(async () => {
     // Clean up test users
     await prisma.user.deleteMany({
@@ -108,7 +112,7 @@ describe("POST /api/auth/register", () => {
   });
 });
 
-describe("POST /api/auth/callback/credentials (login)", () => {
+describe.skipIf(!HAS_DB)("POST /api/auth/callback/credentials (login)", () => {
   beforeAll(async () => {
     // Register a user for login tests
     await fetch(`${BASE_URL}/api/auth/register`, {
@@ -182,7 +186,7 @@ describe("POST /api/auth/callback/credentials (login)", () => {
   });
 });
 
-describe("Middleware: protected routes", () => {
+describe.skipIf(!HAS_DB)("Middleware: protected routes", () => {
   it("redirects unauthenticated users to /login", async () => {
     const response = await fetch(`${BASE_URL}/pages`, {
       redirect: "manual",

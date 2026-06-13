@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { isSafeUrl } from "@/lib/editor/sanitizeTiptap";
 
 interface OgMetadata {
   title: string;
@@ -17,6 +18,14 @@ export function BookmarkView({ node, updateAttributes }: NodeViewProps) {
   const description = node.attrs.description as string;
   const favicon = node.attrs.favicon as string;
   const image = node.attrs.image as string;
+
+  // Defense-in-depth for the public, read-only /shared/[token] render path:
+  // even if a malicious javascript:/data: URL was stored before sanitization
+  // existed, never emit it as a live href/src. Unsafe link → "#"; unsafe
+  // image/favicon → omitted entirely.
+  const safeHref = isSafeUrl(url) ? url : "#";
+  const safeFavicon = favicon && isSafeUrl(favicon) ? favicon : "";
+  const safeImage = image && isSafeUrl(image) ? image : "";
 
   const [isLoading, setIsLoading] = useState(!title && !!url);
   const [_hasError, setHasError] = useState(false);
@@ -98,7 +107,7 @@ export function BookmarkView({ node, updateAttributes }: NodeViewProps) {
   return (
     <NodeViewWrapper data-testid="bookmark-block" contentEditable={false}>
       <a
-        href={url}
+        href={safeHref}
         target="_blank"
         rel="noopener noreferrer"
         className="my-3 flex cursor-pointer overflow-hidden rounded-lg border border-gray-200 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/50"
@@ -115,9 +124,9 @@ export function BookmarkView({ node, updateAttributes }: NodeViewProps) {
             </p>
           )}
           <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
-            {favicon && (
+            {safeFavicon && (
               <img
-                src={favicon}
+                src={safeFavicon}
                 alt=""
                 className="h-4 w-4"
                 onError={(e) => {
@@ -130,10 +139,10 @@ export function BookmarkView({ node, updateAttributes }: NodeViewProps) {
         </div>
 
         {/* Preview image */}
-        {image && (
+        {safeImage && (
           <div className="hidden w-[200px] shrink-0 sm:block">
             <img
-              src={image}
+              src={safeImage}
               alt=""
               className="h-full w-full object-cover"
               onError={(e) => {

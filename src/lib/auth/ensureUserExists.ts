@@ -21,11 +21,33 @@ export async function ensureUserExists(supabaseUser: User) {
     return existing;
   }
 
-  // Resolve tenant: metadata > DEFAULT_TENANT_ID env > create new workspace
-  const tenantId =
-    supabaseUser.user_metadata?.tenantId
-    ?? await resolveDefaultTenant()
-    ?? await createPersonalTenant(supabaseUser);
+  // Resolve tenant: metadata > DEFAULT_TENANT_ID env > create new workspace.
+  //
+  // Least privilege: a user who is dropped into a SHARED tenant (either one
+  // named in their auth metadata, or the env-configured DEFAULT_TENANT_ID demo
+  // workspace) is provisioned as a regular USER — auto-granting ADMIN of a
+  // shared workspace to anyone who logs in via cross-app SSO is a privilege-
+  // escalation risk. Only a user who creates their OWN personal workspace is
+  // its owner/ADMIN.
+  const metadataTenantId = supabaseUser.user_metadata?.tenantId as
+    | string
+    | undefined;
+  const sharedTenantId = metadataTenantId ?? (await resolveDefaultTenant());
+
+  let tenantId: string;
+  let userRole: "USER" | "ADMIN";
+  let memberRole: "owner" | "member";
+
+  if (sharedTenantId) {
+    tenantId = sharedTenantId;
+    userRole = "USER";
+    memberRole = "member";
+  } else {
+    // No shared tenant — create a personal workspace this user owns.
+    tenantId = await createPersonalTenant(supabaseUser);
+    userRole = "ADMIN";
+    memberRole = "owner";
+  }
 
   try {
     const user = await prisma.user.create({
@@ -33,7 +55,7 @@ export async function ensureUserExists(supabaseUser: User) {
         id: supabaseUser.id,
         email: supabaseUser.email!,
         tenantId,
-        role: "ADMIN",
+        role: userRole,
         name:
           supabaseUser.user_metadata?.full_name
           ?? supabaseUser.user_metadata?.name
@@ -51,7 +73,7 @@ export async function ensureUserExists(supabaseUser: User) {
       create: {
         userId: supabaseUser.id,
         tenantId,
-        role: "owner",
+        role: memberRole,
       },
     });
 

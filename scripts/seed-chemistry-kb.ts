@@ -142,6 +142,26 @@ async function main() {
     process.exit(1);
   }
 
+  // Destructive-op guard: --force rewrites page content and deletes existing
+  // blocks for the tenant. Refuse to run it in production, and require an
+  // explicit opt-in everywhere else, so it can never be triggered accidentally.
+  if (force) {
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "Refusing to run --force seed in production (NODE_ENV=production). " +
+          "This rewrites page content and deletes blocks for the tenant."
+      );
+      process.exit(1);
+    }
+    if (process.env.ALLOW_DESTRUCTIVE_RESET !== "true") {
+      console.error(
+        "Refusing to run --force seed: it deletes and rewrites existing Chemistry KB " +
+          "content for the tenant. Re-run with ALLOW_DESTRUCTIVE_RESET=true to confirm."
+      );
+      process.exit(1);
+    }
+  }
+
   console.log(`\n=== Seeding Chemistry KB for tenant: ${tenantId} ===\n`);
 
   // Step 1: Set up hierarchy (root + categories + index)

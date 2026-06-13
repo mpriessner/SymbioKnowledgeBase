@@ -3,6 +3,7 @@ import { withTenant } from "@/lib/auth/withTenant";
 import { errorResponse } from "@/lib/apiResponse";
 import { PAGE_GENERATION_SYSTEM_PROMPT } from "@/lib/ai/page-generation-prompt";
 import { getMeetingNotesPrompt } from "@/lib/ai/meeting-notes-prompt";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { TenantContext } from "@/types/auth";
 import { z } from "zod";
 
@@ -12,9 +13,24 @@ const PROVIDER_ENDPOINTS: Record<string, string> = {
   google: "https://generativelanguage.googleapis.com/v1beta/models",
 };
 
+/**
+ * Allowed model id shape — restricts to characters real model ids use so the value is
+ * safe to interpolate into the Google URL path (prevents request-splitting).
+ */
+const MODEL_ID_PATTERN = /^[A-Za-z0-9._\-:]+$/;
+
+/**
+ * Per-request output ceiling — caps spend per call across providers.
+ * FOLLOW-UP: a per-tenant daily token/cost budget is the durable spend control.
+ */
+const MAX_OUTPUT_TOKENS = 4096;
+
 const generatePageSchema = z.object({
   prompt: z.string().min(3).max(5000),
-  context: z.string().max(100).optional(),
+  // `context` is a mode discriminator (e.g. "meeting-notes"); the transcript itself
+  // is passed via `prompt`. The previous 100-char cap was an arbitrarily tight limit;
+  // raised to match the chat route so the field can't silently reject longer values.
+  context: z.string().max(50000).optional(),
   metadata: z
     .object({
       duration: z.string().optional(),
@@ -23,24 +39,11 @@ const generatePageSchema = z.object({
     .optional(),
   provider: z.enum(["openai", "anthropic", "google"]).optional(),
   apiKey: z.string().max(500).optional(),
-  model: z.string().max(100).optional(),
+  model: z.string().max(100).regex(MODEL_ID_PATTERN, "Invalid model identifier").optional(),
 });
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 10;
 const RATE_WINDOW_MS = 60 * 1000;
-
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT) return false;
-  entry.count++;
-  return true;
-}
 
 function getSystemPrompt(context?: string, metadata?: { duration?: string; date?: string }): string {
   if (context === "meeting-notes") {
@@ -71,12 +74,14 @@ async function streamOpenAI(
         { role: "user", content: userPrompt },
       ],
       stream: true,
-      max_tokens: 4096,
+      max_tokens: MAX_OUTPUT_TOKENS,
       temperature: 0.7,
     }),
   });
 
   if (!response.ok) {
+    // Status only — never read/log the raw provider error body.
+    console.error(`[AI Generate] OpenAI upstream error: HTTP ${response.status}`);
     throw new Error(`OpenAI API error: ${response.status}`);
   }
 
@@ -101,11 +106,12 @@ async function streamAnthropic(
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
       stream: true,
-      max_tokens: 4096,
+      max_tokens: MAX_OUTPUT_TOKENS,
     }),
   });
 
   if (!response.ok) {
+    console.error(`[AI Generate] Anthropic upstream error: HTTP ${response.status}`);
     throw new Error(`Anthropic API error: ${response.status}`);
   }
 
@@ -122,18 +128,23 @@ async function streamGoogle(
   systemPrompt: string,
   userPrompt: string
 ): Promise<Response> {
-  const url = `${PROVIDER_ENDPOINTS.google}/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  // API key goes in the header, never the query string (URL keys leak to logs/Referer).
+  const url = `${PROVIDER_ENDPOINTS.google}/${model}:streamGenerateContent?alt=sse`;
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      generationConfig: { maxOutputTokens: 4096, temperature: 0.7 },
+      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.7 },
     }),
   });
 
   if (!response.ok) {
+    console.error(`[AI Generate] Google upstream error: HTTP ${response.status}`);
     throw new Error(`Google API error: ${response.status}`);
   }
 
@@ -207,7 +218,7 @@ function pipeSSE(upstream: Response, extractContent: (json: any) => string | nul
 
 export const POST = withTenant(
   async (req: NextRequest, ctx: TenantContext) => {
-    if (!checkRateLimit(ctx.userId)) {
+    if (!checkRateLimit(`ai:generate-page:${ctx.tenantId}`, { limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS }).allowed) {
       return errorResponse("RATE_LIMITED", "Too many requests. Please wait.", undefined, 429);
     }
 

@@ -9,6 +9,7 @@ describe("env validation", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     process.env = originalEnv;
   });
 
@@ -22,7 +23,7 @@ describe("env validation", () => {
 
   it("should throw for invalid NODE_ENV", async () => {
     process.env.DATABASE_URL = "postgresql://localhost/test";
-    process.env.NODE_ENV = "staging";
+    vi.stubEnv("NODE_ENV", "staging");
 
     await expect(async () => {
       await import("@/lib/env");
@@ -31,7 +32,7 @@ describe("env validation", () => {
 
   it("should export validated env when all variables are set", async () => {
     process.env.DATABASE_URL = "postgresql://localhost/test";
-    process.env.NODE_ENV = "test";
+    vi.stubEnv("NODE_ENV", "test");
 
     const { env } = await import("@/lib/env");
 

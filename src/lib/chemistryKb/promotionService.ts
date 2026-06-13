@@ -8,10 +8,28 @@
  * Also handles capture-learning from voice agent debrief.
  */
 
+import * as crypto from "crypto";
 import { prisma } from "@/lib/db";
 import { tiptapToMarkdown } from "@/lib/agent/markdown";
 import { markdownToTiptap } from "@/lib/agent/markdown";
 import { createNotification } from "@/lib/notifications/create";
+import { findExperimentByElnId } from "./experimentLookup";
+
+/**
+ * Stable fingerprint for a captured learning. Embedded as an HTML-comment marker
+ * next to the learning so repeated debriefs (retries) don't append duplicates.
+ */
+function learningFingerprint(experimentId: string, content: string): string {
+  return crypto
+    .createHash("md5")
+    .update(`${experimentId}::${content.trim().toLowerCase()}`)
+    .digest("hex")
+    .slice(0, 12);
+}
+
+function learningMarker(fingerprint: string): string {
+  return `<!-- learn:${fingerprint} -->`;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -310,14 +328,9 @@ export async function captureLearning(
 ): Promise<CaptureLearningResult> {
   const { experimentId, learnings, debriefSummary } = request;
 
-  // Find experiment page
-  const expPage = await prisma.page.findFirst({
-    where: {
-      tenantId,
-      title: { startsWith: experimentId },
-    },
-    select: { id: true, title: true, parentId: true },
-  });
+  // Find experiment page by exact ELN id (externalId-keyed; never a loose
+  // title prefix that could match the wrong experiment).
+  const expPage = await findExperimentByElnId(tenantId, experimentId);
 
   if (!expPage) {
     throw new Error(`Experiment "${experimentId}" not found`);
@@ -325,28 +338,10 @@ export async function captureLearning(
 
   const pageUpdates: CaptureLearningResult["pageUpdates"] = [];
   let promoted = 0;
+  let duplicatesSkipped = 0;
 
-  // Format learnings as markdown
-  const learningsByType: Record<string, string[]> = {};
-  for (const learning of learnings) {
-    const label = formatLearningType(learning.type);
-    if (!learningsByType[label]) learningsByType[label] = [];
-    const confidenceTag =
-      learning.confidence === "high"
-        ? ""
-        : ` *(${learning.confidence} confidence)*`;
-    learningsByType[label].push(`- ${learning.content}${confidenceTag}`);
-  }
-
-  let learningMarkdown = "\n\n## Debrief Learnings\n\n";
-  if (debriefSummary) {
-    learningMarkdown += `> ${debriefSummary}\n\n`;
-  }
-  for (const [label, items] of Object.entries(learningsByType)) {
-    learningMarkdown += `### ${label}\n\n${items.join("\n")}\n\n`;
-  }
-
-  // Append to experiment page's DOCUMENT block
+  // Read the existing page body up front so we can dedup against learnings that
+  // were already captured by an earlier (possibly retried) debrief.
   const block = await prisma.block.findFirst({
     where: {
       pageId: expPage.id,
@@ -356,8 +351,46 @@ export async function captureLearning(
     select: { id: true, content: true },
   });
 
-  if (block) {
-    const existingMarkdown = tiptapToMarkdown(block.content);
+  const existingMarkdown = block ? tiptapToMarkdown(block.content) : "";
+
+  // Keep only learnings whose fingerprint marker isn't already on the page.
+  const newLearnings = learnings.filter((learning) => {
+    const fp = learningFingerprint(experimentId, learning.content);
+    if (existingMarkdown.includes(learningMarker(fp))) {
+      duplicatesSkipped++;
+      return false;
+    }
+    return true;
+  });
+
+  // Format the (deduplicated) learnings as markdown. Bullet text is kept clean;
+  // the per-learning fingerprint markers are collected into a single trailing
+  // comment block so future retries can detect them without polluting the body.
+  const learningsByType: Record<string, string[]> = {};
+  const fingerprints: string[] = [];
+  for (const learning of newLearnings) {
+    const label = formatLearningType(learning.type);
+    if (!learningsByType[label]) learningsByType[label] = [];
+    const confidenceTag =
+      learning.confidence === "high"
+        ? ""
+        : ` *(${learning.confidence} confidence)*`;
+    learningsByType[label].push(`- ${learning.content}${confidenceTag}`);
+    fingerprints.push(learningFingerprint(experimentId, learning.content));
+  }
+
+  // Append to experiment page's DOCUMENT block (only if there's something new).
+  if (block && newLearnings.length > 0) {
+    let learningMarkdown = "\n\n## Debrief Learnings\n\n";
+    if (debriefSummary) {
+      learningMarkdown += `> ${debriefSummary}\n\n`;
+    }
+    for (const [label, items] of Object.entries(learningsByType)) {
+      learningMarkdown += `### ${label}\n\n${items.join("\n")}\n\n`;
+    }
+    // Hidden fingerprint markers for idempotency on retried debriefs.
+    learningMarkdown += `${fingerprints.map(learningMarker).join(" ")}\n`;
+
     const updatedMarkdown = existingMarkdown + learningMarkdown;
     const updatedTiptap = markdownToTiptap(updatedMarkdown);
 
@@ -369,8 +402,10 @@ export async function captureLearning(
     pageUpdates.push({ pageId: expPage.id, action: "appended" });
   }
 
-  // Handle promotions — append to relevant Team KB pages
-  const promotableLearnings = learnings.filter(
+  // Handle promotions — append to relevant Team KB pages.
+  // Only promote learnings that are actually new (not already on the experiment
+  // page); a retried debrief must not re-promote the same advice.
+  const promotableLearnings = newLearnings.filter(
     (l) => l.promoteTo === "team" && l.confidence !== "low"
   );
 
@@ -425,29 +460,46 @@ export async function captureLearning(
           select: { name: true },
         });
 
-        let appendMarkdown = "\n\n### Recent Learnings\n\n";
+        // Dedup against learnings already promoted to this reaction-type page.
+        const rtLines: string[] = [];
+        const rtFingerprints: string[] = [];
         for (const learning of promotableLearnings) {
-          appendMarkdown += `- ${learning.content} *(from ${expPage.title}, ${user?.name ?? "unknown"})*\n`;
+          const fp = learningFingerprint(experimentId, learning.content);
+          if (rtMarkdown.includes(learningMarker(fp))) {
+            duplicatesSkipped++;
+            continue;
+          }
+          rtLines.push(
+            `- ${learning.content} *(from ${expPage.title}, ${user?.name ?? "unknown"})*`
+          );
+          rtFingerprints.push(fp);
+          promoted++;
         }
 
-        const updatedRt = rtMarkdown + appendMarkdown;
-        const updatedRtTiptap = markdownToTiptap(updatedRt);
+        if (rtLines.length > 0) {
+          const appendMarkdown =
+            `\n\n### Recent Learnings\n\n${rtLines.join("\n")}\n` +
+            `${rtFingerprints.map(learningMarker).join(" ")}\n`;
+          const updatedRt = rtMarkdown + appendMarkdown;
+          const updatedRtTiptap = markdownToTiptap(updatedRt);
 
-        await prisma.block.update({
-          where: { id: rtBlock.id },
-          data: { content: updatedRtTiptap ?? {} },
-        });
+          await prisma.block.update({
+            where: { id: rtBlock.id },
+            data: { content: updatedRtTiptap ?? {} },
+          });
 
-        pageUpdates.push({ pageId: reactionTypePage.id, action: "appended" });
-        promoted = promotableLearnings.length;
+          pageUpdates.push({ pageId: reactionTypePage.id, action: "appended" });
+        }
       }
     }
   }
 
   return {
-    captured: learnings.length,
+    captured: newLearnings.length,
     promoted,
-    conflictsDetected: 0, // Conflict detection handled by SKB-51.5
+    // Number of learnings that were already present (duplicate retries) and so
+    // were skipped rather than re-appended.
+    conflictsDetected: duplicatesSkipped,
     pageUpdates,
   };
 }

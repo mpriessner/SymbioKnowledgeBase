@@ -5,11 +5,15 @@ import { PrismaPg } from "@prisma/adapter-pg";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+// These tests require a live Postgres connection. Skip cleanly when no
+// database is configured (otherwise Prisma throws a SASL auth error).
+const HAS_DB = Boolean(process.env.DATABASE_URL);
+
 afterAll(async () => {
   await prisma.$disconnect();
 });
 
-describe("Database Schema Validation", () => {
+describe.skipIf(!HAS_DB)("Database Schema Validation", () => {
   test("all tables exist and are queryable", async () => {
     // These queries will throw if tables don't exist
     await expect(prisma.tenant.count()).resolves.toBeGreaterThanOrEqual(0);
@@ -42,7 +46,7 @@ describe("Database Schema Validation", () => {
   });
 });
 
-describe("Seed Data Validation", () => {
+describe.skipIf(!HAS_DB)("Seed Data Validation", () => {
   test("default tenant exists", async () => {
     const tenant = await prisma.tenant.findUnique({
       where: { id: "00000000-0000-0000-0000-000000000001" },
@@ -92,7 +96,7 @@ describe("Seed Data Validation", () => {
   });
 });
 
-describe("Tenant Isolation", () => {
+describe.skipIf(!HAS_DB)("Tenant Isolation", () => {
   test("user has tenantId and it matches tenant", async () => {
     const admin = await prisma.user.findFirst({
       where: { email: "admin@symbio.local" },
@@ -113,6 +117,7 @@ describe("Tenant Isolation", () => {
     await expect(
       prisma.user.create({
         data: {
+          id: crypto.randomUUID(),
           tenantId: "00000000-0000-0000-0000-000000000001",
           email: "admin@symbio.local",
           passwordHash: "duplicate",
@@ -123,7 +128,7 @@ describe("Tenant Isolation", () => {
   });
 });
 
-describe("Relationship Integrity", () => {
+describe.skipIf(!HAS_DB)("Relationship Integrity", () => {
   test("page self-referential hierarchy works", async () => {
     // Create a child page under the welcome page
     const childPage = await prisma.page.create({

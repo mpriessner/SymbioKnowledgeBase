@@ -93,7 +93,7 @@ describe("LocalGraph", () => {
         meta: { nodeCount: 0, edgeCount: 0 },
       },
       isLoading: false,
-    } as ReturnType<typeof useGraphData>);
+    } as unknown as ReturnType<typeof useGraphData>);
 
     render(<LocalGraph pageId="test-page" />, { wrapper: createWrapper() });
     fireEvent.click(screen.getByText("Local Graph"));
@@ -121,7 +121,7 @@ describe("LocalGraph", () => {
         meta: { nodeCount: 1, edgeCount: 0 },
       },
       isLoading: false,
-    } as ReturnType<typeof useGraphData>);
+    } as unknown as ReturnType<typeof useGraphData>);
 
     render(<LocalGraph pageId="test-page" />, { wrapper: createWrapper() });
     fireEvent.click(screen.getByText("Local Graph"));

@@ -1,11 +1,16 @@
 import type { AgentContext } from "./auth";
+import type { Prisma } from "@/generated/prisma/client";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 /**
  * Log an agent API action for audit purposes.
  * Only logs mutations (create, update, delete).
  *
- * TODO: Add AuditLog model to Prisma schema and persist to DB.
- * For now, logs to console.
+ * Emits a structured log line AND persists to the `AuditLog` table. Persistence
+ * is fire-and-forget: a DB failure is logged but never propagated, so auditing
+ * can never break the request it is auditing. Sensitive fields in `details` are
+ * redacted via `sanitizeDetails` before either sink.
  */
 export async function logAgentAction(
   ctx: AgentContext,
@@ -14,15 +19,43 @@ export async function logAgentAction(
   resourceId?: string,
   details?: Record<string, unknown>
 ): Promise<void> {
+  const sanitized = details ? sanitizeDetails(details) : undefined;
+
+  logger.info("agent.audit", {
+    tenantId: ctx.tenantId,
+    userId: ctx.userId,
+    apiKeyId: ctx.apiKeyId,
+    action,
+    resource,
+    resourceId: resourceId ?? null,
+    details: sanitized,
+  });
+
+  // Persist to the audit log. Fire-and-forget: never let an audit write failure
+  // surface to the caller or reject the request.
   try {
-    const sanitized = details ? sanitizeDetails(details) : undefined;
-    console.log(
-      `[AUDIT] tenant=${ctx.tenantId} user=${ctx.userId} action=${action} resource=${resource} resourceId=${resourceId ?? "N/A"}`,
-      sanitized ? JSON.stringify(sanitized) : ""
-    );
+    await prisma.auditLog.create({
+      data: {
+        tenantId: ctx.tenantId,
+        userId: ctx.userId,
+        apiKeyId: ctx.apiKeyId ?? null,
+        action,
+        resource,
+        resourceId: resourceId ?? null,
+        // `sanitized` is a JSON-serializable record; cast to satisfy Prisma's
+        // InputJsonValue type (Record<string, unknown> is structurally wider).
+        details: (sanitized ?? undefined) as
+          | Prisma.InputJsonValue
+          | undefined,
+      },
+    });
   } catch (error) {
-    // Don't fail the request if audit logging fails
-    console.error("Audit log error:", error);
+    logger.error("agent.audit.persist_failed", {
+      action,
+      resource,
+      resourceId: resourceId ?? null,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

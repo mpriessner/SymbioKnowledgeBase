@@ -249,9 +249,33 @@ function confidenceOrder(c: LearningConfidence): number {
 }
 
 /**
+ * Minimum Jaccard word-overlap (strict >) to treat two learnings as the same
+ * advice. The real defense against merging *opposite* advice (e.g. "use X at
+ * 80°C" vs "avoid X above 80°C") is the negation + category guards below — that
+ * pair only scores ~0.25 anyway, but the guards make the rule explicit and also
+ * catch high-overlap opposites like "degas the solvent" vs "do not degas the
+ * solvent".
+ */
+const MERGE_SIMILARITY_THRESHOLD = 0.5;
+
+/**
+ * Negation/caution markers used to detect *opposite-sentiment* learnings. Two
+ * texts that are textually similar but disagree on negation must never be
+ * merged (merging would collapse "do X" and "do not X" into one bullet).
+ */
+const NEGATION_RE =
+  /\b(?:avoid|never|don't|do not|without|no longer|not|cannot|can't|shouldn't|should not)\b/i;
+
+function hasNegation(text: string): boolean {
+  return NEGATION_RE.test(text);
+}
+
+/**
  * Group similar raw learnings together and merge into RankedLearnings.
- * Uses fuzzy text matching (Jaccard similarity > 0.5) to detect duplicates.
- * Keeps the best text (from the highest quality source) and merges sources.
+ * Uses fuzzy text matching (Jaccard similarity ≥ threshold) to detect
+ * duplicates, but refuses to merge across different categories or across
+ * opposite sentiment. Keeps the best text (from the highest quality source)
+ * and merges sources.
  */
 function deduplicateAndMerge(rawLearnings: RawLearning[]): RankedLearning[] {
   const groups: Array<{
@@ -265,7 +289,14 @@ function deduplicateAndMerge(rawLearnings: RawLearning[]): RankedLearning[] {
     let merged = false;
 
     for (const group of groups) {
-      if (computeTextSimilarity(learning.text, group.bestText) > 0.5) {
+      const similarEnough =
+        computeTextSimilarity(learning.text, group.bestText) >
+        MERGE_SIMILARITY_THRESHOLD;
+      const sameCategory = learning.category === group.category;
+      const sameSentiment =
+        hasNegation(learning.text) === hasNegation(group.bestText);
+
+      if (similarEnough && sameCategory && sameSentiment) {
         // Merge into this group
         const alreadyHasSource = group.sources.some(
           (s) => s.title === learning.source.title
@@ -273,14 +304,15 @@ function deduplicateAndMerge(rawLearnings: RawLearning[]): RankedLearning[] {
         if (!alreadyHasSource) {
           group.sources.push(learning.source);
         }
+        // Compare against the EXISTING max before pushing this score, guarding
+        // the empty case (Math.max(...[]) is -Infinity).
+        const priorScores = group.qualityScores;
+        const priorMax =
+          priorScores.length > 0 ? Math.max(...priorScores) : -Infinity;
         group.qualityScores.push(learning.qualityScore);
         // Keep text from higher-quality source
-        if (learning.qualityScore > Math.max(...group.qualityScores.slice(0, -1))) {
+        if (learning.qualityScore > priorMax) {
           group.bestText = learning.text;
-        }
-        // Upgrade category to warning if any source is a warning
-        if (learning.category === "warning") {
-          group.category = "warning";
         }
         merged = true;
         break;

@@ -227,11 +227,13 @@ describe("generateExperimentPage", () => {
     expect(hasWikilink(output, "EXP-2026-0038")).toBe(true);
   });
 
-  test("includes conditions table with all entries", () => {
-    expect(output).toContain("| **Temperature** |");
-    expect(output).toContain("| **Solvent** |");
-    expect(output).toContain("| **Atmosphere** |");
-    expect(output).toContain("| **Duration** |");
+  test("includes conditions list with all entries", () => {
+    // Reaction conditions are rendered as a bullet list ("- **Parameter:** value"),
+    // not a markdown table.
+    expect(output).toContain("- **Temperature:** 80 °C");
+    expect(output).toContain("- **Solvent:** THF/H2O (3:1)");
+    expect(output).toContain("- **Atmosphere:** Nitrogen");
+    expect(output).toContain("- **Duration:** 4 hours");
   });
 
   test("includes procedure steps", () => {

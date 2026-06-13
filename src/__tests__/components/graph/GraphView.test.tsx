@@ -90,7 +90,7 @@ describe("GraphView", () => {
         meta: { nodeCount: 0, edgeCount: 0 },
       },
       isLoading: false,
-    } as ReturnType<typeof useGraphData>);
+    } as unknown as ReturnType<typeof useGraphData>);
 
     render(<GraphView />, { wrapper: createWrapper() });
     expect(screen.getByText("No pages to display.")).toBeInTheDocument();

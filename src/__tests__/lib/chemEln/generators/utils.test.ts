@@ -8,6 +8,7 @@ import {
   reactionTypeWikilink,
   buildTable,
 } from "@/lib/chemEln/generators/utils";
+import type { ChemicalRef } from "@/lib/chemEln/types";
 
 describe("toTitleCase", () => {
   it("should capitalize the first letter of each word", () => {
@@ -54,7 +55,9 @@ describe("experimentWikilink", () => {
 
 describe("chemicalWikilink", () => {
   it("should create wikilink with title-cased chemical name", () => {
-    expect(chemicalWikilink({ name: "sodium chloride" })).toBe(
+    expect(
+      chemicalWikilink({ name: "sodium chloride" } as ChemicalRef)
+    ).toBe(
       "[[Sodium Chloride]]"
     );
   });

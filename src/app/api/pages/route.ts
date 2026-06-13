@@ -42,6 +42,10 @@ export const GET = withTenant(
 
       const where: Record<string, unknown> = {
         tenantId: context.tenantId,
+        // Exclude soft-deleted pages from listings (page DELETE now sets
+        // deletedAt instead of hard-deleting; deleted pages must not resurface
+        // in the page list).
+        deletedAt: null,
       };
 
       // Filter by parentId: if explicitly provided, filter by it

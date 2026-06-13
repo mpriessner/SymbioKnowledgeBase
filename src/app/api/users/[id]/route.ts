@@ -39,16 +39,18 @@ function serializeUser(user: {
   };
 }
 
-// GET /api/users/:id — Get a single user (admin only)
+// GET /api/users/:id — Get a single user (admin only, scoped to caller's tenant)
 export const GET = withAdmin(
-  async (_req: NextRequest, _ctx: TenantContext, params: Record<string, string>) => {
+  async (_req: NextRequest, ctx: TenantContext, params: Record<string, string>) => {
     const idParsed = userIdSchema.safeParse(params.id);
     if (!idParsed.success) {
       return errorResponse("VALIDATION_ERROR", "Invalid user ID", undefined, 400);
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: idParsed.data },
+    // Scope to the caller's tenant — a user in another tenant must be invisible
+    // (404), never readable cross-tenant (IDOR).
+    const user = await prisma.user.findFirst({
+      where: { id: idParsed.data, tenantId: ctx.tenantId },
       select: userSelect,
     });
 
@@ -60,9 +62,10 @@ export const GET = withAdmin(
   }
 );
 
-// PUT /api/users/:id — Update user name and/or role (admin only)
+// PUT /api/users/:id — Update user name and/or role
+// (admin only, scoped to caller's tenant; cannot self-promote/demote)
 export const PUT = withAdmin(
-  async (req: NextRequest, _ctx: TenantContext, params: Record<string, string>) => {
+  async (req: NextRequest, ctx: TenantContext, params: Record<string, string>) => {
     const idParsed = userIdSchema.safeParse(params.id);
     if (!idParsed.success) {
       return errorResponse("VALIDATION_ERROR", "Invalid user ID", undefined, 400);
@@ -82,8 +85,24 @@ export const PUT = withAdmin(
       );
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { id: idParsed.data },
+    // Privilege-escalation guard: an admin may not change their OWN role
+    // (e.g. lock themselves out, or be unable to self-demote unexpectedly).
+    // Role changes to other accounts in the tenant remain allowed.
+    if (parsed.data.role !== undefined && idParsed.data === ctx.userId) {
+      return errorResponse(
+        "FORBIDDEN",
+        "You cannot change your own role",
+        undefined,
+        403
+      );
+    }
+
+    // Scope to the caller's tenant. A user outside the tenant is treated as
+    // not found (404) — this blocks cross-tenant edits, including any attempt
+    // to change a foreign user's role (IDOR / cross-tenant privilege escalation).
+    const existingUser = await prisma.user.findFirst({
+      where: { id: idParsed.data, tenantId: ctx.tenantId },
+      select: { id: true },
     });
 
     if (!existingUser) {
@@ -107,11 +126,21 @@ export const PUT = withAdmin(
       );
     }
 
-    const updatedUser = await prisma.user.update({
-      where: { id: idParsed.data },
+    // updateMany with the tenant guard keeps the write itself tenant-scoped
+    // (defense in depth — the row was already verified above).
+    await prisma.user.updateMany({
+      where: { id: idParsed.data, tenantId: ctx.tenantId },
       data: updateData,
+    });
+
+    const updatedUser = await prisma.user.findFirst({
+      where: { id: idParsed.data, tenantId: ctx.tenantId },
       select: userSelect,
     });
+
+    if (!updatedUser) {
+      return errorResponse("NOT_FOUND", "User not found", undefined, 404);
+    }
 
     return successResponse(serializeUser(updatedUser));
   }
@@ -135,8 +164,11 @@ export const DELETE = withAdmin(
       );
     }
 
-    const existingUser = await prisma.user.findUnique({
-      where: { id: idParsed.data },
+    // Scope to the caller's tenant — a foreign user is not found (404),
+    // never deactivatable cross-tenant (IDOR).
+    const existingUser = await prisma.user.findFirst({
+      where: { id: idParsed.data, tenantId: ctx.tenantId },
+      select: { id: true, deactivatedAt: true },
     });
 
     if (!existingUser) {
@@ -152,11 +184,19 @@ export const DELETE = withAdmin(
       );
     }
 
-    const deactivatedUser = await prisma.user.update({
-      where: { id: idParsed.data },
+    await prisma.user.updateMany({
+      where: { id: idParsed.data, tenantId: ctx.tenantId },
       data: { deactivatedAt: new Date() },
+    });
+
+    const deactivatedUser = await prisma.user.findFirst({
+      where: { id: idParsed.data, tenantId: ctx.tenantId },
       select: userSelect,
     });
+
+    if (!deactivatedUser) {
+      return errorResponse("NOT_FOUND", "User not found", undefined, 404);
+    }
 
     return successResponse(serializeUser(deactivatedUser));
   }

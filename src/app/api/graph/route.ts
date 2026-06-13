@@ -4,7 +4,41 @@ import { withTenant } from "@/lib/auth/withTenant";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { buildGraphData } from "@/lib/graph/builder";
 import { GraphQuerySchema } from "@/types/graph";
+import type { GraphData } from "@/types/graph";
 import type { TenantContext } from "@/types/auth";
+
+/**
+ * Max nodes returned for the GLOBAL graph. The force-directed canvas (2D and
+ * especially the 3D/WebGL renderer) degrades badly past a few hundred nodes,
+ * and an unbounded payload can freeze the browser tab on large tenants. We cap
+ * to the top-N most-connected pages and report the true total so the client
+ * can show a "showing N of M" notice. Local/depth mode is intentionally left
+ * uncapped — it's already bounded by BFS depth.
+ */
+const GLOBAL_NODE_CAP = 500;
+
+/**
+ * Reduce a graph to its top-N nodes by connection count, pruning any edges
+ * whose endpoints were dropped. Pure + side-effect free so it stays testable.
+ */
+export function capGraphToTopNodes(
+  graph: GraphData,
+  maxNodes: number
+): GraphData {
+  if (graph.nodes.length <= maxNodes) return graph;
+
+  // Highest linkCount first; stable enough for a deterministic cap.
+  const topNodes = [...graph.nodes]
+    .sort((a, b) => b.linkCount - a.linkCount)
+    .slice(0, maxNodes);
+
+  const keptIds = new Set(topNodes.map((n) => n.id));
+  const edges = graph.edges.filter(
+    (e) => keptIds.has(e.source) && keptIds.has(e.target)
+  );
+
+  return { nodes: topNodes, edges };
+}
 
 /**
  * GET /api/graph
@@ -51,9 +85,18 @@ export const GET = withTenant(async (req: NextRequest, ctx: TenantContext) => {
     // Build graph data
     const graphData = await buildGraphData(ctx.tenantId, pageId, depth);
 
-    return successResponse(graphData, {
-      nodeCount: graphData.nodes.length,
-      edgeCount: graphData.edges.length,
+    // Cap only the global graph; local/depth mode is already bounded by BFS.
+    const totalNodes = graphData.nodes.length;
+    const responseData = pageId
+      ? graphData
+      : capGraphToTopNodes(graphData, GLOBAL_NODE_CAP);
+    const truncated = responseData.nodes.length < totalNodes;
+
+    return successResponse(responseData, {
+      nodeCount: responseData.nodes.length,
+      edgeCount: responseData.edges.length,
+      totalNodes,
+      truncated,
     });
   } catch (error) {
     console.error("Failed to build graph data:", error);

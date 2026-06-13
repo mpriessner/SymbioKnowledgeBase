@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { stringify as yamlStringify } from "yaml";
 import { prisma } from "@/lib/db";
 import {
   findExperimentByElnId,
@@ -8,9 +9,20 @@ import {
 import { setupChemistryKbHierarchy } from "@/lib/chemistryKb/setupHierarchy";
 import { markWikilinksAsDeleted } from "@/lib/wikilinks/renameUpdater";
 import { markdownToTiptap } from "@/lib/markdown/deserializer";
+import { extractPlainText } from "@/lib/search/indexer";
 import { processAgentWikilinks } from "@/lib/agent/wikilinks";
 import { deletePageFile } from "@/lib/sync/SyncService";
+import type { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
+
+/** Postgres unique-constraint violation surfaced by Prisma. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: string }).code === "P2002"
+  );
+}
 
 const SYNC_SERVICE_KEY = process.env.SYNC_SERVICE_KEY;
 
@@ -179,17 +191,21 @@ function generateExperimentKbMarkdown(
 
   const lines: string[] = [];
 
-  // Frontmatter
+  // Frontmatter — built via the yaml library so values containing quotes,
+  // colons or newlines (e.g. a researcher name or summary) are escaped safely
+  // instead of being string-interpolated into invalid YAML.
+  const frontmatter: Record<string, unknown> = {
+    title,
+    eln_id: elnId,
+  };
+  if (researcher) frontmatter.researcher = researcher;
+  frontmatter.date = date;
+  frontmatter.status = status;
+  if (reactionType) frontmatter.reaction_type = reactionType;
+  frontmatter.tags = [`eln:${elnId}`, "synced"];
+
   lines.push("---");
-  lines.push(`title: "${title}"`);
-  lines.push(`eln_id: "${elnId}"`);
-  if (researcher) lines.push(`researcher: "${researcher}"`);
-  lines.push(`date: "${date}"`);
-  lines.push(`status: "${status}"`);
-  if (reactionType) lines.push(`reaction_type: "${reactionType}"`);
-  lines.push("tags:");
-  lines.push(`  - "eln:${elnId}"`);
-  lines.push(`  - "synced"`);
+  lines.push(yamlStringify(frontmatter).trimEnd());
   lines.push("---");
   lines.push("");
 
@@ -282,32 +298,58 @@ async function handleCreate(
   });
   const nextPosition = (maxPosition._max.position ?? -1) + 1;
 
-  // Create the page
-  const page = await prisma.page.create({
-    data: {
-      tenantId,
-      title,
-      icon: "\u{1F9EA}",
-      oneLiner: fields.summary || null,
-      parentId: targetParentId,
-      position: nextPosition,
-      spaceType: "TEAM",
-      teamspaceId: hierarchy.teamspaceId || undefined,
-    },
-  });
+  // Create the page AND its content block atomically. Without a transaction a
+  // block-create failure left a contentless page; and two concurrent syncs
+  // could both pass the existence check and create duplicate pages. The unique
+  // (tenantId, externalId) index now makes the second writer collide at the DB
+  // — we treat that P2002 as "already exists" so the call stays idempotent.
+  let page: { id: string };
+  try {
+    page = await prisma.$transaction(async (tx) => {
+      const created = await tx.page.create({
+        data: {
+          tenantId,
+          externalId: elnId,
+          title,
+          icon: "\u{1F9EA}",
+          oneLiner: fields.summary || null,
+          parentId: targetParentId,
+          position: nextPosition,
+          spaceType: "TEAM",
+          teamspaceId: hierarchy.teamspaceId || undefined,
+        },
+      });
 
-  // Create the content block
-  await prisma.block.create({
-    data: {
-      tenantId,
-      pageId: page.id,
-      type: "DOCUMENT",
-      content: tiptap as unknown as import("@/generated/prisma/client").Prisma.InputJsonValue,
-      position: 0,
-    },
-  });
+      await tx.block.create({
+        data: {
+          tenantId,
+          pageId: created.id,
+          type: "DOCUMENT",
+          content: tiptap as unknown as Prisma.InputJsonValue,
+          position: 0,
+        },
+      });
 
-  // Process wikilinks (creates PageLink records for [[references]])
+      return created;
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      const existingRace = await findExperimentByElnId(tenantId, elnId);
+      if (existingRace) {
+        console.log(`${logPrefix} Concurrent create collapsed to existing: ${existingRace.id}`);
+        return {
+          status: 200,
+          body: { status: "exists", id: existingRace.id, title: existingRace.title },
+        };
+      }
+    }
+    throw error;
+  }
+
+  // Process wikilinks (creates PageLink records for [[references]]).
+  // Kept outside the transaction: wikilink resolution touches many rows and a
+  // failure here must not roll back the page itself (the page+block are the
+  // durable record; links are reconcilable).
   await processAgentWikilinks(page.id, tenantId, tiptap);
 
   const folder = isArchived ? "Archive" : "Experiments";
@@ -427,8 +469,53 @@ async function handlePurge(
   }
 
   const pageId = page.id;
-  await prisma.page.delete({ where: { id: pageId } });
-  deletePageFile(tenantId, pageId).catch(() => {});
+
+  // Snapshot the document content as a recoverable version BEFORE destroying it,
+  // then delete the page, its blocks, links and wikilinks atomically. Previously
+  // this was a single unguarded hard delete with no content capture — an
+  // accidental/duplicate purge was unrecoverable.
+  const docBlock = await prisma.block.findFirst({
+    where: { pageId, tenantId, type: "DOCUMENT" },
+    select: { content: true },
+  });
+
+  // Notify pages that link to this one (own prisma writes, not transactional here).
+  await markWikilinksAsDeleted(pageId, tenantId);
+
+  await prisma.$transaction(async (tx) => {
+    if (docBlock) {
+      const content = docBlock.content as unknown as Prisma.InputJsonValue;
+      const latest = await tx.documentVersion.findFirst({
+        where: { pageId },
+        orderBy: { version: "desc" },
+        select: { version: true },
+      });
+      await tx.documentVersion.create({
+        data: {
+          pageId,
+          tenantId,
+          version: (latest?.version ?? 0) + 1,
+          content,
+          plainText: extractPlainText(
+            docBlock.content as Parameters<typeof extractPlainText>[0]
+          ),
+          changeType: "AUTO_SYNC",
+          changeSource: "sync/experiments:purge",
+          changeNotes: "Snapshot captured before ELN-triggered purge",
+        },
+      });
+    }
+
+    await tx.block.deleteMany({ where: { pageId, tenantId } });
+    await tx.pageLink.deleteMany({
+      where: { OR: [{ sourcePageId: pageId }, { targetPageId: pageId }] },
+    });
+    await tx.page.delete({ where: { id: pageId } });
+  });
+
+  deletePageFile(tenantId, pageId).catch((err) =>
+    console.error(`${logPrefix} Failed to delete mirror file for ${pageId}:`, err)
+  );
 
   console.log(`${logPrefix} Purged: ${page.title} (${pageId})`);
   return { status: 200, body: { status: "purged", id: pageId } };

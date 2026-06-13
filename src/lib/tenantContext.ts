@@ -116,13 +116,31 @@ export async function getTenantContext(
       };
     }
   } else {
-    // Supabase not configured — use default dev tenant (local dev mode)
-    const defaultTenantId = process.env.DEFAULT_TENANT_ID || "00000000-0000-4000-a000-000000000001";
-    return {
-      tenantId: defaultTenantId,
-      userId: "dev-user",
-      role: "ADMIN",
-    };
+    // Supabase is not configured (env unset or placeholder).
+    //
+    // FAIL CLOSED: never synthesize an ADMIN identity from a missing config.
+    // In production this is always an authentication failure. The convenient
+    // "default dev tenant as ADMIN" fallback is allowed only in non-production
+    // AND only when explicitly opted into via ALLOW_DEV_AUTH=true.
+    const isProduction = process.env.NODE_ENV === "production";
+    const devAuthAllowed = process.env.ALLOW_DEV_AUTH === "true";
+
+    if (!isProduction && devAuthAllowed) {
+      const defaultTenantId =
+        process.env.DEFAULT_TENANT_ID ||
+        "00000000-0000-4000-a000-000000000001";
+      return {
+        tenantId: defaultTenantId,
+        userId: "dev-user",
+        role: "ADMIN",
+      };
+    }
+
+    throw new AuthenticationError(
+      "Authentication is not configured. Supabase environment variables are missing.",
+      401,
+      "UNAUTHORIZED"
+    );
   }
 
   // 3. No valid authentication found

@@ -1,9 +1,7 @@
 import { NextRequest } from "next/server";
 import { errorResponse } from "@/lib/apiResponse";
-import { prisma } from "@/lib/db";
+import { resolveApiKey } from "@/lib/apiAuth";
 import { checkRateLimit } from "./ratelimit";
-import bcrypt from "bcryptjs";
-import { createHash } from "crypto";
 
 export interface AgentContext {
   tenantId: string;
@@ -22,8 +20,12 @@ type AgentHandler = (
 
 /**
  * Auth middleware for Agent API endpoints.
- * Supports API key (skb_live_*) and fallback mock auth.
- * JWT validation deferred to EPIC-19 (Supabase Auth Migration).
+ *
+ * Authentication is API-key only: the Bearer token MUST be a valid, non-revoked
+ * `skb_` key, resolved by the canonical verifier in `@/lib/apiAuth`. There is no
+ * mock/default-tenant fallback — any token that does not resolve to a real key
+ * is rejected with 401. Scopes come from the key itself and are enforced per
+ * HTTP method below.
  */
 export function withAgentAuth(handler: AgentHandler) {
   return async (
@@ -52,21 +54,26 @@ export function withAgentAuth(handler: AgentHandler) {
       );
     }
 
+    // API-key-only authentication. Any token that is not a valid, non-revoked
+    // `skb_` key is rejected — there is no mock/default-tenant fallback.
     let ctx: AgentContext;
 
     try {
-      if (token.startsWith("skb_")) {
-        // API Key authentication
-        ctx = await authenticateApiKey(token);
-      } else {
-        // TODO (EPIC-19): Supabase JWT authentication
-        // For now, use default tenant from environment
-        ctx = {
-          tenantId: process.env.DEFAULT_TENANT_ID || "mock-tenant-id",
-          userId: "mock-user-id",
-          scopes: ["read", "write"],
-        };
+      const apiKeyContext = await resolveApiKey(authHeader);
+      if (!apiKeyContext) {
+        return errorResponse(
+          "UNAUTHORIZED",
+          "Invalid or revoked API key",
+          undefined,
+          401
+        );
       }
+      ctx = {
+        tenantId: apiKeyContext.tenantId,
+        userId: apiKeyContext.userId,
+        apiKeyId: apiKeyContext.apiKeyId,
+        scopes: apiKeyContext.scopes,
+      };
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Authentication failed";
@@ -138,51 +145,4 @@ export function withAgentAuth(handler: AgentHandler) {
 
     return response;
   };
-}
-
-/**
- * Authenticate using an API key (skb_live_* format).
- * Supports both SHA-256 (from /api/keys) and bcrypt (from /api/settings/api-keys) hashed keys.
- */
-async function authenticateApiKey(token: string): Promise<AgentContext> {
-  // Try SHA-256 lookup first (fast, O(1))
-  const sha256Hash = createHash("sha256").update(token).digest("hex");
-  const sha256Match = await prisma.apiKey.findFirst({
-    where: { keyHash: sha256Hash, revokedAt: null },
-  });
-
-  if (sha256Match) {
-    prisma.apiKey
-      .update({ where: { id: sha256Match.id }, data: { lastUsedAt: new Date() } })
-      .catch(() => {});
-    return {
-      tenantId: sha256Match.tenantId,
-      userId: sha256Match.userId,
-      apiKeyId: sha256Match.id,
-      scopes: ["read", "write"],
-    };
-  }
-
-  // Fall back to bcrypt prefix lookup
-  const keyPrefix = token.substring(0, 15);
-  const candidates = await prisma.apiKey.findMany({
-    where: { keyPrefix, revokedAt: null },
-  });
-
-  for (const apiKey of candidates) {
-    const matches = await bcrypt.compare(token, apiKey.keyHash);
-    if (matches) {
-      prisma.apiKey
-        .update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } })
-        .catch(() => {});
-      return {
-        tenantId: apiKey.tenantId,
-        userId: apiKey.userId,
-        apiKeyId: apiKey.id,
-        scopes: ["read", "write"],
-      };
-    }
-  }
-
-  throw new Error("Invalid API key");
 }

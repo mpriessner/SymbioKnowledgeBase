@@ -16,6 +16,12 @@ import {
   type ChemElnClient as FetcherClient,
 } from "../experimentFetcher";
 
+/**
+ * Sentinel used in the failed-experiment set when a failure cannot be tied to a
+ * specific experiment (forces a conservative, non-advancing watermark).
+ */
+const UNKNOWN_FAILURE = "__unknown_failure__";
+
 export interface IncrementalSyncOptions {
   tenantId: string;
   dryRun?: boolean;
@@ -61,6 +67,7 @@ export class IncrementalSyncRunner {
     options: IncrementalSyncOptions,
   ): Promise<IncrementalSyncResult> {
     const startTime = Date.now();
+    const runStartIso = new Date(startTime).toISOString();
     const errors: string[] = [];
 
     // 1. Load enhanced sync state
@@ -198,8 +205,20 @@ export class IncrementalSyncRunner {
       }
     }
 
-    // 7. Update sync state with new timestamp and content hashes
-    this.deps.stateManager.setLastSyncTimestamp(new Date().toISOString());
+    // 7. Update sync state — but never advance the cursor PAST a record that
+    // failed to propagate, or that record would be skipped forever. If every
+    // record succeeded we advance to "now"; otherwise we advance only up to
+    // (just before) the earliest failing record so failures are retried next
+    // run. If we cannot determine a safe watermark, we leave the cursor where
+    // it was.
+    const safeWatermark = this.computeSafeWatermark(
+      runStartIso,
+      errors.length > 0 ? this.collectFailedExperimentIds(propagationResult, entityResult, changeSet) : new Set<string>(),
+      rawExperiments,
+    );
+    if (safeWatermark) {
+      this.deps.stateManager.setLastSyncTimestamp(safeWatermark);
+    }
     try {
       await this.deps.stateManager.save();
     } catch (error) {
@@ -241,6 +260,80 @@ export class IncrementalSyncRunner {
       start: queryTimestamp,
       end: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Collect the ELN ids of experiments whose propagation/entity handling failed.
+   * Entity-handler errors do not carry an experiment id, so their presence is
+   * signalled with the sentinel {@link UNKNOWN_FAILURE} which forces a
+   * conservative (non-advancing) watermark.
+   */
+  private collectFailedExperimentIds(
+    propagationResult: PropagationResult | null,
+    entityResult: EntityHandlerResult | null,
+    changeSet: ChangeSet,
+  ): Set<string> {
+    const failed = new Set<string>();
+
+    for (const err of propagationResult?.errors ?? []) {
+      failed.add(err.experimentId);
+    }
+
+    // Entity errors can't be tied back to a single experiment — be safe and
+    // refuse to advance past anything in this batch.
+    if ((entityResult?.errors.length ?? 0) > 0) {
+      failed.add(UNKNOWN_FAILURE);
+    }
+
+    // Defensive: if errors were recorded but none mapped to an experiment, also
+    // refuse to advance.
+    void changeSet;
+    return failed;
+  }
+
+  /**
+   * Compute the timestamp the cursor may safely advance to.
+   *
+   * - No failures → advance to the run-start time (caught everything up to "now").
+   * - Failures with an unknown experiment (e.g. entity-handler error) → return
+   *   null (do not advance; retry the whole batch next run).
+   * - Failures tied to specific experiments → advance to just before the
+   *   earliest failing record's timestamp, so failed (and later) records are
+   *   re-queried next run while successfully-synced earlier records are not.
+   */
+  private computeSafeWatermark(
+    runStartIso: string,
+    failedExperimentIds: Set<string>,
+    rawExperiments: ExperimentData[],
+  ): string | null {
+    if (failedExperimentIds.size === 0) {
+      return runStartIso;
+    }
+
+    if (failedExperimentIds.has(UNKNOWN_FAILURE)) {
+      return null;
+    }
+
+    let earliestFailureMs: number | null = null;
+    for (const exp of rawExperiments) {
+      if (!failedExperimentIds.has(exp.id)) continue;
+      const ts = Date.parse(exp.createdAt ?? "");
+      if (Number.isNaN(ts)) {
+        // Can't place this failure on the timeline — don't advance at all.
+        return null;
+      }
+      earliestFailureMs =
+        earliestFailureMs === null ? ts : Math.min(earliestFailureMs, ts);
+    }
+
+    if (earliestFailureMs === null) {
+      // Failures referenced ids we didn't fetch — be conservative.
+      return null;
+    }
+
+    // Advance to 1ms before the earliest failure so that record is re-included
+    // by the next (inclusive) date-range query.
+    return new Date(earliestFailureMs - 1).toISOString();
   }
 
   private recommendNextSync(changeSummary: {

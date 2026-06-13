@@ -5,6 +5,7 @@ import { GraphView } from "@/components/graph/GraphView";
 import type { GraphRefHandle } from "@/components/graph/GraphView";
 import { Graph3DView } from "@/components/graph/Graph3DView";
 import { GraphControls } from "@/components/graph/GraphControls";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useGraphData } from "@/hooks/useGraphData";
 import { useGraphFilters } from "@/hooks/useGraphFilters";
 import { computeGraphMetrics } from "@/lib/graph/metrics";
@@ -38,6 +39,17 @@ function GraphPageContent() {
   const { data } = useGraphData();
   const { filters, updateFilter, resetFilters, filteredData, isFiltered } =
     useGraphFilters(data?.data);
+
+  // The global graph caps the returned node set server-side (top-N by
+  // connection count) so a huge tenant can't freeze the canvas. Surface a
+  // "showing N of M" notice when the result was truncated. `totalNodes` is an
+  // extra meta field added by the API; read it defensively.
+  const graphMeta = data?.meta as
+    | { totalNodes?: number; truncated?: boolean }
+    | undefined;
+  const totalNodes = graphMeta?.totalNodes ?? data?.data?.nodes.length ?? 0;
+  const shownNodes = data?.data?.nodes.length ?? 0;
+  const isTruncated = graphMeta?.truncated === true && totalNodes > shownNodes;
 
   const handleGraphRef = useCallback((ref: GraphRefHandle | null) => {
     graphRefHandle.current = ref;
@@ -151,32 +163,42 @@ function GraphPageContent() {
           onSizeModeChange={setSizeMode}
         />
 
-        <div className="flex-1">
-          {viewMode === "2d" ? (
-            <GraphView
-              overrideData={filteredData}
-              showLabels={filters.showLabels}
-              showEdgeLabels={filters.showEdgeLabels}
-              showNodes={filters.showNodes}
-              showEdges={filters.showEdges}
-              onGraphRef={handleGraphRef}
-              highlightedNodes={highlightedNodes}
-              spacing={spacing}
-              nodeSize={nodeSize}
-              sizeMode={sizeMode}
-            />
-          ) : (
-            <Graph3DView
-              overrideData={filteredData}
-              showLabels={filters.showLabels}
-              showEdgeLabels={filters.showEdgeLabels}
-              showNodes={filters.showNodes}
-              showEdges={filters.showEdges}
-              spacing={spacing}
-              nodeSize={nodeSize}
-              sizeMode={sizeMode}
-            />
+        <div className="relative flex-1">
+          {isTruncated && (
+            <div className="absolute right-4 top-4 z-10 rounded-md border border-yellow-500/50 bg-yellow-50 px-3 py-2 text-xs text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+              Showing {shownNodes.toLocaleString()} of{" "}
+              {totalNodes.toLocaleString()} pages (most connected)
+            </div>
           )}
+          {/* A WebGL/canvas throw here would otherwise white-screen the page.
+              The boundary keeps the header + controls usable and offers retry. */}
+          <ErrorBoundary key={viewMode}>
+            {viewMode === "2d" ? (
+              <GraphView
+                overrideData={filteredData}
+                showLabels={filters.showLabels}
+                showEdgeLabels={filters.showEdgeLabels}
+                showNodes={filters.showNodes}
+                showEdges={filters.showEdges}
+                onGraphRef={handleGraphRef}
+                highlightedNodes={highlightedNodes}
+                spacing={spacing}
+                nodeSize={nodeSize}
+                sizeMode={sizeMode}
+              />
+            ) : (
+              <Graph3DView
+                overrideData={filteredData}
+                showLabels={filters.showLabels}
+                showEdgeLabels={filters.showEdgeLabels}
+                showNodes={filters.showNodes}
+                showEdges={filters.showEdges}
+                spacing={spacing}
+                nodeSize={nodeSize}
+                sizeMode={sizeMode}
+              />
+            )}
+          </ErrorBoundary>
         </div>
       </div>
     </div>

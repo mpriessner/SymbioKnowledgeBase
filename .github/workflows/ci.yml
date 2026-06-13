@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: typecheck · test · prisma validate · lint
+    runs-on: ubuntu-latest
+
+    # Postgres service so the DB-guarded tests (describe.skipIf(!DATABASE_URL))
+    # actually run instead of self-skipping.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: symbio
+          POSTGRES_PASSWORD: symbio
+          POSTGRES_DB: symbio_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U symbio -d symbio_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Points Prisma + the DB-guarded vitest suites at the service container.
+      DATABASE_URL: "postgresql://symbio:symbio@localhost:5432/symbio_test?schema=public"
+      # Non-secret placeholders so env validation / Supabase-aware code has values.
+      NEXT_PUBLIC_SUPABASE_URL: "http://localhost:54341"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "ci-anon-key-placeholder"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations to test database
+        run: npx prisma migrate deploy
+
+      # ── Blocking gates ───────────────────────────────────────────────
+      - name: Typecheck (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: Unit + integration tests (vitest)
+        run: npx vitest run
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      # ── Non-blocking gate (reported but does not fail the build) ─────
+      # The repo carries ~190 pre-existing no-unused-vars warnings spread
+      # across files. Keep lint visible but non-blocking until that debt is
+      # cleared.
+      # TODO: make blocking once lint debt cleared
+      - name: Lint (eslint)
+        continue-on-error: true
+        run: npx eslint .

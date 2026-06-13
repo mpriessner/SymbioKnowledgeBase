@@ -1,37 +1,57 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest } from "next/server";
-import {
-  getTenantContext,
-  AuthenticationError,
-} from "@/lib/tenantContext";
 
-// Mock next-auth/jwt
-vi.mock("next-auth/jwt", () => ({
-  getToken: vi.fn(),
-}));
+// ── Mocks ────────────────────────────────────────────────────────────────
+// getTenantContext depends on: the canonical API-key verifier (apiAuth),
+// the Supabase server client (@supabase/ssr), and the user-provisioning
+// helper (ensureUserExists). We mock all three so we can drive each branch.
 
-// Mock apiAuth
 vi.mock("@/lib/apiAuth", () => ({
   resolveApiKey: vi.fn(),
 }));
 
-import { getToken } from "next-auth/jwt";
+const mockGetUser = vi.fn();
+vi.mock("@supabase/ssr", () => ({
+  createServerClient: vi.fn(() => ({
+    auth: { getUser: mockGetUser },
+  })),
+}));
+
+vi.mock("@/lib/auth/ensureUserExists", () => ({
+  ensureUserExists: vi.fn(),
+}));
+
+import { getTenantContext, AuthenticationError } from "@/lib/tenantContext";
 import { resolveApiKey } from "@/lib/apiAuth";
+import { ensureUserExists } from "@/lib/auth/ensureUserExists";
 
-const mockedGetToken = vi.mocked(getToken);
 const mockedResolveApiKey = vi.mocked(resolveApiKey);
+const mockedEnsureUserExists = vi.mocked(ensureUserExists);
 
-function createMockRequest(
-  headers: Record<string, string> = {}
-): NextRequest {
+// Placeholder Supabase URL that getTenantContext treats as "configured".
+const VALID_SUPABASE_URL = "http://localhost:54341";
+const VALID_SUPABASE_KEY = "anon-key";
+
+function createMockRequest(headers: Record<string, string> = {}): NextRequest {
   const headersInit = new Headers();
   Object.entries(headers).forEach(([key, value]) =>
     headersInit.set(key, value)
   );
-
   return new NextRequest("http://localhost:3000/api/test", {
     headers: headersInit,
   });
+}
+
+/** Configure Supabase env so the cookie-session branch is reachable. */
+function withSupabaseConfigured() {
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", VALID_SUPABASE_URL);
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", VALID_SUPABASE_KEY);
+}
+
+/** Clear Supabase env so the "not configured" branch is reachable. */
+function withSupabaseUnconfigured() {
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+  vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "");
 }
 
 describe("getTenantContext", () => {
@@ -39,180 +59,146 @@ describe("getTenantContext", () => {
     vi.clearAllMocks();
   });
 
-  it("resolves tenant context from JWT session", async () => {
-    mockedGetToken.mockResolvedValue({
-      userId: "user-123",
-      tenantId: "tenant-456",
-      role: "USER",
-      sub: "user-123",
-      iat: 0,
-      exp: 0,
-      jti: "",
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  // ── API key path ─────────────────────────────────────────────────────
+  describe("API key authentication", () => {
+    it("resolves context from a valid API key", async () => {
+      mockedResolveApiKey.mockResolvedValue({
+        tenantId: "tenant-789",
+        userId: "user-abc",
+        role: "USER",
+        apiKeyId: "key-1",
+        scopes: ["read", "write"],
+      });
+
+      const req = createMockRequest({
+        authorization: "Bearer skb_live_abcdef1234567890",
+      });
+      const ctx = await getTenantContext(req);
+
+      expect(ctx.tenantId).toBe("tenant-789");
+      expect(ctx.userId).toBe("user-abc");
+      expect(ctx.role).toBe("USER");
     });
 
-    const req = createMockRequest();
-    const ctx = await getTenantContext(req);
+    it("takes precedence over a Supabase session", async () => {
+      withSupabaseConfigured();
+      mockGetUser.mockResolvedValue({
+        data: { user: { id: "session-user" } },
+      });
+      mockedEnsureUserExists.mockResolvedValue({
+        id: "session-user",
+        tenantId: "session-tenant",
+        role: "ADMIN",
+      });
+      mockedResolveApiKey.mockResolvedValue({
+        tenantId: "apikey-tenant",
+        userId: "apikey-user",
+        role: "USER",
+        apiKeyId: "key-1",
+        scopes: ["read"],
+      });
 
-    expect(ctx).toEqual({
-      tenantId: "tenant-456",
-      userId: "user-123",
-      role: "USER",
+      const req = createMockRequest({
+        authorization: "Bearer skb_live_test",
+      });
+      const ctx = await getTenantContext(req);
+
+      expect(ctx.tenantId).toBe("apikey-tenant");
+      expect(ctx.userId).toBe("apikey-user");
+    });
+
+    it("throws 401 when the bearer token is invalid/revoked", async () => {
+      mockedResolveApiKey.mockResolvedValue(null);
+
+      const req = createMockRequest({
+        authorization: "Bearer invalid-key",
+      });
+
+      await expect(getTenantContext(req)).rejects.toThrow(AuthenticationError);
+      await expect(getTenantContext(req)).rejects.toThrow(
+        "Invalid or revoked API key"
+      );
     });
   });
 
-  it("resolves tenant context from API key", async () => {
-    mockedResolveApiKey.mockResolvedValue({
-      tenantId: "tenant-789",
-      userId: "user-abc",
-      role: "USER",
-    });
+  // ── Supabase session path ────────────────────────────────────────────
+  describe("Supabase session authentication", () => {
+    it("resolves context from a valid session", async () => {
+      withSupabaseConfigured();
+      mockGetUser.mockResolvedValue({
+        data: { user: { id: "user-123" } },
+      });
+      mockedEnsureUserExists.mockResolvedValue({
+        id: "user-123",
+        tenantId: "tenant-456",
+        role: "USER",
+      });
 
-    const req = createMockRequest({
-      authorization: "Bearer skb_live_abcdef1234567890",
-    });
-    const ctx = await getTenantContext(req);
+      const req = createMockRequest();
+      const ctx = await getTenantContext(req);
 
-    expect(ctx).toEqual({
-      tenantId: "tenant-789",
-      userId: "user-abc",
-      role: "USER",
-    });
-  });
-
-  it("prioritizes API key over JWT session", async () => {
-    mockedGetToken.mockResolvedValue({
-      userId: "session-user",
-      tenantId: "session-tenant",
-      role: "USER",
-      sub: "session-user",
-      iat: 0,
-      exp: 0,
-      jti: "",
-    });
-    mockedResolveApiKey.mockResolvedValue({
-      tenantId: "apikey-tenant",
-      userId: "apikey-user",
-      role: "USER",
-    });
-
-    const req = createMockRequest({
-      authorization: "Bearer skb_live_test",
-    });
-    const ctx = await getTenantContext(req);
-
-    // API key takes precedence
-    expect(ctx.tenantId).toBe("apikey-tenant");
-    expect(ctx.userId).toBe("apikey-user");
-  });
-
-  it("throws AuthenticationError when no auth is present", async () => {
-    mockedGetToken.mockResolvedValue(null);
-
-    const req = createMockRequest();
-
-    await expect(getTenantContext(req)).rejects.toThrow(AuthenticationError);
-    await expect(getTenantContext(req)).rejects.toThrow(
-      "Authentication required"
-    );
-  });
-
-  it("throws AuthenticationError when API key is invalid", async () => {
-    mockedResolveApiKey.mockResolvedValue(null);
-
-    const req = createMockRequest({
-      authorization: "Bearer invalid-key",
-    });
-
-    await expect(getTenantContext(req)).rejects.toThrow(AuthenticationError);
-    await expect(getTenantContext(req)).rejects.toThrow(
-      "Invalid or revoked API key"
-    );
-  });
-
-  it("throws AuthenticationError when JWT token is missing required fields", async () => {
-    mockedGetToken.mockResolvedValue({
-      sub: "user-123",
-      iat: 0,
-      exp: 0,
-      jti: "",
-      // Missing userId, tenantId, role
-    });
-
-    const req = createMockRequest();
-
-    await expect(getTenantContext(req)).rejects.toThrow(AuthenticationError);
-  });
-});
-
-describe("withTenant (via tenantContext)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("passes tenant context to handler", async () => {
-    // Import withTenant here to get the real implementation
-    const { withTenant } = await import("@/lib/auth/withTenant");
-
-    mockedGetToken.mockResolvedValue({
-      userId: "user-123",
-      tenantId: "tenant-456",
-      role: "USER",
-      sub: "user-123",
-      iat: 0,
-      exp: 0,
-      jti: "",
-    });
-
-    const handler = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ data: "ok" }), { status: 200 })
-    );
-
-    const wrappedHandler = withTenant(handler);
-    const req = createMockRequest();
-    await wrappedHandler(req);
-
-    expect(handler).toHaveBeenCalledWith(
-      req,
-      {
+      expect(ctx).toEqual({
         tenantId: "tenant-456",
         userId: "user-123",
         role: "USER",
-      },
-      expect.objectContaining({ params: expect.anything() })
-    );
+      });
+    });
+
+    it("throws when configured but there is no session user", async () => {
+      withSupabaseConfigured();
+      mockGetUser.mockResolvedValue({ data: { user: null } });
+
+      const req = createMockRequest();
+
+      await expect(getTenantContext(req)).rejects.toThrow(AuthenticationError);
+      await expect(getTenantContext(req)).rejects.toThrow(
+        "Authentication required"
+      );
+    });
   });
 
-  it("returns 401 when authentication fails", async () => {
-    const { withTenant } = await import("@/lib/auth/withTenant");
+  // ── FAIL CLOSED on missing Supabase config (the critical fix) ─────────
+  describe("missing Supabase config — fail closed", () => {
+    it("throws (never synthesizes ADMIN) in production", async () => {
+      withSupabaseUnconfigured();
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("ALLOW_DEV_AUTH", "true"); // must be ignored in production
 
-    mockedGetToken.mockResolvedValue(null);
+      const req = createMockRequest();
 
-    const handler = vi.fn();
-    const wrappedHandler = withTenant(handler);
+      await expect(getTenantContext(req)).rejects.toThrow(AuthenticationError);
+      // Crucially: it does NOT return an ADMIN context.
+      await expect(getTenantContext(req)).rejects.toThrow(
+        "Authentication is not configured"
+      );
+    });
 
-    const req = createMockRequest();
-    const response = await wrappedHandler(req);
+    it("throws in non-production when ALLOW_DEV_AUTH is not set", async () => {
+      withSupabaseUnconfigured();
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("ALLOW_DEV_AUTH", "");
 
-    expect(response.status).toBe(401);
-    const body = await response.json();
-    expect(body.error.code).toBe("UNAUTHORIZED");
-    expect(body.meta.timestamp).toBeDefined();
-    expect(handler).not.toHaveBeenCalled();
-  });
+      const req = createMockRequest();
 
-  it("returns 500 for unexpected errors", async () => {
-    const { withTenant } = await import("@/lib/auth/withTenant");
+      await expect(getTenantContext(req)).rejects.toThrow(AuthenticationError);
+    });
 
-    mockedGetToken.mockRejectedValue(new Error("Database connection failed"));
+    it("allows the dev fallback only when NODE_ENV!=production AND ALLOW_DEV_AUTH=true", async () => {
+      withSupabaseUnconfigured();
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("ALLOW_DEV_AUTH", "true");
+      vi.stubEnv("DEFAULT_TENANT_ID", "00000000-0000-4000-a000-000000000001");
 
-    const handler = vi.fn();
-    const wrappedHandler = withTenant(handler);
+      const req = createMockRequest();
+      const ctx = await getTenantContext(req);
 
-    const req = createMockRequest();
-    const response = await wrappedHandler(req);
-
-    expect(response.status).toBe(500);
-    const body = await response.json();
-    expect(body.error.code).toBe("INTERNAL_ERROR");
+      expect(ctx.role).toBe("ADMIN");
+      expect(ctx.userId).toBe("dev-user");
+      expect(ctx.tenantId).toBe("00000000-0000-4000-a000-000000000001");
+    });
   });
 });

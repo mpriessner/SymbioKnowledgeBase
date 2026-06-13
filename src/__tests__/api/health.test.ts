@@ -1,23 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 
-// Mock Prisma client — actual import is @/lib/db (not @/lib/prisma)
-vi.mock("@/lib/db", () => ({
-  prisma: {
-    $queryRaw: vi.fn(),
-  },
-}));
-
+// /api/health is a pure LIVENESS probe: it does not touch the database, so no
+// Prisma mock is needed here. Dependency checks live in /api/ready (ready.test.ts).
 import { GET } from "@/app/api/health/route";
-import { prisma } from "@/lib/db";
 
-describe("GET /api/health", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should return 200 with status ok when database is healthy", async () => {
-    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ "?column?": 1 }]);
-
+describe("GET /api/health (liveness)", () => {
+  it("should return 200 with status ok (no DB dependency)", async () => {
     const response = await GET();
     const body = await response.json();
 
@@ -25,28 +13,17 @@ describe("GET /api/health", () => {
     expect(body.status).toBe("ok");
     expect(body.version).toBeDefined();
     expect(typeof body.uptime).toBe("number");
-    expect(body.checks.database.status).toBe("ok");
-    expect(typeof body.checks.database.latency_ms).toBe("number");
     expect(body.timestamp).toBeDefined();
   });
 
-  it("should return 503 with status error when database is down", async () => {
-    vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(
-      new Error("Connection refused"),
-    );
-
+  it("should NOT include database checks (liveness is dependency-free)", async () => {
     const response = await GET();
     const body = await response.json();
 
-    expect(response.status).toBe(503);
-    expect(body.status).toBe("error");
-    expect(body.checks.database.status).toBe("error");
-    expect(body.checks.database.error).toBe("Connection refused");
+    expect(body.checks).toBeUndefined();
   });
 
   it("should include Cache-Control no-store header", async () => {
-    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ "?column?": 1 }]);
-
     const response = await GET();
 
     expect(response.headers.get("Cache-Control")).toBe(
@@ -54,9 +31,7 @@ describe("GET /api/health", () => {
     );
   });
 
-  it("should report uptime as a positive number", async () => {
-    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([{ "?column?": 1 }]);
-
+  it("should report uptime as a non-negative number", async () => {
     const response = await GET();
     const body = await response.json();
 
