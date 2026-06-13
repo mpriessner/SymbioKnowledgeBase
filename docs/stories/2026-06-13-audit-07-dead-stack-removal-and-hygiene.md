@@ -1,0 +1,97 @@
+# Story: Remove the dead Supabase stack, tighten the dev bind, archive exploration scratch, correct AI/search branding
+
+**ID:** 2026-06-13-audit-07-dead-stack-removal-and-hygiene
+**Status:** Reviewed — awaiting approval
+**Audit findings covered:** S10, S16, S14, S13
+**Phase / Priority:** Phase 4 (Hygiene — anytime, low risk); S14 has a Phase-1 flavor (network bind) but is grouped here as a one-line config change
+**Depends on:** none (do **after** Story 01–06 land to avoid churn on files those stories touch; purely additive/removal otherwise)
+
+## Goal
+Reduce the gap between "what's in the repo" and "what's actually load-bearing", and remove two small exposure foot-guns:
+- **S10:** delete (or clearly mark abandoned) the repo's **own** Supabase stack — `supabase/config.toml` declares ports 54351-54357 + a second Postgres on 54352 that **nothing connects to** (live app auths against ExpTube's `54341`; data is Prisma Postgres `5432`). This is a port-collision hazard against ET_ELN (54331)/ExpTube (54341)/SciSymbioLens (54321) and misleads anyone reasoning about where auth/data live. Also drop the dead `migrate-users-to-supabase.ts` and the deleted-cloud-Supabase auth branch.
+- **S16:** move the root one-off exploration reports + BMAD scaffolding to `docs/archive/` (or delete), and split/trim the 89 KB demo seed, so new contributors can tell live architecture from scratch notes.
+- **S14:** bind dev to `127.0.0.1` instead of `0.0.0.0` and document that prod must front with the Gateway/reverse proxy rather than publishing `3000` raw.
+- **S13:** correct the "AI-powered / knowledge graph / semantic" branding to reflect that retrieval is PostgreSQL **full-text (FTS)**, not embedding/pgvector similarity (or, as an explicitly-deferred option, add pgvector — see Out of Scope).
+
+## Context
+**Broken state (confirmed against source 2026-06-13):**
+
+1. **S10 — dead own Supabase stack carried in repo:**
+   - `supabase/config.toml:5-17` declares `project_id = "SymbioKnowledgeBase"`, `[api] port = 54351`, `[db] port = 54352` (the "second Postgres"), `[studio] 54353`, `[inbucket] 54354`, `[analytics] 54357`. No source references these ports — confirmed only `tests/e2e/global-setup.ts:20` lists `54351` as a probe **fallback**. Live auth uses `localhost:54341` (`docker-compose.yml:9,23-24`); data is Prisma Postgres `db:5432`.
+   - Dead scaffolding present: `supabase/.branches/`, `supabase/.temp/`, `supabase/snippets/` (empty), `supabase/.env` (hook-blocked; small CLI scratch). `config.toml` is tracked in git.
+   - `scripts/migrate-users-to-supabase.ts` exists (references a migration the delegated-auth model no longer needs).
+   - Cloud-auth branch: `src/app/auth/callback/route.ts:104-206` (`NEXT_PUBLIC_SUPABASE_CLOUD_URL`/`_CLOUD_ANON_KEY`) + `src/lib/supabase/cloud-client.ts` (imported by `auth/callback/route.ts` and `src/app/(auth)/login/page.tsx`). Per workspace memory the cloud Supabase project was **deleted** → this path is runtime-dead; the local fallback (`:208+`) is live. (Removing it is more invasive than the config delete — see Risks; treat as optional within this story.)
+2. **S16 — stale scratch + giant seed (confirmed):**
+   - Root: `EXPLORATION_SUMMARY.md` (7 KB), `README_EXPLORATION.md` (9 KB), `SIDEBAR_EXPLORATION_REPORT.md` (20 KB), `CODEBASE_EXPLORATION_FINDINGS.md` (20 KB).
+   - `_bmad/` (1.9 MB), `_bmad-output/` (104 KB), `.bmad-core/` (0 B, empty).
+   - `prisma/seed-demo.ts` = **89,719 bytes** (vs `prisma/seed.ts` 4.3 KB).
+   - The graph report's fragmentation (2026 nodes / 72 communities, cohesion ~0.03-0.08) partly reflects this scratch corpus.
+3. **S14 — `0.0.0.0` dev bind:** `package.json:6` `"dev": "next dev --turbopack -H 0.0.0.0"`. Prod container publishes `3000:3000` (`docker-compose.yml:11-12`). No app-level IP allowlist; combined with the auth holes (pre-Story-01) it was fully reachable on LAN/Tailnet.
+4. **S13 — branding overstates retrieval:** `prisma/schema.prisma:240` `searchVector Unsupported("tsvector")?` is the only "vector"; no pgvector extension, no embedding column. `README.md:3` "AI-powered", `:19-24` "AI Assistant", `:116` lists `react-force-graph`; the kb-query "RAG" path is FTS + heuristics, not embedding similarity.
+
+**Why it matters:** Operators may `supabase start` the dead stack believing it's needed (7 ports + a second Postgres, colliding with sibling stacks); contributors can't tell live from scratch; the dev bind exposes the server on every interface; the branding misleads anyone expecting semantic search.
+
+**Affected files/paths:** `supabase/` tree, `scripts/migrate-users-to-supabase.ts`, `package.json:6`, root `*EXPLORATION*.md`/`CODEBASE_EXPLORATION_FINDINGS.md`, `_bmad/`, `_bmad-output/`, `.bmad-core/`, `prisma/seed-demo.ts`, `README.md`. Optional: `src/app/auth/callback/route.ts`, `src/lib/supabase/cloud-client.ts`, `src/app/(auth)/login/page.tsx`.
+
+## Acceptance Criteria
+- [ ] The dead own-Supabase stack is removed **or** unambiguously marked abandoned: either `supabase/` (config.toml, snippets, .branches, .temp) is deleted, or `config.toml` gains a top comment "ABANDONED — this stack is NOT used; auth = ExpTube Supabase 54341, data = Prisma Postgres 5432" and a `docs/` note records the topology. `tests/e2e/global-setup.ts`'s `54351` probe fallback is removed/updated so tests don't imply the stack exists. S10 no longer misleads.
+- [ ] `scripts/migrate-users-to-supabase.ts` is deleted (or moved to `docs/archive/` / clearly marked dead) — it references a migration the delegated-auth model doesn't need.
+- [ ] Root exploration reports (4 files) + `_bmad/`, `_bmad-output/`, `.bmad-core/` are moved to `docs/archive/` or deleted; the repo root no longer mixes scratch notes with product files. `.gitignore` updated if any of these should be ignored going forward.
+- [ ] The 89 KB `prisma/seed-demo.ts` is trimmed/split (e.g. extract fixture data to a data file, or reduce to a representative subset) so it is not a near-90 KB hand-built blob inflating build/seed time — **or**, if the full seed is needed for demos, it is moved to a clearly-named `prisma/seeds/demo-full.ts` and excluded from the default `db:seed`. Document the decision.
+- [ ] `package.json:6` dev script binds to `127.0.0.1` (drop `-H 0.0.0.0`, or `-H 127.0.0.1`). A README/docs note states prod must front with the Gateway/reverse proxy and not publish `3000` raw on shared networks (or restrict via Tailscale ACL/firewall). S14 no longer reproduces in dev.
+- [ ] README (and any marketing copy in `docs/`) is corrected so it does not claim semantic/embedding/"AI-powered" *retrieval*; it states retrieval is PostgreSQL full-text search (FTS) with heuristic ranking. (The "AI Assistant" chat feature, which is real, may stay — the correction is specifically about search/retrieval being FTS, not vector.) S13's doc fix is satisfied.
+- [ ] No build/test/runtime breakage from the removals: `npm run build` and `npm test` pass; `npm run db:seed` still works (with whatever seed remains the default); `prisma` migrations unaffected (migrations target `5432`, not the dead stack).
+
+## Implementation Plan
+1. **Confirm dead-stack non-references before deleting.** `grep -rn "54351\|54352\|54353\|54354\|54357" src tests scripts` → expect only `tests/e2e/global-setup.ts:20` (probes 54351 as primary). `grep -rn "supabase/config\|supabase start" .` for tooling that reads it — **note (Gemini): `scripts/fix-env.js:~18` references `npx supabase start`**, which assumes this config exists; if the stack is removed, update or remove that reference so the helper doesn't point at a non-functional command. Then delete the `supabase/` tree (or annotate `config.toml` as ABANDONED). Update `global-setup.ts:20` to probe the **live** auth port (`54341`) / read from env, not 54351. Verification: `npm test` (e2e setup still gets a session against the live stack), `npm run build`.
+2. **Remove dead migration script.** Delete `scripts/migrate-users-to-supabase.ts` (confirm nothing in `package.json` scripts or docs invokes it — it's not in the `scripts` block of `package.json`). Verification: build + grep for references.
+3. **Archive scratch.** `git mv` the 4 root exploration reports + `_bmad*`/`.bmad-core` into `docs/archive/` (or delete if truly disposable). Keep `ARCHITECTURE_DIAGRAM.md`/`IMPLEMENTATION_GUIDE.md`/`README.md` at root (those are real docs). Verification: repo root listing is product-only; links from README still resolve.
+4. **Trim/relocate the demo seed — and update the seed config (REVISED per Gemini).** `prisma/seed-demo.ts` is **invoked by `prisma db seed`**: the authoritative `prisma.config.ts:10` defines `seed: "npx tsx prisma/seed.ts && npx tsx prisma/seed-demo.ts"` (this overrides the `package.json` `prisma.seed` block, which only lists `seed.ts`). So `npx prisma db seed` runs BOTH today. If you trim/move `seed-demo.ts`, you **must** update `prisma.config.ts:10` accordingly, or `db seed` breaks. Also: `prisma/reset-demo.ts:~47` documents `npx tsx prisma/seed-demo.ts` as the manual repopulate path — preserve a runnable target. Recommended: keep the file path stable but extract its bulky data to a fixture, OR relocate + update both `prisma.config.ts` and the reset-demo guidance. Verification: `npx prisma db seed` succeeds; `reset-demo` recovery path still works.
+5. **Dev bind — CONFLICTS with the documented device-testing flow (Gemini MUST-DECIDE).** Changing `package.json:6` to `127.0.0.1` directly contradicts `TAILSCALE-TROUBLESHOOTING-REPORT.md:127`, which cites `-H 0.0.0.0` as the **fix** that lets the phone/Mac-mini reach the SKB dev server over Tailscale for voice-agent KB queries. So a blanket `127.0.0.1` would break the live device-testing workflow. Options: (a) keep `0.0.0.0` for dev but rely on Story 01's real auth + a Tailscale ACL to gate it (the exposure is then authenticated, not open); (b) default the committed script to `127.0.0.1` and add a separate `dev:lan` script (`-H 0.0.0.0`) the user opts into for device testing. **Recommend (b)** — safe default, explicit opt-in. Do NOT silently flip to `127.0.0.1` without the `dev:lan` escape hatch. Verification: `npm run dev` is localhost-only; `npm run dev:lan` binds broadly for device testing; README documents both + the prod-proxy expectation. (This is the central NEEDS USER INPUT for this story.)
+6. **Branding correction.** Edit `README.md` (and any `docs/FEATURES.md`/marketing) to describe search as FTS. One precise edit: replace "AI-powered … intelligent assistance" retrieval claims with "full-text search (Postgres FTS) with heuristic ranking"; leave the genuine AI chat assistant described accurately. Verification: README no longer implies vector/semantic retrieval.
+
+## Risks & Open Questions
+- **Destructive deletes:** the workspace damage-control hook hard-blocks `rm -rf`; use `git rm`/`git mv` (and the implementer, not this story, performs them). Anything moved to `docs/archive/` is recoverable; prefer move-over-delete for the BMAD dirs unless the user confirms deletion. `NEEDS USER INPUT:` delete or archive `_bmad/` (1.9 MB) and the exploration reports? Assumption: **archive** (move to `docs/archive/`), not delete, to preserve history without root clutter.
+- **Cloud-auth branch removal is optional and riskier:** `cloud-client.ts` is imported by `login/page.tsx` and `auth/callback/route.ts`; removing it touches the live login UI and the live local-auth callback. The cloud branch only activates when `NEXT_PUBLIC_SUPABASE_CLOUD_URL` is set (unset in the live config), so it's runtime-dead but code-live. `NEEDS USER INPUT:` remove the cloud-auth branch now or leave it dormant? Assumption: **leave it dormant** this round (out of scope below) to avoid destabilizing login; revisit once Story 01 settles auth. If removed, it's a separate careful change with login E2E coverage.
+- **Seed trimming could break demos** that expect the full 89 KB dataset. Mitigation: relocate-not-delete (keep `demo-full` runnable). Confirm whether the AstraZeneca demo (per workspace memory, demo work is active) depends on this seed before trimming. `NEEDS USER INPUT:` is the full demo seed needed for the current AstraZeneca demo? Assumption: keep it runnable (relocate), don't delete its data.
+- **Dev bind to 127.0.0.1** may break a workflow where the user tests from a phone/another device against the Mac's dev server over LAN/Tailscale (the Tailscale report shows device-to-device testing). Mitigation: they can still bind explicitly when needed, or use Tailscale Serve; document the override. `NEEDS USER INPUT:` is on-LAN/Tailnet access to the **dev** server intended? If yes, keep `0.0.0.0` for dev but document the exposure + rely on Story 01 auth. Assumption: default to `127.0.0.1` (safer); the user can opt back into a broad bind for device testing.
+
+## Out of Scope
+- Removing the cloud-auth branch + `cloud-client.ts` (flagged dormant; separate change with login E2E).
+- Actually adding pgvector + embeddings (the *feature* alternative to S13's doc fix) — that's a multi-day feature, not hygiene; this story only corrects the docs. If the team wants real semantic search, file a separate feature epic.
+- Git history scrubbing of the archived/removed files (history retains them; that's acceptable).
+- Any auth/security logic (Stories 01–06).
+
+## Reviewer Feedback
+
+### Reviewer Feedback / Codex (regression) — FALLBACK: self (Opus 4.8); reason: Codex CLI hit its usage limit.
+Regression review (full depth against actual files):
+1. **`prisma.config.ts:10` is the real seed definition** — `seed: "npx tsx prisma/seed.ts && npx tsx prisma/seed-demo.ts"` — and it overrides the `package.json` `prisma.seed` block (which only lists `seed.ts`). So `npx prisma db seed` runs BOTH; trimming/moving `seed-demo.ts` without updating `prisma.config.ts` breaks `db seed`. This corrected the plan's step 4 (which mistakenly assumed `package.json` `prisma.seed` was authoritative). Folded.
+2. **`prisma/reset-demo.ts` references `seed-demo.ts`** as the repopulate path — preserve a runnable target. Folded.
+3. **Archiving (git mv) is safe and reversible**; the BMAD dirs (1.9MB) and exploration reports have no code imports (grep confirms). The damage-control hook blocks `rm -rf`, so the implementer uses `git rm`/`git mv` — call that out (already in Risks). Confirmed.
+4. **Branding edit is doc-only** — no code reads README; zero regression risk. Confirmed.
+No regression beyond the seed-config coupling (item 1), now corrected.
+
+### Reviewer Feedback / Gemini (integration) — live (gemini-3.1-pro-preview, plan mode)
+Integration breakage:
+- **E2E setup:** `tests/e2e/global-setup.ts:20` probes `54351` as primary; deleting the `supabase/` stack breaks the probe unless updated to the live `54341`.
+- **Prisma seeding:** `prisma.config.ts:10` chains `seed.ts && seed-demo.ts`; trimming/moving `seed-demo.ts` without updating this config breaks `npm run db:seed` / `npx prisma db seed`.
+- **Demo reset workflow:** `prisma/reset-demo.ts:47` instructs `npx tsx prisma/seed-demo.ts`; renaming/moving breaks the documented manual recovery.
+- **Device-testing regression:** changing `package.json:6` `0.0.0.0`→`127.0.0.1` **breaks** the documented Tailscale/mobile flow — `TAILSCALE-TROUBLESHOOTING-REPORT.md:127` cites `-H 0.0.0.0` as the fix for device-to-device testing.
+- **Module-load import:** `src/lib/supabase/cloud-client.ts` is imported at the top of `src/app/(auth)/login/page.tsx:7`; deleting the file breaks the login build even though the feature is dormant.
+- **Utility scripts:** `scripts/fix-env.js:18` hard-references `npx supabase start`; removing the config points it at a non-functional command.
+- None found for `scripts/migrate-users-to-supabase.ts` removal or the root `*EXPLORATION*.md` archives.
+
+**Disposition:** All folded — step 4 corrected for the `prisma.config.ts` seed chain + reset-demo path; step 1 notes the `fix-env.js` `supabase start` reference + e2e probe repoint; step 5 reworked into a keep-`0.0.0.0`-or-add-`dev:lan` decision (the Tailscale conflict is now the headline NEEDS USER INPUT); cloud-client.ts deletion stays explicitly Out of Scope (module-load import confirmed). The clean removals (migrate-users script, exploration docs) are confirmed safe.
+
+### Reviewer Feedback / Kimi (runtime) — FALLBACK: self (Opus 4.8); reason: Kimi CLI returned HTTP 429 usage-limit.
+Runtime breakage / missed bugs:
+1. **No runtime code path imports the `supabase/` dir** (it's CLI config, not TS) — deleting it has zero runtime effect on the app; the only consumers are `supabase` CLI invocations (`fix-env.js:18`) and the e2e probe. Confirmed safe at runtime.
+2. **`cloud-client.ts` runtime behavior:** even imported at module-load by the login page, `createCloudClient` only *does* something when `NEXT_PUBLIC_SUPABASE_CLOUD_URL` is set (dormant per deleted cloud project). So leaving it in place is runtime-inert; deleting it is a *build*-time break (missing import), not runtime. The Out-of-Scope decision is correct. Confirmed.
+3. **Dev bind change is runtime-behavioral:** `127.0.0.1` means the dev server stops answering on the LAN/Tailscale interface — any device (phone/Mac-mini) pointed at the Mac's tailnet IP:3000 gets connection-refused. This is the live voice-demo path per the Tailscale report. The `dev:lan` escape hatch preserves it. Reinforced.
+4. **Seed trim runtime risk:** if `seed-demo.ts` data is reduced, any test or demo that asserts specific seeded pages/experiments exist would fail at runtime. The graph report shows heavy seed/fixture content; before trimming, confirm no test asserts on demo-seed-specific rows. Folded as a verification note.
+No runtime crash from the removals themselves; the only runtime-behavioral change is the dev bind (item 3), gated by the `dev:lan` option.
+
+## Revision History
+- 2026-06-13 — Initial draft
+- 2026-06-13 — Reviewed (Gemini live; Codex + Kimi self-fallback due to usage-limit/429). Folded MUST-FIX: `prisma.config.ts:10` is the authoritative seed (chains `seed-demo.ts`) → trimming requires updating it + the `reset-demo.ts` recovery path; `tests/e2e/global-setup.ts:20` probe repoint 54351→54341; `scripts/fix-env.js:18` `supabase start` reference; dev-bind `0.0.0.0`→`127.0.0.1` conflicts with the documented Tailscale device-testing flow → add a `dev:lan` opt-in instead of a blanket flip; cloud-client.ts deletion confirmed Out of Scope (module-load import in login page). Status → Reviewed — awaiting approval.

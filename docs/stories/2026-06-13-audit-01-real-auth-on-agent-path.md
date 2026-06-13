@@ -1,0 +1,153 @@
+# Story: Real auth on the agent path — kill the mock + ADMIN-everyone fallbacks, enforce scopes
+
+**ID:** 2026-06-13-audit-01-real-auth-on-agent-path
+**Status:** Reviewed — awaiting approval
+**Audit findings covered:** S1, S2, S7, S11
+**Phase / Priority:** Phase 1 (Critical — close the auth cliffs before any wider exposure)
+**Depends on:** none (but see "Risks": coordinate the Gateway-credential cutover; do **not** ship the mock deletion without the replacement credential live)
+
+## Goal
+Make the live machine-to-machine path (iOS → Clawdbot Gateway → `/api/agent/*`) and the cookie/dev path **fail closed**. Today both paths have a silent open door:
+- The agent path authorizes **any** non-`skb_` bearer token as a read+write member of the default tenant (`src/lib/agent/auth.ts:58-69`).
+- The cookie/middleware path treats **every** request as a logged-in ADMIN of the default tenant whenever Supabase env is absent/placeholder (`src/lib/supabase/middleware.ts:43-48`, `src/lib/tenantContext.ts:118-126`).
+
+After this story: the agent path either accepts a real `skb_` API key (existing, working mechanism) or verifies a real Supabase JWT and maps it to a user — and rejects everything else with 401. The dev/ADMIN bypasses are gated behind `NODE_ENV !== "production"` **and** an explicit opt-in flag, with production hard-failing at startup if Supabase is unconfigured. API keys carry real per-key scopes instead of a hardcoded `["read","write"]`.
+
+## Context
+**Broken state (all confirmed against source 2026-06-13):**
+
+1. **S1 / S7 — mock JWT branch (`src/lib/agent/auth.ts:58-69`):**
+   ```ts
+   if (token.startsWith("skb_")) {
+     ctx = await authenticateApiKey(token);
+   } else {
+     // TODO (EPIC-19): Supabase JWT authentication
+     ctx = { tenantId: process.env.DEFAULT_TENANT_ID || "mock-tenant-id",
+             userId: "mock-user-id", scopes: ["read", "write"] };
+   }
+   ```
+   The `else` branch is reached by any bearer token ≥1 char that doesn't start with `skb_`. No signature/expiry/lookup. All **23** routes under `src/app/api/agent/**` use `withAgentAuth` (confirmed: `grep -rl withAgentAuth src/app/api/agent` → 23 files incl. `kb-query`, `pages`, `databases/[id]/rows`, `mirror`, `sweep`, `graph`). This is the live path: `TAILSCALE-TROUBLESHOOTING-REPORT.md:27` documents iPhone → Clawdbot (Mac mini :18799) → SKB :3000 `/api/agent/kb-query`.
+
+2. **S2 — "Supabase not configured" → ADMIN:**
+   - `src/lib/supabase/middleware.ts:43-48`: if `isSupabaseConfigured()` is false (env missing, contains `"xxxxx"`, or not `http`-prefixed) `updateSession` returns `{ user: { id: "dev-user", email: "admin@symbio.local" } }` → middleware (`src/middleware.ts:36-44`) treats the request as authenticated for every page route.
+   - `src/lib/tenantContext.ts:118-126`: the **else** branch (Supabase not configured) returns `{ tenantId: DEFAULT_TENANT_ID, userId: "dev-user", role: "ADMIN" }` for the cookie-authed API surface. NB: when Supabase **is** configured but `getUser()` returns null, control correctly falls through to the 401 throw at line 129 — so the ADMIN bypass triggers **only** on missing/placeholder env. `docker-compose.yml:17` sets `NODE_ENV` default to `production`, so a typo'd `NEXT_PUBLIC_SUPABASE_URL` in a deployed env silently opens the whole instance.
+
+3. **S11 — hardcoded scopes (`src/lib/agent/auth.ts:162, 182`):** both the SHA-256 and bcrypt key paths `return { ..., scopes: ["read", "write"] }`, ignoring the stored scopes. **The Prisma `ApiKey` model already has `scopes String[] @default([])` (`prisma/schema.prisma:291)`** — so the column exists and is unused. The per-method scope check in `withAgentAuth` (`auth.ts:101-119`, GET→read / POST,PUT,PATCH,DELETE→write) is therefore always satisfied. Key-creation routes (`src/app/api/keys/route.ts:76-84`, `src/app/api/settings/api-keys/route.ts`) do **not** set `scopes` today (confirmed: `grep -rn scopes src/app/api` → none), so all rows have `scopes: []` persisted — meaning if we naively "read scopes from the row" we would lock out every existing key. Migration of existing rows is required (see Implementation Plan step 5).
+
+**Why it matters / failure scenario:** `curl -H "Authorization: Bearer x" http://<tailnet-host>:3000/api/agent/pages` reads/writes/deletes the default tenant's entire KB, bypassing the Gateway (server binds `0.0.0.0`, exposed over Tailscale per `package.json:6` + `TAILSCALE-TROUBLESHOOTING-REPORT.md`). A single env typo turns the cookie/UI surface into an open ADMIN instance. A leaked "read-only" key is in fact a full write key.
+
+**Replacement mechanism (resolves the S1/S7 sequencing risk):** The repo already verifies Supabase JWTs server-side via `supabase.auth.getUser()` on the cookie path (`tenantContext.ts:89`, `middleware.ts:79`). Two non-mock options, both proven in-repo:
+- **(A) `skb_` API key for the Gateway** — the existing `apiKey` table + `generateApiKey()` (`src/lib/apiAuth.ts`) already work end-to-end and need no new verify code. The Gateway sends `Authorization: Bearer skb_live_…`.
+- **(B) Real Supabase JWT** — call `createClient(...).auth.getUser(token)` (or `getClaims`) with the bearer token; Supabase JS validates signature/expiry/`aud` against the live stack. Map `user.id` → `ensureUserExists(user)` → tenant, mirroring the cookie path. Use this only if per-end-user identity must propagate from iOS through the Gateway.
+
+This story implements **B as the general path** (so a real Supabase JWT works) **and keeps A working** (skb_ keys), then deletes the mock. The Gateway is migrated to send a real credential **before** the mock is removed (see Risks — this is a hard sequencing constraint).
+
+**Affected files:**
+- `src/lib/agent/auth.ts` (mock branch, scope hardcoding, `authenticateApiKey`)
+- `src/lib/supabase/middleware.ts` (`isSupabaseConfigured`, dev-user fallback)
+- `src/lib/tenantContext.ts` (ADMIN-everyone else-branch)
+- `src/lib/env.ts` (extend to validate Supabase config; **must be imported by a real server entrypoint** — currently only its own test imports it, confirmed `grep -rn "@/lib/env" src` → only `env.test.ts`)
+- `src/app/api/keys/route.ts`, `src/app/api/settings/api-keys/route.ts` (persist `scopes` on creation)
+- `src/lib/validation/apiKeys.ts` (accept optional `scopes`)
+- `prisma/migrations/` (data migration backfilling existing `ApiKey.scopes`)
+- New tests under `src/__tests__/lib/agent/` and/or `tests/` (the agent-auth path has **zero** existing tests — confirmed)
+
+## Acceptance Criteria
+- [ ] A request to any `/api/agent/*` route with `Authorization: Bearer not-an-skb-key` returns **401** (no longer 200 with default-tenant context). The audit S1 reproduction (`curl -H "Authorization: Bearer x" .../api/agent/pages`) no longer succeeds.
+- [ ] A valid `skb_live_…` API key still authenticates and resolves to its `tenantId`/`userId` (existing Gateway path A unbroken).
+- [ ] A valid Supabase access token (JWT) passed as `Bearer <jwt>` to an agent route authenticates, is verified via `supabase.auth.getUser(token)`, and resolves `tenantId`/`userId` via `ensureUserExists` (path B). An expired/forged JWT returns 401.
+- [ ] With `NODE_ENV=production` and Supabase env unset/placeholder, the app **fails to start** (or the first request hard-errors) rather than silently granting ADMIN — `src/lib/env.ts` validation is wired into a server entrypoint that actually executes. S2 no longer reproduces in production config.
+- [ ] In non-production, the dev-user/ADMIN fallback only activates when `NODE_ENV !== "production"` **and** an explicit flag (e.g. `ALLOW_DEV_AUTH=1`) is set; otherwise missing Supabase config → 401, not ADMIN.
+- [ ] `withAgentAuth` scope check is driven by the key's persisted `scopes`: a key created/back-filled as read-only (`["read"]`) gets **403** on `POST/PUT/PATCH/DELETE` to agent routes and **200** on `GET`. S11 no longer reproduces.
+- [ ] A data migration backfills `scopes = ["read","write"]` for all pre-existing `ApiKey` rows so no currently-working key is locked out; new keys default to read-only unless explicitly granted write.
+- [ ] New automated tests cover: mock-token rejection, valid-skb_-key accept, valid-JWT accept, expired/garbage-JWT reject, production-missing-env hard-fail, scope enforcement (read key blocked on write). `npm test` (vitest) green.
+- [ ] No `mock-tenant-id` / `mock-user-id` string remains in `src/lib/agent/auth.ts`.
+- [ ] **(Codex MUST-FIX 1) `/api/*` routes still return JSON `401`, not a `307`/HTML redirect to `/login`, when unauthenticated.** Gating the dev-user synthesis must NOT cause `src/middleware.ts:35-42` to redirect API requests — the matcher/middleware must let `/api/*` fall through to the route's own `withTenant`/`withAgentAuth` JSON 401. Regression-test: the existing "returns 401 for unauthenticated key listing" test against `/api/keys` (`tests/api/apiKeys.test.ts`) still passes.
+- [ ] **(Codex MUST-FIX 2) Test/local cookie-auth still works.** Tests that run without real Supabase cookies and rely on `withTenant`/`withAdmin` (`tests/unit/auth/tenantContext.test.ts`, `src/__tests__/lib/auth/withAdmin.test.ts`, `/api/keys` tests) must be updated to set `ALLOW_DEV_AUTH=1` in the test env (e.g. via `vitest.config.ts` `env` or a setup file) so the gated dev fallback still activates under test. No test silently passes because of a synthetic ADMIN in production mode.
+- [ ] **(Codex MUST-FIX 4) Both key-creation validators updated.** `scopes` is persisted by BOTH `src/app/api/keys/route.ts` (`createApiKeySchema`) AND `src/app/api/settings/api-keys/route.ts` (its own inline `createKeySchema`) — otherwise settings-created keys keep `scopes: []` and get locked out. Key-listing endpoints also surface `scopes` so the UI can inspect what it created.
+- [ ] **(Codex/Gemini MUST-FIX) Every existing live caller is migrated to a real credential before the mock is deleted:** the Clawdbot Gateway AND `src/lib/chemEln/sync/writer.ts` (sends `Authorization: Bearer ${SKB_AGENT_API_KEY}` to agent endpoints) must send a valid `skb_` key or real JWT. Inventory all callers of `/api/agent/*` with a bearer (grep `Authorization.*Bearer` across the repo + the Gateway repo) and confirm each before cutover.
+
+## Implementation Plan
+1. **Extract a shared Supabase-config guard.** Today `isSupabaseConfigured()` lives in `middleware.ts:8-17` and is duplicated inline in `tenantContext.ts:60`. Move to a shared helper (e.g. `src/lib/supabase/config.ts`) exporting `isSupabaseConfigured()` and a new `assertSupabaseConfiguredInProd()`. Verification: unit test for each branch (missing url, `xxxxx`, non-http, valid).
+2. **Production hard-fail + gated dev bypass (S2).**
+   - Extend `src/lib/env.ts`: add validation that, when `NODE_ENV === "production"`, `NEXT_PUBLIC_SUPABASE_URL`/`ANON_KEY` are present, non-placeholder, and `http`-prefixed; throw at import otherwise. Also strengthen the config guard to check the anon key is non-placeholder (Codex nice-to-have 9 / Kimi: today `isSupabaseConfigured` only checks the URL — a placeholder anon key with a valid URL is treated as "configured" and fails per-request instead of taking the explicit branch).
+   - **Wire `@/lib/env` into a server entrypoint — but RUNTIME-only, not build-time (Codex MUST-FIX 3, confirmed by Gemini).** `src/lib/env.ts:53` already calls `getRequiredEnv("DATABASE_URL")` at import, and `next build` in the Docker image (`Dockerfile:37-45`) sets `NEXT_PUBLIC_SUPABASE_*` build args but **not** `DATABASE_URL` — so a naive top-level import from `instrumentation.ts`/root layout will **crash `next build`** during static generation. Use Next's `instrumentation.ts` `register()` and guard with `if (process.env.NEXT_RUNTIME === 'nodejs')` (register runs at server boot, not during the build's static-analysis pass), and/or guard the production-hard-fail block so it only throws at actual runtime (e.g. skip when `process.env.NEXT_PHASE === 'phase-production-build'`). Verification: a Docker `next build` with no `DATABASE_URL`/Supabase still builds; a runtime boot in `production` with unset Supabase hard-fails. This build-vs-runtime split is a hard requirement, not optional.
+   - In `middleware.ts:43-48` and `tenantContext.ts:118-126`, change the fallback condition from "Supabase not configured" to "`NODE_ENV !== 'production'` **and** `process.env.ALLOW_DEV_AUTH === '1'`". **Critically (Codex MUST-FIX 1):** when the fallback is OFF and there is no user, `tenantContext` throws `AuthenticationError(401)` (route returns JSON 401), and the middleware must **NOT** redirect `/api/*` requests to `/login` — those must reach the route's own auth wrapper and get a JSON 401. Only non-`/api` page routes redirect to `/login`. Verify the middleware distinguishes `/api/*` (fall through, no redirect) from page routes (redirect). Verification: tests for prod-missing-env on an API route (JSON 401, not 307), an API route with dev flag (dev-user), and a page route (redirect).
+3. **Replace the mock branch with real verification (S1/S7).** In `src/lib/agent/auth.ts` `withAgentAuth`, replace lines 61-68 `else` block:
+   - If `token.startsWith("skb_")` → `authenticateApiKey(token)` (unchanged path A). (Runtime note, Kimi-fallback: because the skb_ branch is checked first, an API key never reaches `getUser`, so there is no risk of getUser mis-parsing an skb_ key.)
+   - Else → verify as Supabase JWT: construct a server Supabase client and call `supabase.auth.getUser(token)`. **Signature confirmed:** `@supabase/supabase-js@2.97.0` → `auth-js` `getUser(jwt?: string)` (GoTrueClient.d.ts:284, impl :1255) accepts the token argument. With a JWT, `_getUser` does `GET ${url}/user` carrying the token (a network call to the auth server); a malformed/expired/forged token makes the auth server reject and `getUser` returns `{ data: { user: null }, error }` — **it does not throw the process down**, so the implementer must check both `user` falsy **and** `error` and treat either as 401 (do not assume an exception).
+   - **MUST include the `SUPABASE_INTERNAL_URL` fetch-rewrite (Gemini integration breakage):** reuse the `global.fetch` rewrite from `tenantContext.ts:74-83`, or the verify `GET /user` will fail inside Docker (the browser-facing `localhost:54341` is unreachable from the container; only `host.docker.internal:54341` works). Omitting this is a silent Docker-only failure.
+   - Mirror the cookie path's 5s timeout (`middleware.ts:78-83`) so an unreachable Supabase yields 401, not a hang (Codex nice-to-have 3).
+   - If a user is returned, `const dbUser = await ensureUserExists(user)` and build `ctx = { tenantId: dbUser.tenantId, userId: dbUser.id, scopes: ["read","write"] }` (JWT principals are full users; scope-narrowing for JWTs is out of scope). If no user / error / Supabase unconfigured in prod → throw → 401.
+   - Keep the existing `try/catch` → `errorResponse("UNAUTHORIZED", …, 401)` wrapper so all failures are 401.
+   - **Perf alternative (optional):** `auth-js` also exposes `getClaims(jwt?, options?)` (GoTrueClient.d.ts:590) which verifies the JWT **locally without a network round-trip** if ExpTube's stack uses asymmetric (ECC/RSA) signing keys. If per-request latency on the live `kb-query` path matters, prefer `getClaims` over `getUser(token)`; fall back to `getUser` if the stack uses the legacy shared HS256 secret. Decide based on ExpTube's JWT signing config.
+   - Verification: tests with a stubbed Supabase client returning {user} / {null,error}; a test that the INTERNAL_URL rewrite is applied.
+4. **Drive scope check from the key (S11) in `authenticateApiKey` (`auth.ts:147-188`).** Change both the SHA-256 (`:158-163`) and bcrypt (`:178-183`) returns to `scopes: apiKey.scopes` (the row field). Guard: if `apiKey.scopes` is empty (legacy rows not yet migrated), fall back to `["read","write"]` to avoid lockout **only until** the migration in step 5 runs — then remove the fallback in a follow-up or rely on the migration. Verification: tests for a `["read"]` key (403 on POST) and a `["read","write"]` key (200 on POST).
+5. **Persist scopes on creation + backfill migration.**
+   - `src/lib/validation/apiKeys.ts` `createApiKeySchema`: add optional `scopes: z.array(z.enum(["read","write"])).default(["read"])`.
+   - `src/app/api/keys/route.ts:76-84` and `src/app/api/settings/api-keys/route.ts`: pass `scopes: parsed.data.scopes` into `prisma.apiKey.create`. Default new keys to least-privilege `["read"]`.
+   - Add a Prisma data migration (raw SQL `UPDATE "api_keys" SET scopes = ARRAY['read','write'] WHERE scopes = '{}'`) so existing keys keep working. Verification: migration is idempotent; integration test that a pre-migration key still authorizes writes.
+6. **Test strategy.** Add `src/__tests__/lib/agent/auth.test.ts` (unit, mock prisma + supabase) and an integration test hitting a representative agent route (e.g. `kb-query`) through `withAgentAuth`. This is the first test coverage of this module. Run `npm test`.
+
+## Risks & Open Questions
+- **HARD SEQUENCING CONSTRAINT (do not violate):** Removing the mock branch will break the live iOS→Gateway path the instant it ships **unless** the Gateway is already sending a credential that the new code accepts. The Gateway is on a separate machine (`~/clawd` on the Mac mini, not in this repo) and its current token is **unverifiable from here**. Mitigation/order: (1) mint an `skb_live_…` key for the Gateway and update its `SKB_BASE_URL`/auth config to send `Authorization: Bearer skb_live_…` (Gateway-side change), (2) confirm a live `kb-query` succeeds with that key while the mock still exists, (3) **only then** merge the mock deletion. Alternatively keep a time-boxed feature flag (`AGENT_ALLOW_MOCK=1`, default off) for one deploy so prod can be flipped after the Gateway cutover is verified — but default-off so the insecure path is never the default.
+- `supabase.auth.getUser(token)` performs a network round-trip to the auth server per request; the cookie path already does this with a 5s timeout (`middleware.ts:78-83`). Mirror that timeout on the agent path so a slow/unreachable Supabase yields 401, not a hang. (Caching/JWT-local-verify is a perf follow-up, out of scope.)
+- Legacy `ApiKey` rows have `scopes: []`; step 4's temporary fallback + step 5's migration together prevent lockout. Order the migration to run before the fallback is removed.
+- `NEEDS USER INPUT:` Should per-end-user identity flow from iOS through the Gateway (path B used live), or is a single Gateway service-key (path A) acceptable for the agent path? Assumption taken: **implement both; default the Gateway to an `skb_` service key (A)** because it is the lowest-risk, already-working mechanism and needs no Gateway JWT plumbing. If you want true per-user attribution/audit on voice queries, switch the Gateway to forward the user's Supabase JWT (B is implemented and ready).
+- `NEEDS USER INPUT:` Confirm `DEFAULT_TENANT_ID` is actually set in the running deployment (compose default `00000000-0000-4000-a000-000000000001`). If it is unset in prod, the current mock path would have been resolving to literal `"mock-tenant-id"` (a non-existent tenant) — meaning the live path may already rely on the default tenant existing. The replacement must resolve tenant from the authenticated principal, not env, so this dependency goes away.
+
+## Out of Scope
+- Replacing the in-memory rate limiter (S8) and CORS hardening (S6) — see Story 05.
+- Least-privilege *user* provisioning / personal tenants (S4) — see Story 04.
+- SSRF / middleware bearer-passthrough on non-agent routes (S5) — see Story 03 (note: this story stops treating *missing env* as ADMIN, but the middleware `pathname.startsWith("/api/") && authorization` passthrough at `src/middleware.ts:28-33` is fixed in Story 03).
+- Persisting auth outcomes to the audit log (S15) — see Story 06.
+- Removing the dead own-Supabase stack / cloud-auth branch (S10) — see Story 07.
+
+## Reviewer Feedback
+
+### Reviewer Feedback / Codex (regression) — live (gpt-5.5, read-only)
+Critical issues:
+1. `src/middleware.ts:35-42` will redirect unauthenticated API requests to `/login` once `updateSession()` stops synthesizing `dev-user`. Existing API contracts/tests expect JSON `401`, not `307`/HTML. Concrete test: `tests/api/apiKeys.test.ts` "returns 401 for unauthenticated key listing" against `/api/keys`. If `ALLOW_DEV_AUTH` is off and Supabase has no user, middleware may intercept before `withTenant()` can return its JSON error.
+2. Gating the dev fallback breaks local/test cookie-auth behavior unless every affected test/server process opts into `ALLOW_DEV_AUTH=1`. Current fallback is used by `src/lib/supabase/middleware.ts:41-48` and `src/lib/tenantContext.ts:118-126`; removing it silently invalidates the invariant that "missing Supabase config is usable local dev." Expect failures in `tests/unit/auth/tenantContext.test.ts`, `src/__tests__/lib/auth/withAdmin.test.ts`, and API tests around `/api/keys`.
+3. Importing `@/lib/env` from `instrumentation.ts` can break build/deploy because `src/lib/env.ts:53` currently requires `DATABASE_URL` at import time. The Docker build stage sets `NEXT_PUBLIC_SUPABASE_*` build args but not `DATABASE_URL` (`Dockerfile:37-45`), so a top-level import that runs during `next build` can fail before runtime env exists. This needs a build-vs-runtime distinction, not just "wire into instrumentation."
+4. Scope persistence has two creation paths, but only one shared validator. `src/app/api/keys/route.ts:52-83` uses `createApiKeySchema`; `src/app/api/settings/api-keys/route.ts:10-46` has its own inline `createKeySchema`. If only `src/lib/validation/apiKeys.ts` is updated, settings-created keys still persist `scopes: []`, then `src/lib/agent/auth.ts:172-183` will either grant legacy fallback write forever or lock those keys out once fallback is removed.
+5. New API keys defaulting to `["read"]` will break existing "create key then use it for agent writes" expectations. All POST/PUT/PATCH/DELETE agent routes wrapped by `withAgentAuth` require `write` at `src/lib/agent/auth.ts:109-119`. Existing docs/helpers assume a generated key is suitable for full agent CRUD, e.g. `src/__tests__/api/agent/helpers.ts` and `docs/stories/SKB-20.6-e2e-agent-workflow-tests.md`.
+6. The migration SQL must match PostgreSQL array defaults and current Prisma table names. The model maps to `api_keys` (`prisma/schema.prisma:308`), and existing rows have `scopes String[] @default([])` (`:292`). If the raw SQL is not run before `authenticateApiKey()` returns `apiKey.scopes`, every existing row with `{}` gets 403 on writes.
+7. Real JWT auth will make all non-`skb_` bearer callers fail unless Supabase is configured and reachable. Other machine clients exist beyond the Gateway: `src/lib/chemEln/sync/writer.ts` sends `Authorization: Bearer ${SKB_AGENT_API_KEY}` to agent endpoints. Any configured token that was previously arbitrary must become an `skb_` key or real Supabase JWT.
+8. JWT principals will all share rate-limit bucket by `userId` because `withAgentAuth` uses `ctx.apiKeyId || ctx.userId` at `src/lib/agent/auth.ts:76-79`. Runtime behavior change from the mock path. (See Story 05 for the rate-limit rework.)
+9. `isSupabaseConfigured()` guard still needs to validate the anon key content, not just presence (`src/lib/supabase/middleware.ts:8-16`, `src/lib/tenantContext.ts:56-60`). A placeholder anon key with a valid URL is treated as configured, causing per-request Supabase failures instead of the explicit dev/prod branch.
+10. `tests/unit/auth/tenantContext.test.ts` is stale: it mocks `next-auth/jwt`, but `getTenantContext()` now uses Supabase cookies via `createServerClient()`. The new JWT path should not build on those assertions without rewriting the harness.
+
+Nice-to-have:
+1. Return `scopes` from key listing endpoints (`/api/keys`, `/api/settings/api-keys`) so the UI can inspect permissions it creates.
+2. Consolidate API key generation (one path SHA-256/last-4 prefix, the other bcrypt/first-15) — scope changes are easy to miss while both exist.
+3. Add a timeout around agent JWT verification, mirroring `src/lib/supabase/middleware.ts:78-82`.
+4. Update `.env.production.example` (`:33-34` shows empty Supabase values) — conflicts with the proposed production hard-fail.
+
+**Disposition:** Critical 1, 2, 3, 4, 6, 7 folded into Acceptance Criteria + Implementation Plan (build-vs-runtime split, JSON-401-on-API, ALLOW_DEV_AUTH in test env, both validators, migration-before-read, all-callers inventory incl. `chemEln/sync/writer.ts`). #9 folded into step 2 (anon-key content check). #5 already addressed (migration backfills existing keys to read+write; new keys read-only is intended least-privilege). #8 routed to Story 05. #10 + nice-to-haves 1–4 folded as test-harness note / nice-to-haves.
+
+### Reviewer Feedback / Gemini (integration) — live (gemini-3.1-pro-preview, plan mode)
+Integration breakage:
+- Gateway/iOS will 401 unless cut over to `skb_` keys or real JWTs first.
+- Sync scripts hitting `/api/agent/*` will 401 until issued `skb_` keys.
+- Docker build will crash during `next build` if runtime env checks execute during static generation.
+- Supabase JWT validation will fail in Docker if the `SUPABASE_INTERNAL_URL` fetch rewrite is omitted in `auth.ts`.
+- Confirmed positives: `supabase.auth.getUser()` **will** validate JWTs issued by ExpTube's stack, and `ensureUserExists()` already handles cross-app SSO mapping — so path B is viable; the only requirement is reaching the auth stack via the internal-URL fetch interceptor.
+
+**Disposition:** All four breakages folded — Gateway/sync cutover is the hard sequencing constraint (Risks + AC); Docker-build crash → build-vs-runtime split (step 2); INTERNAL_URL rewrite → step 3 MUST-include. The getUser-validates-ExpTube-JWT confirmation resolves the "what replacement mechanism" question in favor of path B being technically sound.
+
+### Reviewer Feedback / Kimi (runtime) — FALLBACK: self (Opus 4.8); reason: Kimi CLI returned HTTP 429 "reached your usage limit for this period" (session 02034745-4746-4d6a-a640-38d0aa768ad0)
+Runtime breakage / missed bugs:
+1. **getUser(token) signature is real — verified against installed code, not memory.** `@supabase/supabase-js@2.97.0` → `@supabase/auth-js` `GoTrueClient.getUser(jwt?: string)` (d.ts:284, impl GoTrueClient.js:1255). The plan's `getUser(token)` call is valid in the pinned version. Folded as a confirmed note into step 3.
+2. **getUser does NOT throw on a bad token — it returns `{ data: { user: null }, error }`.** `_getUser(jwt)` (GoTrueClient.js:1268-1300) issues `GET ${url}/user` with the token; the auth server rejects malformed/expired/forged tokens and the result is an error response, caught internally. Bug risk: if the implementer writes `const { data: { user } } = await getUser(token)` and only checks `user`, that is fine (user is null → 401), but if they wrap in try/catch expecting a throw, the catch never fires for invalid tokens — still 401 via the null check, but `error` should be inspected/logged. Folded: "check both user-falsy AND error; do not assume an exception."
+3. **An `skb_` key can never reach getUser** (branch order checks `startsWith("skb_")` first), so there is no "getUser mis-parses an API key" crash. Confirmed safe; folded as a note.
+4. **Tenant-isolation: a JWT-authenticated user is routed through `ensureUserExists`**, which (per `ensureUserExists.ts:24-28`) resolves to `resolveDefaultTenant()` → the shared default tenant for any user without `user_metadata.tenantId`. This is the SAME default-tenant placement the mock produced, so Story 01 introduces no NEW cross-tenant leak — but it does mean JWT users land in the shared tenant until Story 04 (least-privilege provisioning) lands. Cross-reference to Story 04 added; not a Story-01 regression.
+5. **Live-traffic instant-cutover hazard (the central runtime risk):** the moment the mock `else` is removed, any Gateway/sync caller still sending its old arbitrary token gets 401 with no grace period. Mitigation already in Risks: provision the real credential + verify a live `kb-query` succeeds BEFORE merging the deletion, or use a default-off `AGENT_ALLOW_MOCK` flag for one deploy. Reinforced in Risks.
+6. **getClaims (local verify) exists** (d.ts:590) as a no-network alternative to getUser(token) — relevant if per-request auth-server round-trips on the hot `kb-query` path become a latency/availability problem. Folded as a perf alternative in step 3.
+No process-crashing runtime bug found in the plan as written; the dominant runtime risk is operational (instant cutover) and is already the story's headline constraint.
+
+**Disposition:** Items 1–3, 6 folded into step 3 as confirmed runtime notes; item 4 cross-referenced to Story 04; item 5 reinforced in Risks.
+
+## Revision History
+- 2026-06-13 — Initial draft
+- 2026-06-13 — Reviewed (Codex live, Gemini live, Kimi self-fallback due to 429). Folded MUST-FIX: JSON-401-on-API-routes (no /login redirect), ALLOW_DEV_AUTH in test env, build-vs-runtime env split (Docker `next build` must not run the hard-fail), both key-creation validators + migration-before-read, all-callers cutover inventory (incl. chemEln/sync/writer.ts), INTERNAL_URL fetch-rewrite in JWT path, getUser error-handling + getClaims perf option, anon-key content validation. Status → Reviewed — awaiting approval.
