@@ -76,8 +76,13 @@ export function withAgentAuth(handler: AgentHandler) {
       return errorResponse("UNAUTHORIZED", message, undefined, 401);
     }
 
-    // Check rate limit
+    // Check rate limit. Key on the real principal (apiKeyId preferred, else
+    // userId). Post-mock-removal this is always a real id; guard against an
+    // empty/synthetic principal silently sharing one bucket (audit S8).
     const rateLimitKey = ctx.apiKeyId || ctx.userId;
+    if (!rateLimitKey) {
+      return errorResponse("UNAUTHORIZED", "Unresolved principal", undefined, 401);
+    }
     const { allowed, remaining, resetAt } =
       await checkRateLimit(rateLimitKey);
 
