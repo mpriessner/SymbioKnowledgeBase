@@ -1,6 +1,16 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
+import {
+  getTenantContext,
+  AuthenticationError,
+  createAuthErrorResponse,
+} from "@/lib/tenantContext";
+import { assertUrlIsFetchable, BlockedUrlError } from "@/lib/security/ssrfGuard";
+
+// Pin to the Node.js runtime so node:dns / node:net are available for the SSRF
+// guard (a future edge migration must NOT silently strip resolution — audit S5).
+export const runtime = "nodejs";
 
 const ogMetadataSchema = z.object({
   url: z.string().url("Invalid URL"),
@@ -8,6 +18,17 @@ const ogMetadataSchema = z.object({
 
 // POST /api/og-metadata -- Fetch Open Graph metadata for a URL
 export async function POST(req: NextRequest) {
+  // Require authentication: bookmark preview is a logged-in editor action. The
+  // middleware bearer-passthrough means this route must gate itself (audit S5).
+  try {
+    await getTenantContext(req);
+  } catch (error) {
+    if (error instanceof AuthenticationError) {
+      return createAuthErrorResponse(error);
+    }
+    throw error;
+  }
+
   try {
     const body = await req.json();
     const parsed = ogMetadataSchema.safeParse(body);
@@ -24,14 +45,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { url } = parsed.data;
+    // SSRF guard: reject loopback/private/link-local/cloud-metadata hosts and
+    // non-http(s) schemes before any outbound fetch.
+    let safeUrl: URL;
+    try {
+      safeUrl = await assertUrlIsFetchable(parsed.data.url);
+    } catch (error) {
+      if (error instanceof BlockedUrlError) {
+        return errorResponse("VALIDATION_ERROR", "URL not allowed", undefined, 422);
+      }
+      throw error;
+    }
+    const url = safeUrl.toString();
 
-    // Fetch the page with a timeout
+    // Fetch the page with a timeout. `redirect: "error"` refuses redirects so a
+    // public URL cannot 3xx-bounce to a private/link-local host post-validation.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
 
     const response = await fetch(url, {
       signal: controller.signal,
+      redirect: "error",
       headers: {
         "User-Agent": "SymbioKnowledgeBase/1.0 (Bookmark Preview)",
         Accept: "text/html",
