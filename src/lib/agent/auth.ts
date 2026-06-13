@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 import { errorResponse } from "@/lib/apiResponse";
 import { prisma } from "@/lib/db";
+import { ensureUserExists } from "@/lib/auth/ensureUserExists";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { checkRateLimit } from "./ratelimit";
 import bcrypt from "bcryptjs";
 import { createHash } from "crypto";
@@ -22,8 +25,13 @@ type AgentHandler = (
 
 /**
  * Auth middleware for Agent API endpoints.
- * Supports API key (skb_live_*) and fallback mock auth.
- * JWT validation deferred to EPIC-19 (Supabase Auth Migration).
+ *
+ * Accepts EITHER:
+ *  - an `skb_` API key (verified against the api_keys table, with per-key scopes), OR
+ *  - a real Supabase access token (JWT), verified server-side via
+ *    `supabase.auth.getUser(token)` against the live ExpTube stack.
+ *
+ * Everything else fails closed with 401 (audit S1/S7 — no more mock principal).
  */
 export function withAgentAuth(handler: AgentHandler) {
   return async (
@@ -56,16 +64,11 @@ export function withAgentAuth(handler: AgentHandler) {
 
     try {
       if (token.startsWith("skb_")) {
-        // API Key authentication
+        // API Key authentication (per-key scopes from the api_keys table).
         ctx = await authenticateApiKey(token);
       } else {
-        // TODO (EPIC-19): Supabase JWT authentication
-        // For now, use default tenant from environment
-        ctx = {
-          tenantId: process.env.DEFAULT_TENANT_ID || "mock-tenant-id",
-          userId: "mock-user-id",
-          scopes: ["read", "write"],
-        };
+        // Otherwise verify as a real Supabase access token (JWT).
+        ctx = await authenticateSupabaseJwt(token);
       }
     } catch (error: unknown) {
       const message =
@@ -159,7 +162,7 @@ async function authenticateApiKey(token: string): Promise<AgentContext> {
       tenantId: sha256Match.tenantId,
       userId: sha256Match.userId,
       apiKeyId: sha256Match.id,
-      scopes: ["read", "write"],
+      scopes: resolveKeyScopes(sha256Match.scopes),
     };
   }
 
@@ -179,10 +182,100 @@ async function authenticateApiKey(token: string): Promise<AgentContext> {
         tenantId: apiKey.tenantId,
         userId: apiKey.userId,
         apiKeyId: apiKey.id,
-        scopes: ["read", "write"],
+        scopes: resolveKeyScopes(apiKey.scopes),
       };
     }
   }
 
   throw new Error("Invalid API key");
+}
+
+/**
+ * Resolve the effective scopes for an API key.
+ *
+ * Reads the persisted `scopes` column (audit S11). Legacy rows created before
+ * scopes were persisted have an empty array — for those we fall back to the
+ * historical `["read","write"]` so no currently-working key is locked out until
+ * the backfill migration runs. New keys default to least-privilege `["read"]`
+ * at creation, so they get a non-empty array and are NOT widened by this
+ * fallback.
+ */
+function resolveKeyScopes(scopes: string[] | null | undefined): string[] {
+  if (scopes && scopes.length > 0) return scopes;
+  return ["read", "write"];
+}
+
+/**
+ * Build a custom fetch that rewrites the browser-facing Supabase URL to the
+ * Docker-internal URL, mirroring the cookie path (tenantContext.ts). Without
+ * this the verify `GET /user` call fails inside Docker (localhost:5434x is
+ * unreachable from the container; only host.docker.internal works).
+ */
+function getSupabaseFetchConfig() {
+  const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const internalUrl = process.env.SUPABASE_INTERNAL_URL;
+  if (internalUrl && publicUrl && internalUrl !== publicUrl) {
+    return {
+      global: {
+        fetch: (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = input.toString().replace(publicUrl, internalUrl);
+          return fetch(url, init);
+        },
+      },
+    };
+  }
+  return {};
+}
+
+/**
+ * Verify a Supabase access token (JWT) and resolve it to an AgentContext.
+ *
+ * `supabase.auth.getUser(token)` issues `GET /user` carrying the token; the
+ * auth server rejects malformed/expired/forged tokens, returning
+ * `{ data: { user: null }, error }` — it does NOT throw. So we check BOTH a
+ * falsy user AND `error`, and treat either as a 401 (audit-01 Kimi note).
+ * A 5s timeout mirrors the cookie path so an unreachable Supabase yields 401,
+ * not a hang.
+ */
+async function authenticateSupabaseJwt(token: string): Promise<AgentContext> {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase is not configured; cannot verify access token");
+  }
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: { getAll: () => [], setAll: () => {} },
+      ...getSupabaseFetchConfig(),
+    }
+  );
+
+  const getUserWithTimeout = Promise.race([
+    supabase.auth.getUser(token),
+    new Promise<{ data: { user: null }; error: Error }>((resolve) =>
+      setTimeout(
+        () => resolve({ data: { user: null }, error: new Error("Supabase auth timeout") }),
+        5000
+      )
+    ),
+  ]);
+
+  const {
+    data: { user },
+    error,
+  } = await getUserWithTimeout;
+
+  if (error || !user) {
+    throw new Error("Invalid or expired access token");
+  }
+
+  // Map the verified Supabase user to the Prisma user/tenant (cross-app SSO).
+  const dbUser = await ensureUserExists(user);
+  return {
+    tenantId: dbUser.tenantId,
+    userId: dbUser.id,
+    // JWT principals are full users; per-JWT scope-narrowing is out of scope.
+    scopes: ["read", "write"],
+  };
 }

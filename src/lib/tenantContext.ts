@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveApiKey } from "@/lib/apiAuth";
 import { ensureUserExists } from "@/lib/auth/ensureUserExists";
+import { isSupabaseConfigured, isDevAuthAllowed } from "@/lib/supabase/config";
 import type { TenantContext } from "@/types/auth";
 
 /**
@@ -57,10 +58,10 @@ export async function getTenantContext(
   const supabaseInternalUrl = process.env.SUPABASE_INTERNAL_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (supabaseUrl && supabaseKey && !supabaseUrl.includes("xxxxx") && supabaseUrl.startsWith("http")) {
+  if (isSupabaseConfigured()) {
     const supabase = createServerClient(
-      supabaseUrl,
-      supabaseKey,
+      supabaseUrl!,
+      supabaseKey!,
       {
         cookies: {
           getAll() {
@@ -75,7 +76,7 @@ export async function getTenantContext(
           ? {
               global: {
                 fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-                  const url = input.toString().replace(supabaseUrl, supabaseInternalUrl);
+                  const url = input.toString().replace(supabaseUrl!, supabaseInternalUrl);
                   return fetch(url, init);
                 },
               },
@@ -115,8 +116,9 @@ export async function getTenantContext(
         role: dbUser.role,
       };
     }
-  } else {
-    // Supabase not configured — use default dev tenant (local dev mode)
+  } else if (isDevAuthAllowed()) {
+    // Supabase not configured AND dev auth explicitly opted in (non-prod only):
+    // use the default dev tenant. This NEVER fires in production (audit S2).
     const defaultTenantId = process.env.DEFAULT_TENANT_ID || "00000000-0000-4000-a000-000000000001";
     return {
       tenantId: defaultTenantId,
