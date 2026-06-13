@@ -4,6 +4,7 @@ import { errorResponse } from "@/lib/apiResponse";
 import { prisma } from "@/lib/db";
 import { ensureUserExists } from "@/lib/auth/ensureUserExists";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { logAuthEvent, clientIpFromHeaders } from "./audit";
 import { checkRateLimit } from "./ratelimit";
 import bcrypt from "bcryptjs";
 import { createHash } from "crypto";
@@ -73,6 +74,11 @@ export function withAgentAuth(handler: AgentHandler) {
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Authentication failed";
+      // Audit the (anonymous) rejection — persisted with NULL principal.
+      await logAuthEvent("auth.reject", `${req.method} ${req.nextUrl.pathname}`, {}, {
+        reason: message,
+        ip: clientIpFromHeaders(req.headers),
+      });
       return errorResponse("UNAUTHORIZED", message, undefined, 401);
     }
 
@@ -106,7 +112,16 @@ export function withAgentAuth(handler: AgentHandler) {
 
     // Check scope for method
     const method = req.method;
+    const resource = `${method} ${req.nextUrl.pathname}`;
+    const principal = {
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+      apiKeyId: ctx.apiKeyId,
+    };
     if (method === "GET" && !ctx.scopes.includes("read")) {
+      await logAuthEvent("auth.reject", resource, principal, {
+        reason: "missing read scope",
+      });
       return errorResponse(
         "FORBIDDEN",
         "Insufficient permissions (read scope required)",
@@ -118,6 +133,9 @@ export function withAgentAuth(handler: AgentHandler) {
       ["POST", "PUT", "PATCH", "DELETE"].includes(method) &&
       !ctx.scopes.includes("write")
     ) {
+      await logAuthEvent("auth.reject", resource, principal, {
+        reason: "missing write scope",
+      });
       return errorResponse(
         "FORBIDDEN",
         "Insufficient permissions (write scope required)",
@@ -125,6 +143,11 @@ export function withAgentAuth(handler: AgentHandler) {
         403
       );
     }
+
+    // Audit the successful authorization. Fire-and-forget (do NOT await) so the
+    // hot read path (kb-query) is not blocked by a per-request DB write; the
+    // logger swallows errors internally so the floating promise never rejects.
+    void logAuthEvent("auth.success", resource, principal);
 
     const rc = routeContext ?? { params: Promise.resolve({}) };
 

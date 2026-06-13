@@ -563,8 +563,12 @@ model FileAttachment {
 
 model AuditLog {
   id         String   @id @default(uuid())
-  tenantId   String   @map("tenant_id")
-  userId     String   @map("user_id")
+  // tenantId/userId are NULLABLE (audit S15): a pre-auth / anonymous rejection
+  // (401 before any principal is known) must persist a queryable row. Required
+  // FKs would FK-violate on a sentinel principal and — because logAuthEvent
+  // swallows errors — the row would silently never persist, defeating the audit.
+  tenantId   String?  @map("tenant_id")
+  userId     String?  @map("user_id")
   apiKeyId   String?  @map("api_key_id")
   action     String
   resource   String
@@ -572,9 +576,9 @@ model AuditLog {
   details    Json?
   createdAt  DateTime @default(now()) @map("created_at")
 
-  // Relations
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Relations (optional — match the nullable FKs above)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
   apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
 
   // Indexes
