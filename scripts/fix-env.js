@@ -10,12 +10,16 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
-// Get Supabase keys from the running instance
+// Get Supabase keys from a running Supabase instance.
+// NOTE (audit S10): the repo's own supabase/config.toml stack is ABANDONED. The
+// app actually authenticates against ExpTube's Supabase (localhost:54341). If you
+// run `supabase status` here against the local config it will report the unused
+// 54351 stack — point this at the real auth stack, or set the keys by hand.
 let supabaseEnv;
 try {
   supabaseEnv = execSync('npx supabase status -o env 2>/dev/null', { encoding: 'utf8' });
 } catch {
-  console.error('Error: Supabase is not running. Start it with: npx supabase start');
+  console.error('Error: could not read Supabase status. Ensure your Supabase auth stack is running (the app uses ExpTube\'s on :54341), or set NEXT_PUBLIC_SUPABASE_* by hand.');
   process.exit(1);
 }
 
