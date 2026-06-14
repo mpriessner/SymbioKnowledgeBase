@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { ensureUserExists } from "@/lib/auth/ensureUserExists";
+import { logAuthEvent } from "@/lib/agent/audit";
 
 /**
  * Resolve the browser-facing origin for redirects.
@@ -239,7 +240,11 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (error) {
-      console.error("OAuth code exchange failed:", error.message);
+      // Structured, queryable audit row for the OAuth-exchange failure (no
+      // AgentContext here, so an anonymous principal — audit S15).
+      await logAuthEvent("oauth.exchange_failed", "auth/callback", {}, {
+        reason: error.message,
+      });
     }
 
     if (!error && data.user) {

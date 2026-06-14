@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
 import type { TenantContext } from "@/types/auth";
+import { logAuthEvent } from "@/lib/agent/audit";
 
 const API_KEY_PREFIX = "skb_live_";
 
@@ -73,17 +74,26 @@ export async function resolveApiKey(
     return null;
   }
 
-  // Update last used timestamp (fire-and-forget, no await needed)
+  // Update last used timestamp (fire-and-forget, no await needed). Route a
+  // failure through the structured logger instead of a bare console.error so
+  // key-usage failures are queryable (audit S15).
   prisma.apiKey
     .update({
       where: { id: apiKey.id },
       data: { lastUsedAt: new Date() },
     })
-    .catch(() => {
-      console.error(
-        `Failed to update lastUsedAt for API key ${apiKey.id}`
-      );
-    });
+    .catch((err: unknown) =>
+      logAuthEvent(
+        "key.last_used_update_failed",
+        "apiKey.lastUsedAt",
+        {
+          tenantId: apiKey.user.tenantId,
+          userId: apiKey.user.id,
+          apiKeyId: apiKey.id,
+        },
+        { reason: err instanceof Error ? err.message : String(err) }
+      )
+    );
 
   return {
     tenantId: apiKey.user.tenantId,

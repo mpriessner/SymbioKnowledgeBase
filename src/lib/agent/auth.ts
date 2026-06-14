@@ -183,9 +183,23 @@ async function authenticateApiKey(token: string): Promise<AgentContext> {
   });
 
   if (sha256Match) {
+    // lastUsedAt is best-effort; route a failure through the structured logger
+    // instead of swallowing it silently (audit S15 — this path runs for every
+    // /api/agent/* request incl. kb-query).
     prisma.apiKey
       .update({ where: { id: sha256Match.id }, data: { lastUsedAt: new Date() } })
-      .catch(() => {});
+      .catch((err: unknown) =>
+        logAuthEvent(
+          "key.last_used_update_failed",
+          "apiKey.lastUsedAt",
+          {
+            tenantId: sha256Match.tenantId,
+            userId: sha256Match.userId,
+            apiKeyId: sha256Match.id,
+          },
+          { reason: err instanceof Error ? err.message : String(err) }
+        )
+      );
     return {
       tenantId: sha256Match.tenantId,
       userId: sha256Match.userId,
@@ -203,9 +217,21 @@ async function authenticateApiKey(token: string): Promise<AgentContext> {
   for (const apiKey of candidates) {
     const matches = await bcrypt.compare(token, apiKey.keyHash);
     if (matches) {
+      // Best-effort; structured-log a failure rather than swallow it (audit S15).
       prisma.apiKey
         .update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } })
-        .catch(() => {});
+        .catch((err: unknown) =>
+          logAuthEvent(
+            "key.last_used_update_failed",
+            "apiKey.lastUsedAt",
+            {
+              tenantId: apiKey.tenantId,
+              userId: apiKey.userId,
+              apiKeyId: apiKey.id,
+            },
+            { reason: err instanceof Error ? err.message : String(err) }
+          )
+        );
       return {
         tenantId: apiKey.tenantId,
         userId: apiKey.userId,

@@ -37,6 +37,20 @@ vi.mock("@/lib/auth/ensureUserExists", () => ({
   ensureUserExists: (...a: unknown[]) => mockEnsureUserExists(...a),
 }));
 
+// Audit logger: spy so we can assert key-usage failures are routed through the
+// structured logger (audit S15), not swallowed silently.
+const mockLogAuthEvent = vi.fn(async (..._a: unknown[]) => {});
+vi.mock("@/lib/agent/audit", () => ({
+  logAuthEvent: (...a: unknown[]) => mockLogAuthEvent(...a),
+  clientIpFromHeaders: () => undefined,
+}));
+
+// bcrypt.compare result is controllable per-test for the bcrypt key path.
+let bcryptCompareResult = false;
+vi.mock("bcryptjs", () => ({
+  default: { compare: vi.fn(async () => bcryptCompareResult) },
+}));
+
 const { withAgentAuth } = await import("@/lib/agent/auth");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,6 +75,7 @@ async function call(method: string, authHeader?: string): Promise<Response> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bcryptCompareResult = false;
   process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54341";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key-not-placeholder";
   delete process.env.SUPABASE_INTERNAL_URL;
@@ -161,6 +176,51 @@ describe("withAgentAuth — skb_ API key path (audit S11 scopes)", () => {
 
     const res = await call("GET", "Bearer skb_live_nope");
     expect(res.status).toBe(401);
+  });
+
+  test("SHA key lastUsedAt failure is routed through the structured logger, not swallowed (audit S15)", async () => {
+    mockApiKeyFindFirst.mockResolvedValue({
+      id: "key-1",
+      tenantId: "tenant-1",
+      userId: "user-1",
+      scopes: ["read", "write"],
+    });
+    // lastUsedAt update fails — must NOT fail the request, but must be logged.
+    mockApiKeyUpdate.mockRejectedValue(new Error("db write failed"));
+
+    const res = await call("GET", "Bearer skb_live_validkey");
+    expect(res.status).toBe(200); // request still succeeds
+
+    // The .catch handler is fire-and-forget; let the microtask queue drain.
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(mockLogAuthEvent).toHaveBeenCalledWith(
+      "key.last_used_update_failed",
+      "apiKey.lastUsedAt",
+      expect.objectContaining({ apiKeyId: "key-1", userId: "user-1", tenantId: "tenant-1" }),
+      expect.objectContaining({ reason: "db write failed" })
+    );
+  });
+
+  test("bcrypt key lastUsedAt failure is also routed through the structured logger (audit S15)", async () => {
+    mockApiKeyFindFirst.mockResolvedValue(null);
+    mockApiKeyFindMany.mockResolvedValue([
+      { id: "key-bc", tenantId: "t", userId: "u", scopes: ["read", "write"], keyHash: "hashed" },
+    ]);
+    bcryptCompareResult = true;
+    mockApiKeyUpdate.mockRejectedValue(new Error("bcrypt path db fail"));
+
+    const res = await call("GET", "Bearer skb_live_bcryptkey");
+    expect(res.status).toBe(200);
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(mockLogAuthEvent).toHaveBeenCalledWith(
+      "key.last_used_update_failed",
+      "apiKey.lastUsedAt",
+      expect.objectContaining({ apiKeyId: "key-bc" }),
+      expect.objectContaining({ reason: "bcrypt path db fail" })
+    );
   });
 });
 
