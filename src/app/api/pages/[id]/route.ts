@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { withTenant } from "@/lib/auth/withTenant";
+import { requireDestructivePermission } from "@/lib/auth/requireDestructivePermission";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { updatePageSchema } from "@/lib/validation/pages";
 import type { TenantContext } from "@/types/auth";
@@ -280,6 +281,11 @@ export const DELETE = withTenant(
     context: TenantContext,
     { params }
   ) => {
+    // Block non-admin USERs from destructive shared-KB ops (audit S4). Thrown
+    // outside the try so the 403 AuthenticationError reaches withTenant's
+    // handler (a local catch would otherwise turn it into a 500).
+    requireDestructivePermission(context);
+
     try {
       const { id } = await params;
       const idParsed = pageIdSchema.safeParse(id);

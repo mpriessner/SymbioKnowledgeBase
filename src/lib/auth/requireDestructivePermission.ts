@@ -1,40 +1,79 @@
 import type { TenantContext } from "@/types/auth";
+import { AuthenticationError } from "@/lib/tenantContext";
 
 /**
- * Permission gate for destructive shared-KB operations (delete / archive / purge
- * of pages, blocks, databases) — audit S4.
+ * Permission gate for destructive shared-KB operations (delete / trash / restore
+ * / purge of pages, blocks, databases) — audit S4.
  *
  * ──────────────────────────────────────────────────────────────────────────
- * 🔴 INTENTIONALLY A NO-OP — BLOCKED ON A USER DECISION.
+ * WHY THIS EXISTS
  * ──────────────────────────────────────────────────────────────────────────
  * Flipping new users from ADMIN→USER (done in `ensureUserExists`) does NOT, by
- * itself, stop a non-owner USER from deleting shared KB content: the destructive
+ * itself, stop a non-admin USER from deleting shared KB content: the destructive
  * routes are wrapped in `withTenant`, which does NOT consult `User.role`. Only
- * the user-management + broadcast routes use `withAdmin`.
+ * the user-management + broadcast routes use `withAdmin`. So a least-privilege
+ * USER could still delete/trash/restore every seeded + synced experiment in the
+ * shared `DEFAULT_TENANT_ID`.
  *
- * The headline NEEDS-USER-INPUT for audit-04 is: should a non-owner USER be
- * blocked from delete/archive/purge of shared KB content? That has NOT been
- * answered, so the gate is deliberately left as a no-op rather than guessed —
- * enabling it would change the authorization model for every existing user.
+ * This gate closes that hole: a non-admin USER principal is blocked from the
+ * destructive KB routes; ADMIN principals (the owner-equivalent for the shared
+ * tenant — `TenantContext` carries the `User.role` enum, which is ADMIN | USER
+ * only, NOT a `MEMBER`/`OWNER` value) retain access.
  *
- * Affected routes (where this would be called, AFTER the decision):
- *   - src/app/api/pages/[id]/route.ts          (update :79, delete :277)
- *   - src/app/api/blocks/[id]/route.ts         (update :44, delete :101)
- *   - src/app/api/databases/[id]/route.ts      (update :60, delete :210)
- *   - src/app/api/pages/[id]/archive/route.ts  (:12)
- *   - src/app/api/pages/[id]/purge/route.ts    (:14)
+ * ──────────────────────────────────────────────────────────────────────────
+ * CONFIG FLAG (defaults to ON / block)
+ * ──────────────────────────────────────────────────────────────────────────
+ * Behaviour is governed by `SKB_BLOCK_NON_ADMIN_DESTRUCTIVE`:
+ *   - unset / "1" / "true"  → ON  (block non-admin USERs — the secure default)
+ *   - "0" / "false" / "off" → OFF (legacy behaviour: any tenant member may
+ *                                   delete; relax without a code change)
+ * Defaulting to ON means the least-privilege posture is the out-of-the-box
+ * behaviour; an operator who wants the old shared-write-for-all model can opt
+ * out via env, no redeploy of changed code required.
  *
- * Out of scope here regardless: the AGENT write path is scope-governed
- * (`withAgentAuth`), NOT role-governed — limiting agent writes is scope
- * narrowing (audit-01), not a role gate.
+ * ──────────────────────────────────────────────────────────────────────────
+ * SCOPE
+ * ──────────────────────────────────────────────────────────────────────────
+ * Wired into the destructive `withTenant` routes:
+ *   - src/app/api/pages/[id]/route.ts          (DELETE)
+ *   - src/app/api/pages/[id]/archive/route.ts  (POST — trash)
+ *   - src/app/api/pages/[id]/purge/route.ts    (DELETE — permanent delete)
+ *   - src/app/api/pages/[id]/restore/route.ts  (POST — restore)
+ *   - src/app/api/blocks/[id]/route.ts         (DELETE)
+ *   - src/app/api/databases/[id]/route.ts      (DELETE)
  *
- * TODO(audit-04): pending user decision — block non-owner USER deletes?
- * If "yes", implement (e.g. throw AuthenticationError(403) unless
- * ctx.role === "ADMIN" or the caller is the tenant owner) and wire into the
- * routes above. If "no", S4's write/delete-of-shared-content concern stays
- * explicitly deferred and this stub can be removed.
+ * Out of scope (by design): the AGENT write path is scope-governed
+ * (`withAgentAuth` authorizes by per-key `scopes`, NOT `User.role`) — limiting
+ * agent writes is scope narrowing (audit-01), not a role gate, so this function
+ * is intentionally NOT called from `/api/agent/*`.
  */
-export function requireDestructivePermission(_ctx: TenantContext): void {
-  // No-op until the gating decision is made. See the doc block above.
-  return;
+
+/**
+ * Returns true when the destructive-op gate is active (block non-admins).
+ * Default ON; only an explicit falsy flag value disables it.
+ */
+export function isDestructiveGateEnabled(): boolean {
+  const raw = process.env.SKB_BLOCK_NON_ADMIN_DESTRUCTIVE;
+  if (raw === undefined) return true; // default ON
+  const normalized = raw.trim().toLowerCase();
+  return !(normalized === "0" || normalized === "false" || normalized === "off");
+}
+
+/**
+ * Throw a 403 `AuthenticationError` if the principal is not allowed to perform a
+ * destructive shared-KB operation. ADMIN principals always pass. When the gate
+ * is disabled via `SKB_BLOCK_NON_ADMIN_DESTRUCTIVE`, everyone passes (legacy
+ * behaviour).
+ *
+ * `withTenant`'s catch maps `AuthenticationError` to a JSON error response with
+ * the carried status/code, so callers just need to invoke this before mutating.
+ */
+export function requireDestructivePermission(ctx: TenantContext): void {
+  if (!isDestructiveGateEnabled()) return;
+  if (ctx.role === "ADMIN") return;
+  throw new AuthenticationError(
+    "Insufficient permissions: destructive operations on shared knowledge-base content require an admin role",
+    403,
+    "FORBIDDEN"
+  );
 }
