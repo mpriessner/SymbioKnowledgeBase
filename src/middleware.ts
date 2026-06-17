@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
 // Routes that do not require authentication
-const PUBLIC_PATHS = ["/", "/login", "/register", "/shared", "/api/auth", "/auth/callback"];
+const PUBLIC_PATHS = ["/", "/login", "/register", "/shared", "/api/auth", "/api/health", "/auth/callback"];
 
 // Static-asset file extensions served from /public. We allow these through
 // WITHOUT auth using a precise extension allowlist — NOT a blanket

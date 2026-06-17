@@ -11,6 +11,9 @@ const kbQuerySchema = z.object({
   session_id: z.string().optional(),
   depth: z.enum(["default", "medium", "deep"]).optional().default("medium"),
   max_blocks: z.number().int().min(1).max(20).optional().default(5),
+  strategy: z.enum(["auto", "rag", "agentic"]).optional().default("auto"),
+  max_answer_length: z.number().int().min(100).max(5000).optional().default(500),
+  max_block_chars: z.number().int().min(100).max(5000).optional(),
 });
 
 /**
@@ -24,6 +27,10 @@ const kbQuerySchema = z.object({
  */
 export const POST = withAgentAuth(
   async (req: NextRequest, ctx: AgentContext) => {
+    const url = new URL(req.url);
+    const includeFormatted = url.searchParams.get("include_formatted") === "true";
+    const maxContextCharsParam = url.searchParams.get("max_context_chars");
+    const maxContextChars = maxContextCharsParam ? Math.min(Math.max(parseInt(maxContextCharsParam, 10) || 12000, 1000), 50000) : 12000;
     let body: unknown;
     try {
       body = await req.json();
@@ -39,6 +46,7 @@ export const POST = withAgentAuth(
             query_metadata: {
               intent: "general",
               search_depth: "medium",
+              search_strategy: "rag",
               pages_searched: 0,
               graph_hops: 0,
               elapsed_ms: 0,
@@ -62,6 +70,7 @@ export const POST = withAgentAuth(
             query_metadata: {
               intent: "general",
               search_depth: "medium",
+              search_strategy: "rag",
               pages_searched: 0,
               graph_hops: 0,
               elapsed_ms: 0,
@@ -80,6 +89,11 @@ export const POST = withAgentAuth(
         sessionId: parsed.data.session_id,
         depth: parsed.data.depth as SearchDepth,
         maxBlocks: parsed.data.max_blocks,
+        strategy: parsed.data.strategy,
+        maxAnswerLength: parsed.data.max_answer_length,
+        maxBlockChars: parsed.data.max_block_chars,
+        includeFormatted,
+        maxContextChars,
       });
 
       return Response.json(
@@ -108,6 +122,7 @@ export const POST = withAgentAuth(
             query_metadata: {
               intent: "general",
               search_depth: parsed.data.depth,
+              search_strategy: "rag",
               pages_searched: 0,
               graph_hops: 0,
               elapsed_ms: 0,
