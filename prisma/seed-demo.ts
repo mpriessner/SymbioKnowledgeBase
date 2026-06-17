@@ -1,142 +1,1927 @@
+/**
+ * SKB experimental knowledge-graph seed.
+ *
+ * Replaces the previous SaaS-style demo (Roadmap / Bug Tracker / Sprint Notes /
+ * etc) with a research-lab content set that mirrors the experiments living in
+ * the local ExpTube and ChemELN databases. Designed so that opening SKB after a
+ * fresh install shows a meaningful, interconnected demo for the actual
+ * intended user — a chemistry/biology research org.
+ *
+ * Strategy:
+ *   1. Targeted cleanup of the OLD seed namespace only (`d0000000-…` pages /
+ *      `e0000000-…` teamspaces / `d1000000-…` databases). User-created content
+ *      under any other UUID is left alone, so re-running on container restart
+ *      is safe.
+ *   2. Resolve `martin.priessner@gmail.com` by email; fall back to the
+ *      Supabase-issued UUID `23395bc9-…6363` if not present. Avoids a
+ *      split-brain Martin if Supabase ever re-issues IDs.
+ *   3. Each page is one `BlockType.DOCUMENT` block holding a TipTap JSON tree
+ *      with verified node shapes (`callout`, `wikilink`) — separate `H1` /
+ *      `PARAGRAPH` / `CALLOUT` block rows would not render under
+ *      `src/components/editor/BlockEditor.tsx`.
+ *   4. Pre-bake `summary` + `summaryUpdatedAt` + `lastAgentVisitAt = now()` so
+ *      the sweep service (`src/lib/sweep/pageSelection.ts`) doesn't trigger an
+ *      AI re-compute storm on every reseed.
+ *   5. Findings hybrid: every Finding is both a Page (for graph edges) AND a
+ *      DbRow in a "Findings Index" Database (for sort/filter).
+ *
+ * For a tenant-wide nuke, use `npm run reset-demo` (separate script).
+ *
+ * See `docs/stories/2026-05-06-skb-experimental-knowledge-graph-seed.md`.
+ */
 import "dotenv/config";
-import { PrismaClient, BlockType, SpaceType, TeamspaceRole } from "../src/generated/prisma/client";
+import {
+  PrismaClient,
+  BlockType,
+  SpaceType,
+  TeamspaceRole,
+} from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-// Use the existing tenant and user
+// ── Tenant + user constants ──────────────────────────────────────────
 const TENANT_ID = "00000000-0000-4000-a000-000000000001";
 const ADMIN_USER_ID = "00000000-0000-4000-a000-000000000002";
 const DEV_USER_ID = "dev-user";
+const MARTIN_FALLBACK_ID = "23395bc9-b500-4fa7-a6ce-f1dc7c9c6363";
+const MARTIN_EMAIL = "martin.priessner@gmail.com";
 
-// Teamspace IDs
-const TEAMSPACE = {
-  engineering: "e0000000-0000-4000-a000-000000000001",
-  product:     "e0000000-0000-4000-a000-000000000002",
+// ── Old-namespace prefixes (cleanup targets) ─────────────────────────
+const OLD_PAGE_PREFIX = "d0000000-0000-4000-a000-";
+const OLD_TEAMSPACE_PREFIX = "e0000000-0000-4000-a000-";
+const OLD_DATABASE_PREFIX = "d1000000-0000-4000-a000-";
+// seed.ts (basic seed) creates this Welcome page on every container start.
+// Functionally duplicated by our new Welcome page (G.welcome), so remove it.
+const SEED_TS_WELCOME_PAGE_ID = "00000000-0000-4000-a000-000000000010";
+
+// ── New UUID namespaces (fresh, non-overlapping) ─────────────────────
+const TS = {
+  molbio: "f1000000-0000-4000-a000-000000000001",
+  orgsynth: "f1000000-0000-4000-a000-000000000002",
+  protein: "f1000000-0000-4000-a000-000000000003",
+  cellbio: "f1000000-0000-4000-a000-000000000004",
+  analytics: "f1000000-0000-4000-a000-000000000005",
 };
 
-// Fixed UUIDs for idempotent seeding (valid UUID v4: pos 13=4, pos 17=a)
-const PAGE = {
-  welcome:    "d0000000-0000-4000-a000-000000000001",
-  arch:       "d0000000-0000-4000-a000-000000000002",
-  api:        "d0000000-0000-4000-a000-000000000003",
-  research:   "d0000000-0000-4000-a000-000000000004",
-  meeting:    "d0000000-0000-4000-a000-000000000005",
-  roadmap:    "d0000000-0000-4000-a000-000000000006",
-  devSetup:   "d0000000-0000-4000-a000-000000000007",
-  llmGuide:   "d0000000-0000-4000-a000-000000000008",
-  dataModels: "d0000000-0000-4000-a000-000000000009",
-  changelog:  "d0000000-0000-4000-a000-00000000000a",
-  bugTracker: "d0000000-0000-4000-a000-00000000000b",
-  designDoc:  "d0000000-0000-4000-a000-00000000000c",
-  // ── New pages (18 more) ──
-  security:       "d0000000-0000-4000-a000-000000000010",
-  testing:        "d0000000-0000-4000-a000-000000000011",
-  deployment:     "d0000000-0000-4000-a000-000000000012",
-  frontend:       "d0000000-0000-4000-a000-000000000013",
-  performance:    "d0000000-0000-4000-a000-000000000014",
-  vectorSearch:   "d0000000-0000-4000-a000-000000000015",
-  agentWorkflows: "d0000000-0000-4000-a000-000000000016",
-  promptLibrary:  "d0000000-0000-4000-a000-000000000017",
-  knowledgePipe:  "d0000000-0000-4000-a000-000000000018",
-  meetingSprint13:"d0000000-0000-4000-a000-000000000019",
-  meetingSprint12:"d0000000-0000-4000-a000-00000000001a",
-  onboarding:     "d0000000-0000-4000-a000-00000000001b",
-  contributing:   "d0000000-0000-4000-a000-00000000001c",
-  troubleshoot:   "d0000000-0000-4000-a000-00000000001d",
-  cicd:           "d0000000-0000-4000-a000-00000000001e",
-  dbMigration:    "d0000000-0000-4000-a000-00000000001f",
-  accessibility:  "d0000000-0000-4000-a000-000000000020",
-  mobileDesign:   "d0000000-0000-4000-a000-000000000021",
-  // ── Agent pages (spaceType: AGENT) ──
-  agentDbAccess:      "d0000000-0000-4000-a000-000000000030",
-  agentEquipOps:      "d0000000-0000-4000-a000-000000000031",
-  agentQrCodes:       "d0000000-0000-4000-a000-000000000032",
-  agentOrgInstructions:"d0000000-0000-4000-a000-000000000033",
-  agentApiIntegrations:"d0000000-0000-4000-a000-000000000034",
-  agentSafetyProto:   "d0000000-0000-4000-a000-000000000035",
-  // ── Team pages (spaceType: TEAM, linked to teamspaces) ──
-  teamEngStandards:   "d0000000-0000-4000-a000-000000000040",
-  teamEngRunbooks:    "d0000000-0000-4000-a000-000000000041",
-  teamEngIncidents:   "d0000000-0000-4000-a000-000000000042",
-  teamEngOnCall:      "d0000000-0000-4000-a000-000000000043",
-  teamProdRoadmap:    "d0000000-0000-4000-a000-000000000050",
-  teamProdMetrics:    "d0000000-0000-4000-a000-000000000051",
-  teamProdUserRes:    "d0000000-0000-4000-a000-000000000052",
-  teamProdSpecs:      "d0000000-0000-4000-a000-000000000053",
+// Landing pages, one per teamspace.
+const LP = {
+  molbio: "f2000000-0000-4000-a000-000000000001",
+  orgsynth: "f2000000-0000-4000-a000-000000000002",
+  protein: "f2000000-0000-4000-a000-000000000003",
+  cellbio: "f2000000-0000-4000-a000-000000000004",
+  analytics: "f2000000-0000-4000-a000-000000000005",
 };
 
-const DB = {
-  bugs: "d1000000-0000-4000-a000-000000000001",
-  features: "d1000000-0000-4000-a000-000000000002",
+// Experiment pages — slug → uuid.
+const E = {
+  // Molecular Biology — mirrors live ExpTube EXP-2026-0101..0106 + ChemELN ELN-101..106
+  exp101: "f3000000-0000-4000-a000-000000000001", // Genomic DNA Extraction
+  exp102: "f3000000-0000-4000-a000-000000000002", // Plasmid Mini Prep
+  exp103: "f3000000-0000-4000-a000-000000000003", // Agarose Gel Preparation
+  exp104: "f3000000-0000-4000-a000-000000000004", // DNA Quality Check Gel
+  exp105: "f3000000-0000-4000-a000-000000000005", // PCR Verification Gel
+  exp106: "f3000000-0000-4000-a000-000000000006", // DNA Purification (PCR Cleanup)
+  // Organic Synthesis
+  expAspirin:    "f3000000-0000-4000-a000-000000000007",
+  expGrignard:   "f3000000-0000-4000-a000-000000000008",
+  expRecrystal:  "f3000000-0000-4000-a000-000000000009",
+  expFischer:    "f3000000-0000-4000-a000-00000000000a",
+  // Protein Biochemistry
+  expBradford:   "f3000000-0000-4000-a000-00000000000b",
+  expLactase:    "f3000000-0000-4000-a000-00000000000c",
+  expSdspage:    "f3000000-0000-4000-a000-00000000000d",
+  expWestern:    "f3000000-0000-4000-a000-00000000000e",
+  // Cell Biology
+  expStrawberry: "f3000000-0000-4000-a000-00000000000f",
+  expPlasmolysis:"f3000000-0000-4000-a000-000000000010",
+  expPglo:       "f3000000-0000-4000-a000-000000000011",
+  // Analytical & Materials
+  expTlc:        "f3000000-0000-4000-a000-000000000012",
+  expUvVis:      "f3000000-0000-4000-a000-000000000013",
+  expMeltPoint:  "f3000000-0000-4000-a000-000000000014",
 };
 
-function text(t: string, marks?: Array<{ type: string; attrs?: Record<string, unknown> }>) {
-  const node: Record<string, unknown> = { type: "text", text: t };
-  if (marks) node.marks = marks;
-  return node;
+// Findings.
+const F = {
+  findPlasmidYield:    "f4000000-0000-4000-a000-000000000001",
+  findGelResolution:   "f4000000-0000-4000-a000-000000000002",
+  find260280:          "f4000000-0000-4000-a000-000000000003",
+  findPcrCleanup:      "f4000000-0000-4000-a000-000000000004",
+  findAspirinYield:    "f4000000-0000-4000-a000-000000000005",
+  findGrignardAnhydrous:"f4000000-0000-4000-a000-000000000006",
+  findBradfordRange:   "f4000000-0000-4000-a000-000000000007",
+  findGelLaneWarp:     "f4000000-0000-4000-a000-000000000008",
+  findPgloThaw:        "f4000000-0000-4000-a000-000000000009",
+};
+
+// SOPs.
+const S = {
+  sopMiniprep:         "f5000000-0000-4000-a000-000000000001",
+  sopAgaroseGel:       "f5000000-0000-4000-a000-000000000002",
+  sopNanoDrop:         "f5000000-0000-4000-a000-000000000003",
+  sopElectrophoresis:  "f5000000-0000-4000-a000-000000000004",
+  sopRecrystal:        "f5000000-0000-4000-a000-000000000005",
+  sopReflux:           "f5000000-0000-4000-a000-000000000006",
+  sopBradford:         "f5000000-0000-4000-a000-000000000007",
+  sopSdsPage:          "f5000000-0000-4000-a000-000000000008",
+  sopHeatShock:        "f5000000-0000-4000-a000-000000000009",
+  sopTlcPlate:         "f5000000-0000-4000-a000-00000000000a",
+};
+
+// Reagent / Equipment notes.
+const R = {
+  regTaeStock:    "f6000000-0000-4000-a000-000000000001",
+  regNanoDrop:    "f6000000-0000-4000-a000-000000000002",
+  regGelRig:      "f6000000-0000-4000-a000-000000000003",
+  regSulfuric:    "f6000000-0000-4000-a000-000000000004",
+  regCompCells:   "f6000000-0000-4000-a000-000000000005",
+};
+
+// General-space pages (top-level, no teamspace).
+const G = {
+  welcome:        "f7000000-0000-4000-a000-000000000001",
+  onboarding:     "f7000000-0000-4000-a000-000000000002",
+  dbAccess:       "f7000000-0000-4000-a000-000000000003",
+  equipManuals:   "f7000000-0000-4000-a000-000000000004",
+  safety:         "f7000000-0000-4000-a000-000000000005",
+  orgPolicies:    "f7000000-0000-4000-a000-000000000006",
+  findingsIndex:  "f7000000-0000-4000-a000-000000000007",
+};
+
+// Findings Index database (one row per Finding page).
+const FINDINGS_DB_ID = "f1100000-0000-4000-a000-000000000001";
+
+// ── TipTap node helpers ──────────────────────────────────────────────
+type TipTapNode = Record<string, unknown>;
+
+function text(t: string): TipTapNode {
+  return { type: "text", text: t };
 }
-
-function paragraph(...content: unknown[]) {
+function paragraph(...content: TipTapNode[]): TipTapNode {
   return { type: "paragraph", content };
 }
-
-function heading(level: number, t: string) {
+function heading(level: 1 | 2 | 3, t: string): TipTapNode {
   return { type: "heading", attrs: { level }, content: [text(t)] };
 }
-
-function bulletList(...items: string[]) {
+function bulletList(...items: string[]): TipTapNode {
   return {
     type: "bulletList",
-    content: items.map((item) => ({
+    content: items.map((s) => ({
       type: "listItem",
-      content: [paragraph(text(item))],
+      content: [paragraph(text(s))],
     })),
   };
 }
-
-function orderedList(...items: string[]) {
+function bulletListNodes(...items: TipTapNode[][]): TipTapNode {
+  return {
+    type: "bulletList",
+    content: items.map((inline) => ({
+      type: "listItem",
+      content: [paragraph(...inline)],
+    })),
+  };
+}
+function orderedList(...items: string[]): TipTapNode {
   return {
     type: "orderedList",
-    content: items.map((item) => ({
+    content: items.map((s) => ({
       type: "listItem",
-      content: [paragraph(text(item))],
+      content: [paragraph(text(s))],
     })),
   };
 }
-
-function taskList(...items: Array<{ text: string; checked: boolean }>) {
+function callout(
+  emoji: string,
+  variant: "info" | "warning" | "success" | "error",
+  ...content: TipTapNode[]
+): TipTapNode {
+  return { type: "callout", attrs: { emoji, variant }, content };
+}
+function wikilink(pageId: string, displayText: string, pageName?: string): TipTapNode {
   return {
-    type: "taskList",
-    content: items.map((item) => ({
-      type: "taskItem",
-      attrs: { checked: item.checked },
-      content: [paragraph(text(item.text))],
-    })),
+    type: "wikilink",
+    attrs: { pageId, pageName: pageName ?? displayText, displayText },
   };
 }
-
-function codeBlock(language: string, code: string) {
-  return { type: "codeBlock", attrs: { language }, content: [text(code)] };
-}
-
-function blockquote(t: string) {
-  return { type: "blockquote", content: [paragraph(text(t))] };
-}
-
-function divider() {
-  return { type: "horizontalRule" };
-}
-
-function doc(...content: unknown[]) {
+function doc(...content: TipTapNode[]): TipTapNode {
   return { type: "doc", content };
 }
 
-async function main() {
-  console.log("Seeding demo data...\n");
+// Plain-text extraction for Block.plainText (so search index populates).
+function extractPlainText(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as Record<string, unknown>;
+  if (n.type === "text" && typeof n.text === "string") return n.text;
+  if (n.type === "wikilink") {
+    const a = (n.attrs ?? {}) as Record<string, unknown>;
+    return String(a.displayText ?? a.pageName ?? "");
+  }
+  const c = n.content;
+  if (Array.isArray(c)) return c.map(extractPlainText).join(" ");
+  return "";
+}
 
-  // ── Dev-mode user (for local dev without Supabase) ───────
+// ── Page / Block / Link / Database accumulators ──────────────────────
+type PageSpec = {
+  id: string;
+  title: string;
+  icon: string;
+  parentId?: string | null;
+  teamspaceId?: string | null;
+  spaceType: SpaceType;
+  position: number;
+  oneLiner: string;
+  summary: string;
+  content: TipTapNode;
+};
+
+const pages: PageSpec[] = [];
+const links: Array<{ source: string; target: string }> = [];
+function link(source: string, target: string) {
+  if (source === target) return;
+  links.push({ source, target });
+}
+
+// ── Page builders ────────────────────────────────────────────────────
+function landingPage(args: {
+  id: string;
+  teamspaceId: string;
+  title: string;
+  icon: string;
+  intro: string;
+  experiments: Array<{ id: string; title: string }>;
+  sops: Array<{ id: string; title: string }>;
+  findings: Array<{ id: string; title: string }>;
+}): PageSpec {
+  const expList = bulletListNodes(
+    ...args.experiments.map((e) => [wikilink(e.id, e.title)] as TipTapNode[]),
+  );
+  const sopList = bulletListNodes(
+    ...args.sops.map((s) => [wikilink(s.id, s.title)] as TipTapNode[]),
+  );
+  const findList = bulletListNodes(
+    ...args.findings.map((f) => [wikilink(f.id, f.title)] as TipTapNode[]),
+  );
+  const content = doc(
+    heading(1, args.title),
+    paragraph(text(args.intro)),
+    heading(2, "Experiments in this space"),
+    expList,
+    heading(2, "Standard Operating Procedures"),
+    sopList,
+    heading(2, "Findings & Learnings"),
+    findList,
+  );
+  // Edges from the landing page to every child.
+  for (const e of args.experiments) link(args.id, e.id);
+  for (const s of args.sops) link(args.id, s.id);
+  for (const f of args.findings) link(args.id, f.id);
+  return {
+    id: args.id,
+    title: args.title,
+    icon: args.icon,
+    parentId: null,
+    teamspaceId: args.teamspaceId,
+    spaceType: SpaceType.TEAM,
+    position: 0,
+    oneLiner: args.intro.slice(0, 140),
+    summary: args.intro,
+    content,
+  };
+}
+
+function experimentPage(args: {
+  id: string;
+  teamspaceId: string;
+  title: string;
+  icon: string;
+  position: number;
+  expId: string;       // ExpTube id, e.g. "EXP-2026-0101"
+  elnId: string;       // ChemELN id, e.g. "ELN-101"
+  status: "draft" | "active" | "in_progress" | "completed" | "archived";
+  objective: string;
+  reagents: string[];
+  equipment: string[];
+  sops: Array<{ id: string; title: string }>;
+  findings: Array<{ id: string; title: string }>;
+  siblings: Array<{ id: string; title: string }>;
+}): PageSpec {
+  const calloutVariant: "success" | "info" =
+    args.status === "completed" ? "success" : "info";
+  const content = doc(
+    callout(
+      "📋",
+      calloutVariant,
+      paragraph(
+        text(
+          `Source of truth: ExpTube ${args.expId} · ChemELN ${args.elnId} — full procedure and AI analysis live in the linked systems.`,
+        ),
+      ),
+    ),
+    heading(2, "Objective"),
+    paragraph(text(args.objective)),
+    heading(2, "Status"),
+    paragraph(text(args.status.replace("_", " "))),
+    heading(2, "Key reagents"),
+    bulletList(...args.reagents),
+    heading(2, "Key equipment"),
+    bulletList(...args.equipment),
+    heading(2, "Related SOPs"),
+    bulletListNodes(...args.sops.map((s) => [wikilink(s.id, s.title)] as TipTapNode[])),
+    heading(2, "Findings from this experiment"),
+    bulletListNodes(...args.findings.map((f) => [wikilink(f.id, f.title)] as TipTapNode[])),
+    heading(2, "Sibling experiments"),
+    bulletListNodes(...args.siblings.map((s) => [wikilink(s.id, s.title)] as TipTapNode[])),
+  );
+  for (const s of args.sops) link(args.id, s.id);
+  for (const f of args.findings) link(args.id, f.id);
+  for (const s of args.siblings) link(args.id, s.id);
+  return {
+    id: args.id,
+    title: args.title,
+    icon: args.icon,
+    parentId: null,
+    teamspaceId: args.teamspaceId,
+    spaceType: SpaceType.TEAM,
+    position: args.position,
+    oneLiner: args.objective.slice(0, 140),
+    summary: `${args.title}. ${args.objective}`,
+    content,
+  };
+}
+
+function findingPage(args: {
+  id: string;
+  teamspaceId: string;
+  title: string;
+  icon: string;
+  position: number;
+  takeaway: string;
+  context: string;
+  evidence: TipTapNode[]; // mixed inline content (text + wikilinks) for the evidence paragraph
+  related: Array<{ id: string; title: string }>;
+  sourceExperiments: string[]; // links back to experiments
+  variant?: "warning" | "info" | "success" | "error";
+}): PageSpec {
+  const content = doc(
+    callout("💡", args.variant ?? "warning", paragraph(text(args.takeaway))),
+    paragraph(text(args.context)),
+    paragraph(...args.evidence),
+    heading(3, "Related findings"),
+    bulletListNodes(
+      ...args.related.map((r) => [wikilink(r.id, r.title)] as TipTapNode[]),
+    ),
+  );
+  for (const e of args.sourceExperiments) {
+    link(args.id, e);
+    link(e, args.id); // bidirectional in graph (finding ↔ source)
+  }
+  for (const r of args.related) link(args.id, r.id);
+  return {
+    id: args.id,
+    title: args.title,
+    icon: args.icon,
+    parentId: null,
+    teamspaceId: args.teamspaceId,
+    spaceType: SpaceType.TEAM,
+    position: args.position,
+    oneLiner: args.takeaway,
+    summary: `${args.takeaway} ${args.context}`.trim(),
+    content,
+  };
+}
+
+function sopPage(args: {
+  id: string;
+  teamspaceId: string;
+  title: string;
+  icon: string;
+  position: number;
+  purpose: string;
+  materials: string[];
+  steps: string[];
+  notes: string[];
+  usedIn: Array<{ id: string; title: string }>;
+  reagentRefs?: Array<{ id: string; title: string }>;
+}): PageSpec {
+  const usedInList = bulletListNodes(
+    ...args.usedIn.map((u) => [wikilink(u.id, u.title)] as TipTapNode[]),
+  );
+  const reagentNodes: TipTapNode[] = args.reagentRefs && args.reagentRefs.length
+    ? [
+        heading(3, "Equipment & reagent notes"),
+        bulletListNodes(
+          ...args.reagentRefs.map((r) => [wikilink(r.id, r.title)] as TipTapNode[]),
+        ),
+      ]
+    : [];
+  const content = doc(
+    heading(2, "Purpose"),
+    paragraph(text(args.purpose)),
+    heading(2, "Materials"),
+    bulletList(...args.materials),
+    heading(2, "Steps"),
+    orderedList(...args.steps),
+    heading(2, "Notes & gotchas"),
+    bulletList(...args.notes),
+    heading(2, "Used in experiments"),
+    usedInList,
+    ...reagentNodes,
+  );
+  for (const u of args.usedIn) link(args.id, u.id);
+  for (const r of args.reagentRefs ?? []) link(args.id, r.id);
+  return {
+    id: args.id,
+    title: args.title,
+    icon: args.icon,
+    parentId: null,
+    teamspaceId: args.teamspaceId,
+    spaceType: SpaceType.TEAM,
+    position: args.position,
+    oneLiner: args.purpose.slice(0, 140),
+    summary: `${args.title}. ${args.purpose}`,
+    content,
+  };
+}
+
+function reagentPage(args: {
+  id: string;
+  teamspaceId: string;
+  title: string;
+  icon: string;
+  position: number;
+  description: string;
+  notes: string[];
+}): PageSpec {
+  const content = doc(
+    paragraph(text(args.description)),
+    heading(3, "Quirks / calibration notes"),
+    bulletList(...args.notes),
+  );
+  return {
+    id: args.id,
+    title: args.title,
+    icon: args.icon,
+    parentId: null,
+    teamspaceId: args.teamspaceId,
+    spaceType: SpaceType.TEAM,
+    position: args.position,
+    oneLiner: args.description.slice(0, 140),
+    summary: args.description,
+    content,
+  };
+}
+
+function generalPage(args: {
+  id: string;
+  title: string;
+  icon: string;
+  position: number;
+  oneLiner: string;
+  summary: string;
+  content: TipTapNode;
+}): PageSpec {
+  return {
+    id: args.id,
+    title: args.title,
+    icon: args.icon,
+    parentId: null,
+    teamspaceId: null,
+    spaceType: SpaceType.PRIVATE,
+    position: args.position,
+    oneLiner: args.oneLiner,
+    summary: args.summary,
+    content: args.content,
+  };
+}
+
+// ── Content definitions ──────────────────────────────────────────────
+
+// MOLECULAR BIOLOGY ───────────────────────────────────────────────────
+const molbioExpTitles = {
+  exp101: "Genomic DNA Extraction - Bacterial Pellet Series",
+  exp102: "Plasmid DNA Mini Prep Series",
+  exp103: "Agarose Gel Preparation - 1% TAE",
+  exp104: "Gel Electrophoresis - DNA Quality Check",
+  exp105: "Gel Electrophoresis - PCR Verification",
+  exp106: "DNA Purification - PCR Cleanup Series",
+};
+
+const molbioExperiments: PageSpec[] = [
+  experimentPage({
+    id: E.exp101,
+    teamspaceId: TS.molbio,
+    title: molbioExpTitles.exp101,
+    icon: "🧬",
+    position: 1,
+    expId: "EXP-2026-0101",
+    elnId: "ELN-101",
+    status: "in_progress",
+    objective:
+      "Extract genomic DNA from overnight cultures of E. coli DH5-alpha across three biological replicates and use as PCR template for downstream verification.",
+    reagents: [
+      "TE buffer",
+      "Lysozyme",
+      "Proteinase K",
+      "Phenol:chloroform:isoamyl alcohol (25:24:1)",
+      "Sodium chloride (NaCl)",
+      "Ethanol",
+    ],
+    equipment: ["Benchtop microcentrifuge", "Heat block", "NanoDrop One"],
+    sops: [
+      { id: S.sopNanoDrop, title: "SOP: NanoDrop quantification of nucleic acids" },
+    ],
+    findings: [
+      { id: F.find260280, title: "260/280 ratio <1.8 from bacterial pellets indicates RNA carry-over" },
+    ],
+    siblings: [
+      { id: E.exp102, title: molbioExpTitles.exp102 },
+      { id: E.exp104, title: molbioExpTitles.exp104 },
+    ],
+  }),
+  experimentPage({
+    id: E.exp102,
+    teamspaceId: TS.molbio,
+    title: molbioExpTitles.exp102,
+    icon: "🧫",
+    position: 2,
+    expId: "EXP-2026-0102",
+    elnId: "ELN-102",
+    status: "in_progress",
+    objective:
+      "Recover plasmid DNA from three independent colonies harboring the pUC19 reporter construct; assess yield and purity by NanoDrop and 1% agarose gel.",
+    reagents: ["Solution P1 (resuspension)", "Solution P2 (lysis)", "Solution P3 (neutralization)", "Ethanol", "TE buffer"],
+    equipment: ["Silica spin columns", "NanoDrop One", "Benchtop microcentrifuge"],
+    sops: [
+      { id: S.sopMiniprep, title: "SOP: Mini-prep — alkaline lysis (Birnboim/Doly)" },
+      { id: S.sopNanoDrop, title: "SOP: NanoDrop quantification of nucleic acids" },
+    ],
+    findings: [
+      { id: F.findPlasmidYield, title: "Plasmid yield drops sharply past 16 h overnight culture" },
+      { id: F.find260280, title: "260/280 ratio <1.8 from bacterial pellets indicates RNA carry-over" },
+    ],
+    siblings: [
+      { id: E.exp101, title: molbioExpTitles.exp101 },
+      { id: E.exp104, title: molbioExpTitles.exp104 },
+    ],
+  }),
+  experimentPage({
+    id: E.exp103,
+    teamspaceId: TS.molbio,
+    title: molbioExpTitles.exp103,
+    icon: "🟫",
+    position: 3,
+    expId: "EXP-2026-0103",
+    elnId: "ELN-103",
+    status: "completed",
+    objective:
+      "Prepare 1% agarose gels in 1× TAE buffer with ethidium-bromide-equivalent stain for routine DNA size analysis.",
+    reagents: ["Agarose powder", "TAE 50× stock", "GelRed (or equivalent)"],
+    equipment: ["Microwave", "Casting tray", "Gel rig — Bio-Rad Sub-Cell GT"],
+    sops: [
+      { id: S.sopAgaroseGel, title: "SOP: Casting a 1% agarose TAE gel" },
+    ],
+    findings: [
+      { id: F.findGelResolution, title: "1% TAE resolves 0.5–10 kb cleanly; switch to TBE for >10 kb" },
+    ],
+    siblings: [
+      { id: E.exp104, title: molbioExpTitles.exp104 },
+      { id: E.exp105, title: molbioExpTitles.exp105 },
+    ],
+  }),
+  experimentPage({
+    id: E.exp104,
+    teamspaceId: TS.molbio,
+    title: molbioExpTitles.exp104,
+    icon: "📏",
+    position: 4,
+    expId: "EXP-2026-0104",
+    elnId: "ELN-104",
+    status: "active",
+    objective:
+      "Run mini-prep and genomic-DNA samples on a 1% agarose gel to confirm size, integrity, and absence of RNA contamination before downstream PCR.",
+    reagents: ["6× loading dye", "1 kb DNA ladder"],
+    equipment: ["Gel rig — Bio-Rad Sub-Cell GT", "Power supply", "UV transilluminator"],
+    sops: [
+      { id: S.sopAgaroseGel, title: "SOP: Casting a 1% agarose TAE gel" },
+      { id: S.sopElectrophoresis, title: "SOP: Sample loading and electrophoresis at 100 V" },
+    ],
+    findings: [
+      { id: F.findGelResolution, title: "1% TAE resolves 0.5–10 kb cleanly; switch to TBE for >10 kb" },
+    ],
+    siblings: [
+      { id: E.exp103, title: molbioExpTitles.exp103 },
+      { id: E.exp105, title: molbioExpTitles.exp105 },
+    ],
+  }),
+  experimentPage({
+    id: E.exp105,
+    teamspaceId: TS.molbio,
+    title: molbioExpTitles.exp105,
+    icon: "🧪",
+    position: 5,
+    expId: "EXP-2026-0105",
+    elnId: "ELN-105",
+    status: "active",
+    objective:
+      "Verify PCR amplification of a 700 bp target from plasmid template by gel electrophoresis with a 1 kb ladder.",
+    reagents: ["6× loading dye", "1 kb DNA ladder", "PCR products from EXP-0102 templates"],
+    equipment: ["Gel rig — Bio-Rad Sub-Cell GT", "Power supply", "UV transilluminator"],
+    sops: [
+      { id: S.sopAgaroseGel, title: "SOP: Casting a 1% agarose TAE gel" },
+      { id: S.sopElectrophoresis, title: "SOP: Sample loading and electrophoresis at 100 V" },
+    ],
+    findings: [
+      { id: F.findGelResolution, title: "1% TAE resolves 0.5–10 kb cleanly; switch to TBE for >10 kb" },
+    ],
+    siblings: [
+      { id: E.exp104, title: molbioExpTitles.exp104 },
+      { id: E.exp106, title: molbioExpTitles.exp106 },
+    ],
+  }),
+  experimentPage({
+    id: E.exp106,
+    teamspaceId: TS.molbio,
+    title: molbioExpTitles.exp106,
+    icon: "🧹",
+    position: 6,
+    expId: "EXP-2026-0106",
+    elnId: "ELN-106",
+    status: "active",
+    objective:
+      "Clean up PCR products with silica spin columns to remove primers, dNTPs, and polymerase before downstream cloning.",
+    reagents: ["Binding buffer (PB)", "Wash buffer (PE) with ethanol", "Elution buffer (EB)"],
+    equipment: ["Silica spin columns", "NanoDrop One", "Benchtop microcentrifuge"],
+    sops: [
+      { id: S.sopMiniprep, title: "SOP: Mini-prep — alkaline lysis (Birnboim/Doly)" },
+      { id: S.sopNanoDrop, title: "SOP: NanoDrop quantification of nucleic acids" },
+    ],
+    findings: [
+      { id: F.findPcrCleanup, title: "PCR cleanup recovery is 60–75% with silica spin columns; expect loss" },
+    ],
+    siblings: [
+      { id: E.exp105, title: molbioExpTitles.exp105 },
+      { id: E.exp102, title: molbioExpTitles.exp102 },
+    ],
+  }),
+];
+
+const molbioSops: PageSpec[] = [
+  sopPage({
+    id: S.sopMiniprep,
+    teamspaceId: TS.molbio,
+    title: "SOP: Mini-prep — alkaline lysis (Birnboim/Doly)",
+    icon: "📜",
+    position: 7,
+    purpose: "Recover supercoiled plasmid DNA from a 5 mL overnight bacterial culture using the standard alkaline-lysis chemistry.",
+    materials: [
+      "Solution P1 (50 mM Tris-Cl pH 8.0, 10 mM EDTA, RNase A)",
+      "Solution P2 (200 mM NaOH, 1% SDS) — make fresh weekly",
+      "Solution P3 (3 M potassium acetate pH 5.5)",
+      "Silica spin columns",
+      "Ethanol (96–100%)",
+    ],
+    steps: [
+      "Pellet 1.5 mL of overnight culture; resuspend pellet in 250 µL P1.",
+      "Add 250 µL P2; invert 4–6× until lysate is clear and viscous. Do not vortex.",
+      "Add 350 µL P3; invert 4–6× until a white precipitate forms. Centrifuge 10 min at max speed.",
+      "Apply supernatant to silica spin column; spin 1 min, discard flow-through.",
+      "Wash with 750 µL ethanol-supplemented PE buffer; spin 1 min, discard.",
+      "Spin empty column 1 min to dry; elute in 30–50 µL EB warmed to 50 °C.",
+    ],
+    notes: [
+      "P2 ages quickly. Older than 1 week tends to give stringy lysates.",
+      "Inadequate P3 mixing leaves chromosomal DNA in the eluate.",
+      "Pre-warming EB to 50 °C bumps yield ~10%.",
+    ],
+    usedIn: [
+      { id: E.exp102, title: molbioExpTitles.exp102 },
+      { id: E.exp106, title: molbioExpTitles.exp106 },
+    ],
+    reagentRefs: [
+      { id: R.regNanoDrop, title: "NanoDrop One — quirks and calibration" },
+    ],
+  }),
+  sopPage({
+    id: S.sopAgaroseGel,
+    teamspaceId: TS.molbio,
+    title: "SOP: Casting a 1% agarose TAE gel",
+    icon: "🟫",
+    position: 8,
+    purpose: "Cast a 50 mL 1% agarose gel in 1× TAE buffer for routine DNA size analysis (0.5–10 kb).",
+    materials: [
+      "Agarose powder",
+      "1× TAE buffer (from 50× stock)",
+      "GelRed or equivalent stain",
+      "Casting tray + comb",
+      "Microwave",
+    ],
+    steps: [
+      "Combine 0.5 g agarose with 50 mL 1× TAE in a 250 mL flask.",
+      "Microwave on medium power, swirling every 30 s, until fully dissolved (~2 min total).",
+      "Cool to ~55 °C; add 5 µL GelRed; swirl gently.",
+      "Pour into casting tray; insert comb; allow 30 min to set.",
+      "Submerge in 1× TAE in gel rig before pulling comb.",
+    ],
+    notes: [
+      "Boiled-dry agarose: top up with deionized water to recover the original volume before pouring.",
+      "Gel cracks during pour usually mean the casting tray was tilted.",
+    ],
+    usedIn: [
+      { id: E.exp103, title: molbioExpTitles.exp103 },
+      { id: E.exp104, title: molbioExpTitles.exp104 },
+      { id: E.exp105, title: molbioExpTitles.exp105 },
+    ],
+    reagentRefs: [
+      { id: R.regTaeStock, title: "TAE 50× stock — recipe and shelf life" },
+      { id: R.regGelRig, title: "Gel rig — Bio-Rad Sub-Cell GT — known issues" },
+    ],
+  }),
+  sopPage({
+    id: S.sopNanoDrop,
+    teamspaceId: TS.molbio,
+    title: "SOP: NanoDrop quantification of nucleic acids",
+    icon: "💧",
+    position: 9,
+    purpose: "Measure DNA/RNA concentration and purity (A260, A260/A280, A260/A230) on the NanoDrop One.",
+    materials: ["NanoDrop One instrument", "Lint-free wipes", "Elution buffer or water (blank)"],
+    steps: [
+      "Wipe both pedestals with a damp wipe, then dry.",
+      "Blank with 1 µL of the buffer the sample is in (EB or water).",
+      "Measure 1 µL of sample. Wipe pedestals between samples.",
+      "Record A260 concentration, A260/A280, and A260/A230.",
+    ],
+    notes: [
+      "A260/A280 ~1.8 indicates clean DNA; <1.7 hints at protein or RNA carry-over.",
+      "A260/A230 ~2.0 indicates clean DNA; <1.8 hints at salt / phenol carry-over.",
+      "Crusted residue on the pedestal causes consistent over-reads.",
+    ],
+    usedIn: [
+      { id: E.exp101, title: molbioExpTitles.exp101 },
+      { id: E.exp102, title: molbioExpTitles.exp102 },
+      { id: E.exp106, title: molbioExpTitles.exp106 },
+    ],
+    reagentRefs: [
+      { id: R.regNanoDrop, title: "NanoDrop One — quirks and calibration" },
+    ],
+  }),
+  sopPage({
+    id: S.sopElectrophoresis,
+    teamspaceId: TS.molbio,
+    title: "SOP: Sample loading and electrophoresis at 100 V",
+    icon: "⚡",
+    position: 10,
+    purpose: "Load samples mixed with 6× loading dye onto a submerged agarose gel and run at 100 V until the dye front reaches ~80% of the gel length.",
+    materials: ["6× loading dye", "1 kb DNA ladder", "Power supply (constant V)", "Pre-cast gel in rig"],
+    steps: [
+      "Mix 5 µL sample with 1 µL 6× loading dye on a piece of parafilm.",
+      "Load 5 µL ladder into the leftmost well of each row.",
+      "Load 6 µL of each prepared sample; record well positions.",
+      "Run at 100 V constant for ~45 min, watching the dye front.",
+      "Stop when the front reaches ~80% of the gel length; image on UV transilluminator.",
+    ],
+    notes: [
+      "Samples float out of wells if the gel rig buffer level is too high; keep buffer just covering the gel.",
+      "Lane warping at >120 V — drop to 80 V for better resolution.",
+    ],
+    usedIn: [
+      { id: E.exp104, title: molbioExpTitles.exp104 },
+      { id: E.exp105, title: molbioExpTitles.exp105 },
+    ],
+    reagentRefs: [
+      { id: R.regGelRig, title: "Gel rig — Bio-Rad Sub-Cell GT — known issues" },
+    ],
+  }),
+];
+
+const molbioFindings: PageSpec[] = [
+  findingPage({
+    id: F.findPlasmidYield,
+    teamspaceId: TS.molbio,
+    title: "Plasmid yield drops sharply past 16 h overnight culture",
+    icon: "💡",
+    position: 11,
+    takeaway:
+      "Plasmid yield drops below 50 ng/µL when the overnight culture exceeds 16 h.",
+    context:
+      "Stationary-phase E. coli with pUC19 increase chromosomal DNA leakage and cell debris with longer incubation, lowering net plasmid yield through the standard mini-prep pipeline.",
+    evidence: [
+      text("Observed across replicates of "),
+      wikilink(E.exp102, molbioExpTitles.exp102),
+      text(". When inoculated cultures grew 18–20 h before harvest, yields averaged 35 ng/µL versus 110 ng/µL at 12–14 h. Confirmed by NanoDrop in line with "),
+      wikilink(S.sopMiniprep, "SOP: Mini-prep — alkaline lysis"),
+      text("."),
+    ],
+    related: [
+      { id: F.find260280, title: "260/280 ratio <1.8 from bacterial pellets indicates RNA carry-over" },
+    ],
+    sourceExperiments: [E.exp102],
+  }),
+  findingPage({
+    id: F.findGelResolution,
+    teamspaceId: TS.molbio,
+    title: "1% TAE resolves 0.5–10 kb cleanly; switch to TBE for >10 kb",
+    icon: "📏",
+    position: 12,
+    takeaway: "1% TAE resolves 0.5–10 kb fragments cleanly; switch to TBE for fragments >10 kb.",
+    context:
+      "TAE has lower buffering capacity than TBE but allows easier downstream gel-extraction. For routine DNA size analysis below 10 kb, 1% TAE is sufficient.",
+    evidence: [
+      text("Verified across "),
+      wikilink(E.exp103, molbioExpTitles.exp103),
+      text(", "),
+      wikilink(E.exp104, molbioExpTitles.exp104),
+      text(", and "),
+      wikilink(E.exp105, molbioExpTitles.exp105),
+      text(". Lambda HindIII fragments at 23 kb consistently bunched in 1% TAE; switching to 0.7% TBE resolved them."),
+    ],
+    related: [
+      { id: F.findGelLaneWarp, title: "Lane warping in 12% gels at high voltage" },
+    ],
+    sourceExperiments: [E.exp103, E.exp104, E.exp105],
+  }),
+  findingPage({
+    id: F.find260280,
+    teamspaceId: TS.molbio,
+    title: "260/280 ratio <1.8 from bacterial pellets indicates RNA carry-over",
+    icon: "🧮",
+    position: 13,
+    takeaway:
+      "260/280 ratio below 1.8 in nucleic-acid prep from bacterial pellets is a strong indicator of RNA carry-over rather than protein contamination.",
+    context:
+      "Both protein and residual RNA pull A280 down relative to A260. In our genomic-DNA preps the RNase A step is the variable; protein removal by phenol:chloroform is rarely the limiting step.",
+    evidence: [
+      text("Recurrent across "),
+      wikilink(E.exp101, molbioExpTitles.exp101),
+      text(" and "),
+      wikilink(E.exp102, molbioExpTitles.exp102),
+      text(". Adding a 30-min 37 °C RNase A digest before the proteinase K step lifted the ratio from 1.65 to 1.85 on average."),
+    ],
+    related: [
+      { id: F.findPlasmidYield, title: "Plasmid yield drops sharply past 16 h overnight culture" },
+    ],
+    sourceExperiments: [E.exp101, E.exp102],
+  }),
+  findingPage({
+    id: F.findPcrCleanup,
+    teamspaceId: TS.molbio,
+    title: "PCR cleanup recovery is 60–75% with silica spin columns; expect loss",
+    icon: "🧹",
+    position: 14,
+    takeaway:
+      "Silica spin-column PCR cleanup typically recovers 60–75% of input DNA — plan downstream amounts accordingly.",
+    context:
+      "Reproducible across vendor and home-made resin protocols. Smaller fragments (<200 bp) recover even worse (~40%), so cleaning small amplicons may need a different chemistry (SPRI beads).",
+    evidence: [
+      text("Confirmed in "),
+      wikilink(E.exp106, molbioExpTitles.exp106),
+      text(" with three independent PCR products of ~700 bp. Average recovery was 68%."),
+    ],
+    related: [
+      { id: F.findPlasmidYield, title: "Plasmid yield drops sharply past 16 h overnight culture" },
+    ],
+    sourceExperiments: [E.exp106],
+  }),
+];
+
+const molbioReagents: PageSpec[] = [
+  reagentPage({
+    id: R.regTaeStock,
+    teamspaceId: TS.molbio,
+    title: "TAE 50× stock — recipe and shelf life",
+    icon: "🧪",
+    position: 15,
+    description:
+      "TAE 50× stock is 242 g Tris base + 57.1 mL glacial acetic acid + 100 mL 0.5 M EDTA pH 8.0 per liter. Dilute to 1× before use.",
+    notes: [
+      "Stable at room temperature for ~6 months; precipitates form past that and the buffer behaves erratically.",
+      "Discard if a brown tint appears — bacterial growth at the cap.",
+    ],
+  }),
+  reagentPage({
+    id: R.regNanoDrop,
+    teamspaceId: TS.molbio,
+    title: "NanoDrop One — quirks and calibration",
+    icon: "💧",
+    position: 16,
+    description:
+      "Bench NanoDrop One in lab room 204. Used for DNA/RNA concentration and purity ratios on 1 µL samples.",
+    notes: [
+      "Pedestals must be wiped between samples — dried-on droplets cause consistent over-reads.",
+      "Re-run blank every 6 samples to catch buffer drift.",
+      "Yearly factory recalibration; service log on the rack next to it.",
+    ],
+  }),
+  reagentPage({
+    id: R.regGelRig,
+    teamspaceId: TS.molbio,
+    title: "Gel rig — Bio-Rad Sub-Cell GT — known issues",
+    icon: "⚡",
+    position: 17,
+    description:
+      "Mid-size horizontal gel rig with a 15 × 15 cm tray. Two combs (8-well and 15-well) live in the drawer beneath.",
+    notes: [
+      "The red banana-plug socket has a loose contact; press firmly until power-supply LED stays solid.",
+      "Buffer leaks from the rear of the tray if the casting dam isn't seated all the way.",
+      "Don't run it past 120 V — lane warping is severe.",
+    ],
+  }),
+];
+
+// Molecular Biology landing
+const molbioLanding = landingPage({
+  id: LP.molbio,
+  teamspaceId: TS.molbio,
+  title: "🧬 Molecular Biology",
+  icon: "🧬",
+  intro:
+    "DNA and RNA workflows: extraction, mini-prep, gel electrophoresis, PCR verification, and purification. Mirrors the live ExpTube workflow EXP-2026-0101 through 0106.",
+  experiments: Object.entries({
+    exp101: molbioExpTitles.exp101,
+    exp102: molbioExpTitles.exp102,
+    exp103: molbioExpTitles.exp103,
+    exp104: molbioExpTitles.exp104,
+    exp105: molbioExpTitles.exp105,
+    exp106: molbioExpTitles.exp106,
+  }).map(([k, t]) => ({ id: (E as Record<string, string>)[k], title: t })),
+  sops: [
+    { id: S.sopMiniprep, title: "SOP: Mini-prep — alkaline lysis" },
+    { id: S.sopAgaroseGel, title: "SOP: Casting a 1% agarose TAE gel" },
+    { id: S.sopNanoDrop, title: "SOP: NanoDrop quantification" },
+    { id: S.sopElectrophoresis, title: "SOP: Sample loading and electrophoresis" },
+  ],
+  findings: [
+    { id: F.findPlasmidYield, title: "Plasmid yield drops past 16 h overnight" },
+    { id: F.findGelResolution, title: "1% TAE resolves 0.5–10 kb; TBE for >10 kb" },
+    { id: F.find260280, title: "260/280 <1.8 = RNA carry-over" },
+    { id: F.findPcrCleanup, title: "PCR cleanup recovery 60–75%" },
+  ],
+});
+
+// ORGANIC SYNTHESIS ───────────────────────────────────────────────────
+const orgsynthExperiments: PageSpec[] = [
+  experimentPage({
+    id: E.expAspirin,
+    teamspaceId: TS.orgsynth,
+    title: "Synthesis of Aspirin (Acetylsalicylic Acid)",
+    icon: "💊",
+    position: 1,
+    expId: "EXP-ELN-001",
+    elnId: "ELN-001",
+    status: "completed",
+    objective:
+      "Synthesize aspirin through acetylation of salicylic acid and determine product purity by melting-point analysis.",
+    reagents: ["Salicylic acid", "Acetic anhydride", "Sulfuric acid (catalyst)", "Cold water"],
+    equipment: ["Erlenmeyer flask", "Hot plate", "Büchner funnel", "Melting-point apparatus"],
+    sops: [
+      { id: S.sopRecrystal, title: "SOP: Recrystallization from water" },
+      { id: S.sopReflux, title: "SOP: Standard reflux setup" },
+    ],
+    findings: [
+      { id: F.findAspirinYield, title: "Aspirin yield decreases with old salicylic acid" },
+    ],
+    siblings: [
+      { id: E.expRecrystal, title: "Recrystallization of Benzoic Acid" },
+      { id: E.expFischer, title: "Fischer Esterification: Synthesis of Ethyl Acetate" },
+    ],
+  }),
+  experimentPage({
+    id: E.expGrignard,
+    teamspaceId: TS.orgsynth,
+    title: "Grignard Reaction: Synthesis of Triphenylmethanol",
+    icon: "🔥",
+    position: 2,
+    expId: "EXP-ELN-002",
+    elnId: "ELN-002",
+    status: "completed",
+    objective:
+      "Prepare triphenylmethanol via Grignard reaction between phenylmagnesium bromide and benzophenone.",
+    reagents: ["Magnesium turnings", "Bromobenzene", "Benzophenone", "Diethyl ether (anhydrous)", "Saturated NH4Cl"],
+    equipment: ["3-neck round-bottom flask", "Reflux condenser", "Drying tube"],
+    sops: [
+      { id: S.sopReflux, title: "SOP: Standard reflux setup" },
+      { id: S.sopRecrystal, title: "SOP: Recrystallization from water" },
+    ],
+    findings: [
+      { id: F.findGrignardAnhydrous, title: "Anhydrous conditions critical for Grignard" },
+    ],
+    siblings: [{ id: E.expAspirin, title: "Synthesis of Aspirin" }],
+  }),
+  experimentPage({
+    id: E.expRecrystal,
+    teamspaceId: TS.orgsynth,
+    title: "Recrystallization of Benzoic Acid",
+    icon: "❄️",
+    position: 3,
+    expId: "EXP-ELN-003",
+    elnId: "ELN-003",
+    status: "completed",
+    objective:
+      "Purify crude benzoic acid using recrystallization from water and confirm purity by melting point.",
+    reagents: ["Crude benzoic acid", "Deionized water", "Activated charcoal"],
+    equipment: ["Erlenmeyer flask", "Hot plate", "Büchner funnel", "Melting-point apparatus"],
+    sops: [{ id: S.sopRecrystal, title: "SOP: Recrystallization from water" }],
+    findings: [],
+    siblings: [{ id: E.expAspirin, title: "Synthesis of Aspirin" }],
+  }),
+  experimentPage({
+    id: E.expFischer,
+    teamspaceId: TS.orgsynth,
+    title: "Fischer Esterification: Synthesis of Ethyl Acetate",
+    icon: "🧪",
+    position: 4,
+    expId: "EXP-ELN-005",
+    elnId: "ELN-005",
+    status: "draft",
+    objective:
+      "Synthesize ethyl acetate through acid-catalyzed esterification of acetic acid with ethanol.",
+    reagents: ["Acetic acid (glacial)", "Ethanol", "Sulfuric acid (catalyst)"],
+    equipment: ["Round-bottom flask", "Reflux condenser", "Distillation apparatus"],
+    sops: [{ id: S.sopReflux, title: "SOP: Standard reflux setup" }],
+    findings: [],
+    siblings: [{ id: E.expAspirin, title: "Synthesis of Aspirin" }],
+  }),
+];
+
+const orgsynthSops: PageSpec[] = [
+  sopPage({
+    id: S.sopRecrystal,
+    teamspaceId: TS.orgsynth,
+    title: "SOP: Recrystallization from water",
+    icon: "❄️",
+    position: 5,
+    purpose: "Purify a water-soluble organic solid by hot-saturate / cool / filter recrystallization.",
+    materials: ["Hot plate", "Erlenmeyer flask", "Büchner funnel + flask", "Filter paper", "Ice bath"],
+    steps: [
+      "Dissolve the crude solid in the minimum volume of boiling water.",
+      "Add activated charcoal if the solution is colored; boil 2 min more.",
+      "Hot-filter through a fluted filter into a clean flask.",
+      "Cool slowly to room temperature, then on ice for 15 min.",
+      "Vacuum-filter the crystals; wash with cold water.",
+      "Air-dry; record yield and melting point.",
+    ],
+    notes: [
+      "Cooling too fast traps impurities; aim for slow cooling under a watch glass.",
+      "If no crystals form, scratch the inside of the flask with a glass rod.",
+    ],
+    usedIn: [
+      { id: E.expAspirin, title: "Synthesis of Aspirin" },
+      { id: E.expGrignard, title: "Grignard Reaction" },
+      { id: E.expRecrystal, title: "Recrystallization of Benzoic Acid" },
+    ],
+  }),
+  sopPage({
+    id: S.sopReflux,
+    teamspaceId: TS.orgsynth,
+    title: "SOP: Standard reflux setup",
+    icon: "🔥",
+    position: 6,
+    purpose: "Heat a reaction at the boiling point of the solvent without losing volatiles.",
+    materials: ["Round-bottom flask", "Reflux condenser", "Heating mantle / hot plate", "Stir bar", "Water hoses"],
+    steps: [
+      "Clamp the round-bottom flask to a stand at the desired height.",
+      "Add reagents and a stir bar; attach the reflux condenser greased lightly at the joint.",
+      "Connect water in (bottom) and water out (top); start water flow before heating.",
+      "Heat with stirring until vapor ring is ~1/3 up the condenser.",
+      "Adjust heat to keep ring stable for the required reaction time.",
+    ],
+    notes: [
+      "Never heat a closed system. The condenser must be open at top.",
+      "If reaction bumps, lower the heat and add more stirring.",
+    ],
+    usedIn: [
+      { id: E.expAspirin, title: "Synthesis of Aspirin" },
+      { id: E.expGrignard, title: "Grignard Reaction" },
+      { id: E.expFischer, title: "Fischer Esterification" },
+    ],
+    reagentRefs: [{ id: R.regSulfuric, title: "Sulfuric acid — handling and disposal" }],
+  }),
+];
+
+const orgsynthFindings: PageSpec[] = [
+  findingPage({
+    id: F.findAspirinYield,
+    teamspaceId: TS.orgsynth,
+    title: "Aspirin yield decreases with old salicylic acid",
+    icon: "⏳",
+    position: 7,
+    takeaway: "Salicylic acid more than ~12 months old gives noticeably lower aspirin yield (often <60%).",
+    context:
+      "Salicylic acid takes up moisture and slowly oxidizes during storage. Bottles labeled >1 year ago should be re-checked by melting point before use.",
+    evidence: [
+      text("Side-by-side runs in "),
+      wikilink(E.expAspirin, "Synthesis of Aspirin"),
+      text(": fresh-bottle reagent gave 78% yield, 14-month-old reagent gave 54%."),
+    ],
+    related: [{ id: F.findGrignardAnhydrous, title: "Anhydrous conditions critical for Grignard" }],
+    sourceExperiments: [E.expAspirin],
+  }),
+  findingPage({
+    id: F.findGrignardAnhydrous,
+    teamspaceId: TS.orgsynth,
+    title: "Anhydrous conditions critical for Grignard",
+    icon: "💧",
+    position: 8,
+    takeaway:
+      "Trace water in the diethyl ether quenches Grignard reagent and stalls the reaction; flame-dry glassware and use freshly opened anhydrous solvent.",
+    context:
+      "Mg + ArBr → ArMgBr is exquisitely water-sensitive. Even residual moisture from a humid lab can drop the yield below 30%.",
+    evidence: [
+      text("Compared two runs of "),
+      wikilink(E.expGrignard, "Grignard Reaction"),
+      text(" in a single afternoon: flame-dried glassware → 72% triphenylmethanol; oven-dry only → 38%."),
+    ],
+    related: [{ id: F.findAspirinYield, title: "Aspirin yield decreases with old salicylic acid" }],
+    sourceExperiments: [E.expGrignard],
+  }),
+];
+
+const orgsynthReagents: PageSpec[] = [
+  reagentPage({
+    id: R.regSulfuric,
+    teamspaceId: TS.orgsynth,
+    title: "Sulfuric acid — handling and disposal",
+    icon: "⚠️",
+    position: 9,
+    description:
+      "Concentrated sulfuric acid (98%, ~18 M) is used catalytically in aspirin synthesis and Fischer esterification. Severe burns and fume hazard.",
+    notes: [
+      "Always add acid to water, never the reverse.",
+      "Store in the corrosives cabinet next to the fume hood.",
+      "Spent acid goes in the labeled aqueous-acid waste carboy, not the sink.",
+      "Eye protection + acid-resistant gloves whenever the bottle is open.",
+    ],
+  }),
+];
+
+const orgsynthLanding = landingPage({
+  id: LP.orgsynth,
+  teamspaceId: TS.orgsynth,
+  title: "🧪 Organic Synthesis",
+  icon: "🧪",
+  intro:
+    "Classic organic-synthesis reactions used in undergraduate teaching and small-scale lab work: acetylation, Grignard, esterification, and recrystallization.",
+  experiments: [
+    { id: E.expAspirin, title: "Synthesis of Aspirin" },
+    { id: E.expGrignard, title: "Grignard Reaction" },
+    { id: E.expRecrystal, title: "Recrystallization of Benzoic Acid" },
+    { id: E.expFischer, title: "Fischer Esterification" },
+  ],
+  sops: [
+    { id: S.sopRecrystal, title: "SOP: Recrystallization from water" },
+    { id: S.sopReflux, title: "SOP: Standard reflux setup" },
+  ],
+  findings: [
+    { id: F.findAspirinYield, title: "Aspirin yield decreases with old salicylic acid" },
+    { id: F.findGrignardAnhydrous, title: "Anhydrous conditions critical for Grignard" },
+  ],
+});
+
+// PROTEIN BIOCHEMISTRY ────────────────────────────────────────────────
+const proteinExperiments: PageSpec[] = [
+  experimentPage({
+    id: E.expBradford,
+    teamspaceId: TS.protein,
+    title: "Bradford Protein Assay",
+    icon: "🧫",
+    position: 1,
+    expId: "EXP-ELN-006",
+    elnId: "ELN-006",
+    status: "completed",
+    objective: "Quantify protein concentration in unknown samples using the Bradford assay with BSA as a standard.",
+    reagents: ["Bradford reagent (Coomassie Brilliant Blue G-250)", "BSA standard (1 mg/mL)", "Phosphate-buffered saline (PBS)"],
+    equipment: ["Microplate reader (595 nm)", "96-well plate", "Multichannel pipette"],
+    sops: [{ id: S.sopBradford, title: "SOP: Bradford standard curve" }],
+    findings: [{ id: F.findBradfordRange, title: "Bradford reads non-linear above ~1 mg/mL" }],
+    siblings: [{ id: E.expSdspage, title: "SDS-PAGE Gel Electrophoresis" }],
+  }),
+  experimentPage({
+    id: E.expLactase,
+    teamspaceId: TS.protein,
+    title: "Enzyme Kinetics: Lactase Activity",
+    icon: "⏱️",
+    position: 2,
+    expId: "EXP-ELN-007",
+    elnId: "ELN-007",
+    status: "completed",
+    objective: "Determine the Km and Vmax of lactase enzyme using ONPG as substrate.",
+    reagents: ["Lactase enzyme", "ONPG substrate", "Phosphate buffer (pH 7.0)"],
+    equipment: ["UV-Vis spectrophotometer (420 nm)", "Water bath at 37 °C"],
+    sops: [],
+    findings: [],
+    siblings: [{ id: E.expBradford, title: "Bradford Protein Assay" }],
+  }),
+  experimentPage({
+    id: E.expSdspage,
+    teamspaceId: TS.protein,
+    title: "SDS-PAGE Gel Electrophoresis",
+    icon: "📊",
+    position: 3,
+    expId: "EXP-ELN-008",
+    elnId: "ELN-008",
+    status: "in_progress",
+    objective: "Separate protein samples by molecular weight using SDS-PAGE and estimate sizes using a protein ladder.",
+    reagents: ["Tris-glycine running buffer", "SDS sample buffer", "Coomassie stain", "Protein MW ladder"],
+    equipment: ["Mini-PROTEAN gel rig", "Power supply", "Heat block"],
+    sops: [{ id: S.sopSdsPage, title: "SOP: SDS-PAGE casting and running" }],
+    findings: [{ id: F.findGelLaneWarp, title: "Lane warping in 12% gels at high voltage" }],
+    siblings: [{ id: E.expWestern, title: "Western Blot Analysis of GAPDH" }],
+  }),
+  experimentPage({
+    id: E.expWestern,
+    teamspaceId: TS.protein,
+    title: "Western Blot Analysis of GAPDH",
+    icon: "🧬",
+    position: 4,
+    expId: "EXP-ELN-010",
+    elnId: "ELN-010",
+    status: "draft",
+    objective: "Detect GAPDH protein expression in cell lysates using Western blot with chemiluminescent detection.",
+    reagents: ["Anti-GAPDH primary antibody", "HRP-conjugated secondary", "Blocking buffer (5% milk)", "ECL substrate"],
+    equipment: ["Wet transfer rig", "Imaging system (chemiluminescent)", "Rocker"],
+    sops: [{ id: S.sopSdsPage, title: "SOP: SDS-PAGE casting and running" }],
+    findings: [],
+    siblings: [{ id: E.expSdspage, title: "SDS-PAGE Gel Electrophoresis" }],
+  }),
+];
+
+const proteinSops: PageSpec[] = [
+  sopPage({
+    id: S.sopBradford,
+    teamspaceId: TS.protein,
+    title: "SOP: Bradford standard curve",
+    icon: "📐",
+    position: 5,
+    purpose: "Build a 5-point BSA standard curve in 96-well format and read at 595 nm to quantify unknown protein concentrations.",
+    materials: ["BSA stock (1 mg/mL)", "PBS diluent", "Bradford reagent", "96-well flat-bottom plate"],
+    steps: [
+      "Dilute BSA stock to 0, 0.125, 0.25, 0.5, 1.0 mg/mL in PBS.",
+      "Plate 10 µL of each standard or sample in triplicate.",
+      "Add 200 µL Bradford reagent per well; incubate 5 min in the dark.",
+      "Read absorbance at 595 nm.",
+      "Subtract blank; fit a linear regression to the standard curve and back-calculate samples.",
+    ],
+    notes: [
+      "Above ~1 mg/mL the response is non-linear; dilute and re-read.",
+      "Read within 30 min — color drifts after that.",
+    ],
+    usedIn: [{ id: E.expBradford, title: "Bradford Protein Assay" }],
+  }),
+  sopPage({
+    id: S.sopSdsPage,
+    teamspaceId: TS.protein,
+    title: "SOP: SDS-PAGE casting and running",
+    icon: "📊",
+    position: 6,
+    purpose: "Cast and run a 12% SDS-PAGE mini-gel for routine protein size analysis.",
+    materials: ["30% acrylamide:bis (29:1)", "Resolving gel buffer (1.5 M Tris pH 8.8)", "Stacking gel buffer (1.0 M Tris pH 6.8)", "10% SDS", "10% APS", "TEMED"],
+    steps: [
+      "Assemble glass plates and gel cassette; check the seal with water.",
+      "Pour resolving gel (12%); overlay with isopropanol; let polymerize 30 min.",
+      "Rinse off isopropanol; pour stacking gel (4%); insert comb; polymerize 20 min.",
+      "Mount in rig with running buffer; load samples (denatured 5 min @ 95 °C).",
+      "Run at 80 V through stacking, 120 V through resolving until dye front reaches the bottom.",
+    ],
+    notes: [
+      "Lane warping at >150 V — drop the voltage if the dye front looks crooked.",
+      "Acrylamide solutions are neurotoxic — gloves at all times.",
+    ],
+    usedIn: [
+      { id: E.expSdspage, title: "SDS-PAGE Gel Electrophoresis" },
+      { id: E.expWestern, title: "Western Blot Analysis of GAPDH" },
+    ],
+  }),
+];
+
+const proteinFindings: PageSpec[] = [
+  findingPage({
+    id: F.findBradfordRange,
+    teamspaceId: TS.protein,
+    title: "Bradford reads non-linear above ~1 mg/mL",
+    icon: "📐",
+    position: 7,
+    takeaway: "The Bradford assay's response saturates above ~1 mg/mL protein; dilute and re-run any sample above the linear range.",
+    context:
+      "Coomassie Brilliant Blue G-250's blue-shifted complex saturates at high protein concentrations. Linear range is roughly 0.1–1.0 mg/mL on the microplate format.",
+    evidence: [
+      text("Multiple runs of "),
+      wikilink(E.expBradford, "Bradford Protein Assay"),
+      text(" with crude lysates showed flattening of the standard curve past 1 mg/mL. R² dropped from 0.998 (0.1–1.0) to 0.91 (0.1–2.0)."),
+    ],
+    related: [{ id: F.findGelLaneWarp, title: "Lane warping in 12% gels at high voltage" }],
+    sourceExperiments: [E.expBradford],
+  }),
+  findingPage({
+    id: F.findGelLaneWarp,
+    teamspaceId: TS.protein,
+    title: "Lane warping in 12% gels at high voltage",
+    icon: "📊",
+    position: 8,
+    takeaway: "12% SDS-PAGE gels lose resolution and show curved lanes at >150 V; cap the run at 120 V through the resolving gel.",
+    context:
+      "Heat generated at high voltage causes uneven migration. The mini-gel format is unforgiving; a slower run is almost always better.",
+    evidence: [
+      text("Compared two runs of "),
+      wikilink(E.expSdspage, "SDS-PAGE Gel Electrophoresis"),
+      text(": 180 V → severe smile; 120 V → flat lanes."),
+    ],
+    related: [
+      { id: F.findGelResolution, title: "1% TAE resolves 0.5–10 kb; TBE for >10 kb" },
+      { id: F.findBradfordRange, title: "Bradford reads non-linear above ~1 mg/mL" },
+    ],
+    sourceExperiments: [E.expSdspage],
+  }),
+];
+
+const proteinLanding = landingPage({
+  id: LP.protein,
+  teamspaceId: TS.protein,
+  title: "🧫 Protein Biochemistry",
+  icon: "🧫",
+  intro: "Protein quantitation, enzyme kinetics, and electrophoresis. Mirrors ChemELN's Protein Biochemistry project.",
+  experiments: [
+    { id: E.expBradford, title: "Bradford Protein Assay" },
+    { id: E.expLactase, title: "Enzyme Kinetics: Lactase" },
+    { id: E.expSdspage, title: "SDS-PAGE Gel Electrophoresis" },
+    { id: E.expWestern, title: "Western Blot Analysis of GAPDH" },
+  ],
+  sops: [
+    { id: S.sopBradford, title: "SOP: Bradford standard curve" },
+    { id: S.sopSdsPage, title: "SOP: SDS-PAGE casting and running" },
+  ],
+  findings: [
+    { id: F.findBradfordRange, title: "Bradford reads non-linear above ~1 mg/mL" },
+    { id: F.findGelLaneWarp, title: "Lane warping in 12% gels at high voltage" },
+  ],
+});
+
+// CELL BIOLOGY ────────────────────────────────────────────────────────
+const cellbioExperiments: PageSpec[] = [
+  experimentPage({
+    id: E.expStrawberry,
+    teamspaceId: TS.cellbio,
+    title: "DNA Extraction from Strawberries",
+    icon: "🍓",
+    position: 1,
+    expId: "EXP-ELN-009",
+    elnId: "ELN-009",
+    status: "in_progress",
+    objective: "Isolate and visualize genomic DNA from strawberry tissue using simple extraction methods.",
+    reagents: ["Detergent solution (dish soap + salt)", "Cold ethanol", "Strawberries"],
+    equipment: ["Mortar and pestle", "Cheesecloth", "Test tubes"],
+    sops: [],
+    findings: [],
+    siblings: [{ id: E.expPlasmolysis, title: "Plant Cell Plasmolysis" }],
+  }),
+  experimentPage({
+    id: E.expPlasmolysis,
+    teamspaceId: TS.cellbio,
+    title: "Plant Cell Plasmolysis",
+    icon: "🪴",
+    position: 2,
+    expId: "EXP-ELN-012",
+    elnId: "ELN-012",
+    status: "completed",
+    objective: "Observe plasmolysis in Elodea leaf cells using hypertonic salt solutions.",
+    reagents: ["NaCl 5% solution", "Distilled water"],
+    equipment: ["Light microscope", "Glass slides + coverslips"],
+    sops: [],
+    findings: [],
+    siblings: [{ id: E.expPglo, title: "Bacterial Transformation with pGLO" }],
+  }),
+  experimentPage({
+    id: E.expPglo,
+    teamspaceId: TS.cellbio,
+    title: "Bacterial Transformation with pGLO Plasmid",
+    icon: "🦠",
+    position: 3,
+    expId: "EXP-ELN-013",
+    elnId: "ELN-013",
+    status: "in_progress",
+    objective: "Transform E. coli with pGLO plasmid containing the GFP gene.",
+    reagents: ["Competent E. coli (HB101 or similar)", "pGLO plasmid DNA", "Ampicillin LB agar plates", "Arabinose"],
+    equipment: ["42 °C water bath", "37 °C incubator", "UV transilluminator"],
+    sops: [{ id: S.sopHeatShock, title: "SOP: Heat-shock transformation" }],
+    findings: [{ id: F.findPgloThaw, title: "pGLO transformation efficiency drops if competent cells thawed twice" }],
+    siblings: [{ id: E.expStrawberry, title: "DNA Extraction from Strawberries" }],
+  }),
+];
+
+const cellbioSops: PageSpec[] = [
+  sopPage({
+    id: S.sopHeatShock,
+    teamspaceId: TS.cellbio,
+    title: "SOP: Heat-shock transformation",
+    icon: "🌡️",
+    position: 4,
+    purpose: "Introduce plasmid DNA into chemically competent E. coli using a 42 °C heat shock.",
+    materials: ["Competent E. coli on ice", "Plasmid DNA (1–10 ng)", "LB recovery medium", "Selection plates"],
+    steps: [
+      "Thaw competent cells on ice (~10 min).",
+      "Add 1–10 ng plasmid; mix gently; incubate on ice 30 min.",
+      "Heat shock 45 s at exactly 42 °C; return to ice 2 min.",
+      "Add 250 µL LB; recover 1 h at 37 °C with shaking.",
+      "Plate 100 µL on selection medium; incubate overnight at 37 °C.",
+    ],
+    notes: [
+      "Re-freezing thawed competent cells halves transformation efficiency.",
+      "Heat-shock duration matters more than temperature; 45 s is critical.",
+    ],
+    usedIn: [{ id: E.expPglo, title: "Bacterial Transformation with pGLO Plasmid" }],
+    reagentRefs: [{ id: R.regCompCells, title: "Competent cells — handling and storage" }],
+  }),
+];
+
+const cellbioFindings: PageSpec[] = [
+  findingPage({
+    id: F.findPgloThaw,
+    teamspaceId: TS.cellbio,
+    title: "pGLO transformation efficiency drops if competent cells thawed twice",
+    icon: "❄️",
+    position: 5,
+    takeaway: "Thawing competent cells more than once cuts transformation efficiency roughly in half each time.",
+    context:
+      "Membrane integrity is fragile after the initial freeze-thaw. Multiple thaw cycles compound the damage and lower the count of transformable cells.",
+    evidence: [
+      text("Compared one-thaw vs two-thaw aliquots in "),
+      wikilink(E.expPglo, "Bacterial Transformation with pGLO Plasmid"),
+      text(": ~10⁵ CFU/µg vs ~5×10⁴ CFU/µg."),
+    ],
+    related: [],
+    sourceExperiments: [E.expPglo],
+  }),
+];
+
+const cellbioReagents: PageSpec[] = [
+  reagentPage({
+    id: R.regCompCells,
+    teamspaceId: TS.cellbio,
+    title: "Competent cells — handling and storage",
+    icon: "🧊",
+    position: 6,
+    description: "Chemically competent E. coli (HB101 / DH5-alpha) stored at -80 °C in 50 µL aliquots.",
+    notes: [
+      "Aliquot fresh; never refreeze a thawed tube.",
+      "Quality-control efficiency monthly with pUC19 standard.",
+      "Inventory log on the freezer door.",
+    ],
+  }),
+];
+
+const cellbioLanding = landingPage({
+  id: LP.cellbio,
+  teamspaceId: TS.cellbio,
+  title: "🔬 Cell Biology",
+  icon: "🔬",
+  intro: "Cell culture, transformation, and microscopy experiments.",
+  experiments: [
+    { id: E.expStrawberry, title: "DNA Extraction from Strawberries" },
+    { id: E.expPlasmolysis, title: "Plant Cell Plasmolysis" },
+    { id: E.expPglo, title: "Bacterial Transformation with pGLO" },
+  ],
+  sops: [{ id: S.sopHeatShock, title: "SOP: Heat-shock transformation" }],
+  findings: [{ id: F.findPgloThaw, title: "pGLO efficiency drops on second thaw" }],
+});
+
+// ANALYTICAL & MATERIALS ──────────────────────────────────────────────
+const analyticsExperiments: PageSpec[] = [
+  experimentPage({
+    id: E.expTlc,
+    teamspaceId: TS.analytics,
+    title: "Thin Layer Chromatography of Plant Pigments",
+    icon: "🌿",
+    position: 1,
+    expId: "EXP-ELN-016",
+    elnId: "ELN-016",
+    status: "completed",
+    objective: "Separate photosynthetic pigments from spinach leaves using TLC.",
+    reagents: ["Spinach leaves", "Acetone", "Hexane:acetone (8:2) developing solvent", "TLC silica plates"],
+    equipment: ["Capillary tubes", "Developing chamber", "UV lamp"],
+    sops: [{ id: S.sopTlcPlate, title: "SOP: TLC plate spotting and development" }],
+    findings: [],
+    siblings: [{ id: E.expUvVis, title: "UV-Vis Spectroscopy: Beer-Lambert" }],
+  }),
+  experimentPage({
+    id: E.expUvVis,
+    teamspaceId: TS.analytics,
+    title: "UV-Vis Spectroscopy: Beer-Lambert Law",
+    icon: "📈",
+    position: 2,
+    expId: "EXP-ELN-017",
+    elnId: "ELN-017",
+    status: "in_progress",
+    objective: "Verify the Beer-Lambert law using methyl orange solutions of varying concentration.",
+    reagents: ["Methyl orange standard", "Distilled water"],
+    equipment: ["UV-Vis spectrophotometer", "Quartz cuvettes"],
+    sops: [],
+    findings: [],
+    siblings: [{ id: E.expMeltPoint, title: "Melting Point Determination" }],
+  }),
+  experimentPage({
+    id: E.expMeltPoint,
+    teamspaceId: TS.analytics,
+    title: "Melting Point Determination of Unknown Compounds",
+    icon: "🌡️",
+    position: 3,
+    expId: "EXP-ELN-018",
+    elnId: "ELN-018",
+    status: "archived",
+    objective: "Identify unknown organic compounds by melting-point determination.",
+    reagents: ["Set of unknown samples", "Capillary tubes"],
+    equipment: ["Melting-point apparatus", "Reference table"],
+    sops: [],
+    findings: [],
+    siblings: [{ id: E.expTlc, title: "Thin Layer Chromatography" }],
+  }),
+];
+
+const analyticsSops: PageSpec[] = [
+  sopPage({
+    id: S.sopTlcPlate,
+    teamspaceId: TS.analytics,
+    title: "SOP: TLC plate spotting and development",
+    icon: "📍",
+    position: 4,
+    purpose: "Spot, develop, and visualize a TLC plate to compare Rf values of mixture components.",
+    materials: ["Silica TLC plate", "Capillary tubes", "Developing chamber + lid", "Pencil + ruler", "UV lamp / iodine chamber"],
+    steps: [
+      "Draw a faint pencil baseline 1 cm from the bottom edge.",
+      "Spot samples at marked positions; let each spot dry between applications.",
+      "Pre-equilibrate the developing chamber with ~5 mL of solvent for 5 min.",
+      "Place the plate in the chamber with the baseline above the solvent level.",
+      "Develop until the front reaches ~1 cm from the top; mark the front.",
+      "Visualize under UV (254 nm) or with iodine; circle spots in pencil; calculate Rf.",
+    ],
+    notes: [
+      "Spot diameter <2 mm — fat spots smear during development.",
+      "If the front isn't a straight line, the chamber wasn't equilibrated.",
+    ],
+    usedIn: [{ id: E.expTlc, title: "Thin Layer Chromatography of Plant Pigments" }],
+  }),
+];
+
+const analyticsLanding = landingPage({
+  id: LP.analytics,
+  teamspaceId: TS.analytics,
+  title: "📈 Analytical & Materials",
+  icon: "📈",
+  intro: "Chromatography, spectroscopy, and physical-property characterization.",
+  experiments: [
+    { id: E.expTlc, title: "Thin Layer Chromatography" },
+    { id: E.expUvVis, title: "UV-Vis Spectroscopy: Beer-Lambert" },
+    { id: E.expMeltPoint, title: "Melting Point Determination" },
+  ],
+  sops: [{ id: S.sopTlcPlate, title: "SOP: TLC plate spotting and development" }],
+  findings: [],
+});
+
+// GENERAL SPACE — preserved spirit of the previous demo ───────────────
+const generalPages: PageSpec[] = [
+  generalPage({
+    id: G.welcome,
+    title: "Welcome to SymbioKnowledgeBase",
+    icon: "👋",
+    position: 0,
+    oneLiner: "Lab knowledge base linked to ExpTube and ChemELN",
+    summary:
+      "Welcome page. Explains how the SKB demo content is organized — five experimental teamspaces, plus general guidance pages, all linked across the knowledge graph.",
+    content: doc(
+      heading(1, "Welcome to SymbioKnowledgeBase"),
+      paragraph(text("This workspace is the lab knowledge layer that sits alongside the ExpTube experiment-recording app and the ChemELN electronic lab notebook. The demo content here mirrors live experiments running in those systems.")),
+      heading(2, "Where to start"),
+      bulletListNodes(
+        [text("Experimental teamspaces — "), wikilink(LP.molbio, "Molecular Biology"), text(", "), wikilink(LP.orgsynth, "Organic Synthesis"), text(", "), wikilink(LP.protein, "Protein Biochemistry"), text(", "), wikilink(LP.cellbio, "Cell Biology"), text(", "), wikilink(LP.analytics, "Analytical & Materials")],
+        [text("General guidance — "), wikilink(G.onboarding, "Onboarding Guide"), text(", "), wikilink(G.dbAccess, "Database Access Instructions"), text(", "), wikilink(G.safety, "Safety Protocols")],
+        [text("Cross-cutting — "), wikilink(G.findingsIndex, "Findings Index"), text(" (sortable table of all findings)")],
+      ),
+      heading(2, "How content is organized"),
+      bulletList(
+        "Each experimental teamspace contains experiment pages, SOPs, findings, and reagent/equipment notes — all cross-linked.",
+        "Experiment pages cite the source-of-truth IDs in ExpTube and ChemELN at the top.",
+        "Findings appear both as pages (for graph view) and as rows in the Findings Index database (for sortable / filterable listings).",
+      ),
+    ),
+  }),
+  generalPage({
+    id: G.onboarding,
+    title: "Onboarding Guide",
+    icon: "🚪",
+    position: 1,
+    oneLiner: "First steps for new lab members",
+    summary: "Walks new lab members through account setup, finding the right teamspace, and the conventions used across SKB content.",
+    content: doc(
+      heading(1, "Onboarding Guide"),
+      paragraph(text("If you've just joined the lab, this is the page to read first.")),
+      heading(2, "Accounts"),
+      bulletList(
+        "You sign in with Google — the same account works in ExpTube and ChemELN.",
+        "Talk to the lab manager about which teamspaces you should be added to.",
+      ),
+      heading(2, "Conventions"),
+      bulletList(
+        "Each experiment in ExpTube has a corresponding page here. Find it via the matching teamspace.",
+        "When you create a new finding, link it back to at least one experiment and (when relevant) at least one related finding.",
+        "Don't paste lab procedures into experiment pages — link out to the SOP page instead.",
+      ),
+    ),
+  }),
+  generalPage({
+    id: G.dbAccess,
+    title: "Database Access Instructions",
+    icon: "🗄️",
+    position: 2,
+    oneLiner: "Where to find the upstream ExpTube and ChemELN data",
+    summary: "Pointers to the running ExpTube and ChemELN systems, including local URLs and the Tailscale-mapped versions.",
+    content: doc(
+      heading(1, "Database Access Instructions"),
+      paragraph(text("SKB does not store experimental procedures or AI-extracted protocol analyses. Those live in the upstream systems below.")),
+      heading(2, "ExpTube (videos + AI analysis)"),
+      bulletList(
+        "Local: http://localhost:3002",
+        "Tailscale: https://martins-macbook-pro.tail4a14c4.ts.net:3002",
+        "Postgres (read-only): localhost:54342, db `postgres`, schema `public`.",
+      ),
+      heading(2, "ChemELN (planning + procedures)"),
+      bulletList(
+        "Local: http://localhost:3001",
+        "Tailscale: https://martins-macbook-pro.tail4a14c4.ts.net:3001",
+        "Postgres (read-only): localhost:54332, db `postgres`, schema `public`.",
+      ),
+      heading(2, "Auth"),
+      paragraph(text("All three apps share auth via the ExpTube Supabase on port 54341. Sign in once with Google; the session works across the trio.")),
+    ),
+  }),
+  generalPage({
+    id: G.equipManuals,
+    title: "Equipment Operation Manuals",
+    icon: "⚙️",
+    position: 3,
+    oneLiner: "Index of equipment and reagent reference notes",
+    summary: "Index of the per-instrument and per-reagent reference notes scattered across teamspaces.",
+    content: doc(
+      heading(1, "Equipment Operation Manuals"),
+      paragraph(text("Quick links to instrument quirks, calibration logs, and reagent recipes used across the lab.")),
+      bulletListNodes(
+        [wikilink(R.regNanoDrop, "NanoDrop One — quirks and calibration")],
+        [wikilink(R.regGelRig, "Gel rig — Bio-Rad Sub-Cell GT — known issues")],
+        [wikilink(R.regTaeStock, "TAE 50× stock — recipe and shelf life")],
+        [wikilink(R.regSulfuric, "Sulfuric acid — handling and disposal")],
+        [wikilink(R.regCompCells, "Competent cells — handling and storage")],
+      ),
+    ),
+  }),
+  generalPage({
+    id: G.safety,
+    title: "Safety Protocols & Compliance",
+    icon: "🛡️",
+    position: 4,
+    oneLiner: "Lab safety baseline and where to find specifics",
+    summary: "Baseline safety expectations and pointers to specific reagent-handling pages.",
+    content: doc(
+      heading(1, "Safety Protocols & Compliance"),
+      paragraph(text("PPE: lab coat, gloves, safety glasses at all times. Closed-toe shoes. No eating in the lab.")),
+      heading(2, "Specific hazards"),
+      bulletListNodes(
+        [text("Strong acids — see "), wikilink(R.regSulfuric, "Sulfuric acid — handling and disposal")],
+        [text("UV transilluminator — face shield mandatory; see "), wikilink(R.regGelRig, "Gel rig — Bio-Rad Sub-Cell GT")],
+        [text("Acrylamide solutions are neurotoxic; gloves at all times — see "), wikilink(S.sopSdsPage, "SOP: SDS-PAGE casting and running")],
+      ),
+      heading(2, "Incident reporting"),
+      paragraph(text("Any spill, cut, or near-miss must be reported the same day in the lab incident log on the door of the prep room.")),
+    ),
+  }),
+  generalPage({
+    id: G.orgPolicies,
+    title: "Organization Policies & Instructions",
+    icon: "📑",
+    position: 5,
+    oneLiner: "Hours, supplies, ordering, and cross-team conventions",
+    summary: "Operational policies — lab hours, ordering, shared-resource etiquette.",
+    content: doc(
+      heading(1, "Organization Policies & Instructions"),
+      heading(2, "Lab hours"),
+      paragraph(text("Open access 7 AM – 10 PM weekdays. After-hours work needs a buddy and approval from the safety officer.")),
+      heading(2, "Ordering supplies"),
+      bulletList(
+        "Routine consumables: log requests in the shared spreadsheet; orders placed every Tuesday.",
+        "Specialty reagents: include vendor + catalog number + intended experiment.",
+        "Hazardous materials: extra approval — talk to the lab manager first.",
+      ),
+      heading(2, "Shared-resource etiquette"),
+      bulletList(
+        "Sign up for the NanoDrop and SDS-PAGE rig in 30-min slots on the calendar.",
+        "Clean up your bench area before leaving — no exceptions.",
+        "If you break it, you log it. Don't just put it back.",
+      ),
+    ),
+  }),
+];
+
+// FINDINGS INDEX page (general space, top level) — host page for the Findings Database.
+const findingsIndexPage: PageSpec = generalPage({
+  id: G.findingsIndex,
+  title: "Findings Index",
+  icon: "🗃️",
+  position: 6,
+  oneLiner: "Sortable / filterable index of all lab findings",
+  summary: "Database view of every finding across all teamspaces. Sort by status, topic, severity, or source experiment.",
+  content: doc(
+    heading(1, "Findings Index"),
+    paragraph(text("Every Finding page also appears as a row here, with structured properties for sort + filter. The graph view shows the same set as nodes with edges to source experiments.")),
+    paragraph(text("Use this database for queries like 'show me all yield-related findings' or 'show me everything with severity = critical'. For a free-form browse, click into any teamspace landing page.")),
+  ),
+});
+
+// Combine all pages.
+pages.push(
+  // Landings
+  molbioLanding,
+  orgsynthLanding,
+  proteinLanding,
+  cellbioLanding,
+  analyticsLanding,
+  // Experiments
+  ...molbioExperiments,
+  ...orgsynthExperiments,
+  ...proteinExperiments,
+  ...cellbioExperiments,
+  ...analyticsExperiments,
+  // SOPs
+  ...molbioSops,
+  ...orgsynthSops,
+  ...proteinSops,
+  ...cellbioSops,
+  ...analyticsSops,
+  // Findings
+  ...molbioFindings,
+  ...orgsynthFindings,
+  ...proteinFindings,
+  ...cellbioFindings,
+  // Reagent / equipment notes
+  ...molbioReagents,
+  ...orgsynthReagents,
+  ...cellbioReagents,
+  // General space
+  ...generalPages,
+  findingsIndexPage,
+);
+
+// ── Findings Index database row data ─────────────────────────────────
+type FindingRow = {
+  pageId: string;
+  title: string;
+  status: "open" | "validated" | "archived";
+  topic: string;
+  severity: "info" | "warning" | "critical";
+  sourceExperiment: string; // e.g. "EXP-2026-0102"
+};
+
+const findingRows: FindingRow[] = [
+  { pageId: F.findPlasmidYield,    title: "Plasmid yield drops past 16 h overnight",    status: "validated", topic: "yield",         severity: "warning", sourceExperiment: "EXP-2026-0102" },
+  { pageId: F.findGelResolution,   title: "1% TAE for 0.5–10 kb; TBE for >10 kb",        status: "validated", topic: "method",        severity: "info",    sourceExperiment: "EXP-2026-0103" },
+  { pageId: F.find260280,          title: "260/280 <1.8 indicates RNA carry-over",       status: "validated", topic: "purity",        severity: "warning", sourceExperiment: "EXP-2026-0101" },
+  { pageId: F.findPcrCleanup,      title: "PCR cleanup recovery 60–75%",                 status: "validated", topic: "yield",         severity: "info",    sourceExperiment: "EXP-2026-0106" },
+  { pageId: F.findAspirinYield,    title: "Aspirin yield drops with old reagent",        status: "validated", topic: "yield",         severity: "warning", sourceExperiment: "ELN-001" },
+  { pageId: F.findGrignardAnhydrous,title:"Anhydrous conditions critical for Grignard",  status: "validated", topic: "technique",     severity: "critical",sourceExperiment: "ELN-002" },
+  { pageId: F.findBradfordRange,   title: "Bradford non-linear above ~1 mg/mL",          status: "validated", topic: "instrument",    severity: "warning", sourceExperiment: "ELN-006" },
+  { pageId: F.findGelLaneWarp,     title: "Lane warping in 12% gels at high V",          status: "validated", topic: "method",        severity: "warning", sourceExperiment: "ELN-008" },
+  { pageId: F.findPgloThaw,        title: "pGLO efficiency drops on second thaw",        status: "validated", topic: "competent cells",severity: "warning",sourceExperiment: "ELN-013" },
+];
+
+// ── Cross-cluster extra links (for graph density) ────────────────────
+// Most edges already added by the page builders. Add a few sideways ones
+// to surface relationships across teamspaces.
+const crossLinks: Array<[string, string]> = [
+  // Findings linking sideways across teamspaces
+  [F.findGelLaneWarp, F.findGelResolution], // protein lane warp ↔ molbio gel resolution
+  [F.findBradfordRange, F.find260280],      // both about ratio/range
+  // SOPs reused conceptually
+  [S.sopElectrophoresis, S.sopSdsPage],     // gel-running technique kinship
+  [S.sopRecrystal, S.sopReflux],            // canonical org-chem pair
+  // Equipment notes referenced beyond their teamspace
+  [G.equipManuals, R.regNanoDrop],
+  [G.equipManuals, R.regGelRig],
+  [G.equipManuals, R.regTaeStock],
+  [G.equipManuals, R.regSulfuric],
+  [G.equipManuals, R.regCompCells],
+  // Findings index → all findings (so it's a real hub in the graph)
+  [G.findingsIndex, F.findPlasmidYield],
+  [G.findingsIndex, F.findGelResolution],
+  [G.findingsIndex, F.find260280],
+  [G.findingsIndex, F.findPcrCleanup],
+  [G.findingsIndex, F.findAspirinYield],
+  [G.findingsIndex, F.findGrignardAnhydrous],
+  [G.findingsIndex, F.findBradfordRange],
+  [G.findingsIndex, F.findGelLaneWarp],
+  [G.findingsIndex, F.findPgloThaw],
+  // Welcome → landing pages for sidebar discoverability
+  [G.welcome, LP.molbio],
+  [G.welcome, LP.orgsynth],
+  [G.welcome, LP.protein],
+  [G.welcome, LP.cellbio],
+  [G.welcome, LP.analytics],
+  [G.welcome, G.findingsIndex],
+];
+for (const [a, b] of crossLinks) link(a, b);
+
+// ── Main ─────────────────────────────────────────────────────────────
+async function main() {
+  console.log("Seeding demo data (experimental knowledge graph)…\n");
+
+  // ── Step 1: targeted cleanup of OLD seed namespace ─────────────────
+  console.log("[1] Cleaning up old-namespace seed content…");
+
+  // Find old pages first so we can decrement Tenant.storageUsed for any
+  // file attachments that point at them. Includes the seed.ts welcome page
+  // (00000000-…0010) which we replace with our own G.welcome.
+  const oldPages = await prisma.page.findMany({
+    where: {
+      tenantId: TENANT_ID,
+      OR: [
+        { id: { startsWith: OLD_PAGE_PREFIX } },
+        { id: SEED_TS_WELCOME_PAGE_ID },
+      ],
+    },
+    select: { id: true },
+  });
+  const oldPageIds = oldPages.map((p) => p.id);
+
+  if (oldPageIds.length > 0) {
+    const orphanedFiles = await prisma.fileAttachment.findMany({
+      where: { tenantId: TENANT_ID, pageId: { in: oldPageIds } },
+      select: { fileSize: true },
+    });
+    const reclaimedBytes = orphanedFiles.reduce(
+      (acc, f) => acc + (typeof f.fileSize === "bigint" ? f.fileSize : BigInt(f.fileSize ?? 0)),
+      0n,
+    );
+    if (reclaimedBytes > 0n) {
+      await prisma.tenant.update({
+        where: { id: TENANT_ID },
+        data: { storageUsed: { decrement: reclaimedBytes } },
+      });
+      console.log(`    Reclaimed ${reclaimedBytes} bytes from Tenant.storageUsed.`);
+    }
+  }
+
+  await prisma.$transaction([
+    // Wipe old DBs / DbRows first.
+    prisma.dbRow.deleteMany({
+      where: {
+        tenantId: TENANT_ID,
+        OR: [
+          { databaseId: { startsWith: OLD_DATABASE_PREFIX } },
+          { pageId: { in: oldPageIds } },
+        ],
+      },
+    }),
+    prisma.database.deleteMany({
+      where: {
+        tenantId: TENANT_ID,
+        OR: [
+          { id: { startsWith: OLD_DATABASE_PREFIX } },
+          { pageId: { in: oldPageIds } },
+        ],
+      },
+    }),
+    // Explicit cleanup of cascading dependents (Page cascade covers most;
+    // belt-and-suspenders for auditability).
+    prisma.pageLink.deleteMany({
+      where: {
+        tenantId: TENANT_ID,
+        OR: [
+          { sourcePageId: { in: oldPageIds } },
+          { targetPageId: { in: oldPageIds } },
+        ],
+      },
+    }),
+    prisma.block.deleteMany({
+      where: { tenantId: TENANT_ID, pageId: { startsWith: OLD_PAGE_PREFIX } },
+    }),
+    // Storage hygiene: file attachments + notifications pointed at old pages.
+    prisma.fileAttachment.deleteMany({
+      where: { tenantId: TENANT_ID, pageId: { startsWith: OLD_PAGE_PREFIX } },
+    }),
+    prisma.notification.deleteMany({
+      where: { tenantId: TENANT_ID, pageId: { startsWith: OLD_PAGE_PREFIX } },
+    }),
+    prisma.page.deleteMany({
+      where: { tenantId: TENANT_ID, id: { in: oldPageIds } },
+    }),
+    prisma.teamspaceMember.deleteMany({
+      where: { teamspaceId: { startsWith: OLD_TEAMSPACE_PREFIX } },
+    }),
+    prisma.teamspace.deleteMany({
+      where: { tenantId: TENANT_ID, id: { startsWith: OLD_TEAMSPACE_PREFIX } },
+    }),
+  ]);
+  console.log(`    Removed ${oldPageIds.length} old-namespace pages and their dependents.`);
+
+  // ── Step 2: ensure dev-mode user + Martin exist ─────────────────────
+  console.log("[2] Ensuring user rows exist…");
+
   await prisma.user.upsert({
     where: { id: DEV_USER_ID },
     update: {},
@@ -149,32 +1934,56 @@ async function main() {
       role: "ADMIN",
     },
   });
-  console.log("  Created dev-user for local development mode");
 
-  // ── Teamspaces ───────────────────────────────────────────
-  // TODO: The logic for sharing different pages in the teams section
-  // needs to be defined later. Currently these are dummy teamspaces.
-  // Future work: role-based access control, invite flows, cross-team sharing.
+  // Resolve Martin by email first; fall back to the known Supabase UUID.
+  let martin = await prisma.user.findUnique({
+    where: { tenantId_email: { tenantId: TENANT_ID, email: MARTIN_EMAIL } },
+    select: { id: true },
+  });
+  if (!martin) {
+    martin = await prisma.user.create({
+      data: {
+        id: MARTIN_FALLBACK_ID,
+        tenantId: TENANT_ID,
+        email: MARTIN_EMAIL,
+        name: "Martin Priessner",
+        role: "ADMIN",
+      },
+      select: { id: true },
+    });
+    console.log("    Created Martin from fallback UUID (no prior Google sign-in).");
+  } else {
+    console.log(`    Resolved Martin by email: ${martin.id}`);
+  }
+  const MARTIN_USER_ID = martin.id;
 
-  const teamspaces = [
-    { id: TEAMSPACE.engineering, name: "Engineering", icon: "\u{1F528}" },
-    { id: TEAMSPACE.product,     name: "Product",     icon: "\u{1F4CB}" },
+  await prisma.tenantMember.upsert({
+    where: { userId_tenantId: { userId: MARTIN_USER_ID, tenantId: TENANT_ID } },
+    update: {},
+    create: { userId: MARTIN_USER_ID, tenantId: TENANT_ID, role: "owner" },
+  });
+
+  // ── Step 3: teamspaces ──────────────────────────────────────────────
+  console.log("[3] Upserting teamspaces…");
+  const teamspaceSpecs = [
+    { id: TS.molbio,    slug: "molbio",    name: "Molecular Biology",      icon: "🧬", description: "DNA/RNA workflows: extraction, mini-prep, gels, PCR, sequencing prep." },
+    { id: TS.orgsynth,  slug: "orgsynth",  name: "Organic Synthesis",      icon: "🧪", description: "Classic organic reactions: acetylation, Grignard, esterification, recrystallization." },
+    { id: TS.protein,   slug: "protein",   name: "Protein Biochemistry",   icon: "🧫", description: "Protein quantitation, enzyme kinetics, electrophoresis, blotting." },
+    { id: TS.cellbio,   slug: "cellbio",   name: "Cell Biology",           icon: "🔬", description: "Cell culture, transformation, microscopy, viability." },
+    { id: TS.analytics, slug: "analytics", name: "Analytical & Materials", icon: "📈", description: "TLC, UV-Vis spectroscopy, melting-point characterization." },
   ];
-
-  for (const ts of teamspaces) {
+  for (const ts of teamspaceSpecs) {
     await prisma.teamspace.upsert({
       where: { id: ts.id },
-      update: { name: ts.name, icon: ts.icon },
-      create: { id: ts.id, tenantId: TENANT_ID, name: ts.name, icon: ts.icon },
+      update: { name: ts.name, slug: ts.slug, description: ts.description, icon: ts.icon },
+      create: { id: ts.id, tenantId: TENANT_ID, name: ts.name, slug: ts.slug, description: ts.description, icon: ts.icon },
     });
-    console.log(`  Teamspace: ${ts.icon} ${ts.name}`);
   }
 
-  // ── Teamspace Members ─────────────────────────────────────
-  // Add both the seeded admin user AND the dev-mode fallback user
-  // so teamspaces appear in the sidebar regardless of auth mode.
-  const memberUserIds = [ADMIN_USER_ID, DEV_USER_ID];
-  for (const ts of teamspaces) {
+  // ── Step 4: teamspace members (admin + dev + Martin as OWNER) ──────
+  console.log("[4] Adding teamspace members (admin + dev + Martin)…");
+  const memberUserIds = [ADMIN_USER_ID, DEV_USER_ID, MARTIN_USER_ID];
+  for (const ts of teamspaceSpecs) {
     for (const uid of memberUserIds) {
       await prisma.teamspaceMember.upsert({
         where: { teamspaceId_userId: { teamspaceId: ts.id, userId: uid } },
@@ -183,437 +1992,15 @@ async function main() {
       });
     }
   }
-  console.log(`  Added ${memberUserIds.length} users as OWNER of ${teamspaces.length} teamspaces`);
 
-  // ── Pages ──────────────────────────────────────────────
-
-  const pages = [
-    {
-      id: PAGE.welcome,
-      title: "Welcome to SymbioKnowledgeBase",
-      icon: "\u{1F44B}",
-      position: 0,
-      parentId: null,
-      oneLiner: "Getting started with the AI-agent-first knowledge platform",
-      summary: "Introduction to SymbioKnowledgeBase, covering setup instructions, key features like wikilinks and AI agents, and quick-start guidance for new users.",
-    },
-    {
-      id: PAGE.arch,
-      title: "System Architecture",
-      icon: "\u{1F3D7}\u{FE0F}",
-      position: 1,
-      parentId: null,
-      oneLiner: "High-level overview of the platform's technical architecture",
-      summary: "Documents the Next.js App Router frontend, Prisma ORM data layer, Supabase auth, and REST API design. Serves as the parent page for all technical deep-dive guides.",
-    },
-    {
-      id: PAGE.api,
-      title: "API Reference",
-      icon: "\u{1F4E1}",
-      position: 2,
-      parentId: null,
-      oneLiner: "Complete REST API documentation for pages, blocks, and search",
-      summary: "Covers all REST endpoints including CRUD operations for pages and blocks, wikilink resolution, search, and AI agent authentication via API keys.",
-    },
-    {
-      id: PAGE.research,
-      title: "AI Research Notes",
-      icon: "\u{1F9EA}",
-      position: 3,
-      parentId: null,
-      oneLiner: "Research findings on RAG, agent patterns, and prompt engineering",
-      summary: "Collects research notes on retrieval-augmented generation, multi-agent orchestration patterns, and prompt engineering techniques used in the platform.",
-    },
-    {
-      id: PAGE.meeting,
-      title: "Meeting Notes - Sprint 14",
-      icon: "\u{1F4DD}",
-      position: 4,
-      parentId: null,
-      oneLiner: "Sprint 14 standup notes covering graph, auth, and API work",
-      summary: "Daily standup notes from Sprint 14, tracking progress on knowledge graph visualization, Supabase auth migration, and REST API improvements.",
-    },
-    {
-      id: PAGE.roadmap,
-      title: "Product Roadmap Q1 2026",
-      icon: "\u{1F5FA}\u{FE0F}",
-      position: 5,
-      parentId: null,
-      oneLiner: "Quarterly roadmap with milestones and deliverables for Q1 2026",
-      summary: "Outlines the product roadmap for Q1 2026 including key milestones, feature priorities, and target delivery dates across the knowledge platform.",
-    },
-    {
-      id: PAGE.devSetup,
-      title: "Developer Setup Guide",
-      icon: "\u{1F4BB}",
-      position: 0,
-      parentId: PAGE.arch,
-      oneLiner: "Step-by-step local development environment setup",
-      summary: "Walks through cloning the repo, installing dependencies, configuring environment variables, running Supabase locally, and starting the Next.js dev server.",
-    },
-    {
-      id: PAGE.llmGuide,
-      title: "LLM Integration Guide",
-      icon: "\u{1F916}",
-      position: 1,
-      parentId: PAGE.arch,
-      oneLiner: "How AI agents interact with the knowledge base via the REST API",
-      summary: "Explains the agent authentication flow using API keys, describes available endpoints for reading and writing pages, and provides example agent workflows.",
-    },
-    {
-      id: PAGE.dataModels,
-      title: "Data Models & Schema",
-      icon: "\u{1F4CA}",
-      position: 2,
-      parentId: PAGE.arch,
-      oneLiner: "Prisma schema documentation for tenants, pages, blocks, and links",
-      summary: "Details every database model including Tenant, User, Page, Block, PageLink, ApiKey, and Database. Covers relationships, field types, and migration patterns.",
-    },
-    {
-      id: PAGE.changelog,
-      title: "Changelog",
-      icon: "\u{1F4C3}",
-      position: 6,
-      parentId: null,
-      oneLiner: "Release history and version-by-version change log",
-      summary: "Tracks every release with detailed notes on new features, bug fixes, and breaking changes. Organized chronologically from newest to oldest.",
-    },
-    {
-      id: PAGE.bugTracker,
-      title: "Bug Tracker",
-      icon: "\u{1F41B}",
-      position: 7,
-      parentId: null,
-      oneLiner: "Active bug database with severity, status, and assignee tracking",
-      summary: "Central bug tracking page linked to the Bugs database table. Lists open issues with priority levels, reproduction steps, and current assignees.",
-    },
-    {
-      id: PAGE.designDoc,
-      title: "Design System",
-      icon: "\u{1F3A8}",
-      position: 8,
-      parentId: null,
-      oneLiner: "Visual design guidelines including colors, typography, and components",
-      summary: "Defines the design system for the platform covering the color palette, typography scale, spacing conventions, and reusable UI component patterns.",
-    },
-    // ── New pages (18 more) ──
-    {
-      id: PAGE.security,
-      title: "Security & Authentication",
-      icon: "\u{1F512}",
-      position: 3,
-      parentId: PAGE.arch,
-      oneLiner: "Authentication architecture and security best practices",
-      summary: "Covers Supabase Auth integration, JWT token handling, API key scoping, row-level security policies, and tenant isolation patterns.",
-    },
-    {
-      id: PAGE.testing,
-      title: "Testing Strategy",
-      icon: "\u{2705}",
-      position: 4,
-      parentId: PAGE.arch,
-      oneLiner: "Comprehensive testing approach covering unit, integration, and E2E",
-      summary: "Describes the project's testing pyramid: Vitest unit tests, React Testing Library component tests, Playwright E2E tests, and CI integration strategy.",
-    },
-    {
-      id: PAGE.deployment,
-      title: "Deployment Guide",
-      icon: "\u{1F680}",
-      position: 5,
-      parentId: PAGE.arch,
-      oneLiner: "Production deployment procedures for Vercel and Supabase",
-      summary: "Step-by-step instructions for deploying the platform to production, covering Vercel project setup, Supabase hosted configuration, environment secrets, and DNS.",
-    },
-    {
-      id: PAGE.frontend,
-      title: "Frontend Components",
-      icon: "\u{1F3AF}",
-      position: 6,
-      parentId: PAGE.arch,
-      oneLiner: "React component library and frontend architecture patterns",
-      summary: "Documents the React component hierarchy, TipTap editor integration, sidebar navigation tree, graph visualization components, and shared UI primitives.",
-    },
-    {
-      id: PAGE.performance,
-      title: "Performance Optimization",
-      icon: "\u{26A1}",
-      position: 9,
-      parentId: null,
-      oneLiner: "Performance benchmarks and optimization techniques",
-      summary: "Covers database query optimization, API response time benchmarks, frontend bundle analysis, and caching strategies for the knowledge platform.",
-    },
-    {
-      id: PAGE.vectorSearch,
-      title: "Embedding & Vector Search",
-      icon: "\u{1F50D}",
-      position: 0,
-      parentId: PAGE.research,
-      oneLiner: "Semantic search implementation using pgvector and OpenAI embeddings",
-      summary: "Details the vector embedding pipeline: text chunking, OpenAI embedding generation, pgvector storage, and cosine-similarity search for semantic page discovery.",
-    },
-    {
-      id: PAGE.agentWorkflows,
-      title: "Agent Workflows",
-      icon: "\u{1F916}",
-      position: 1,
-      parentId: PAGE.research,
-      oneLiner: "Multi-agent interaction patterns and orchestration designs",
-      summary: "Explores agent-to-knowledge-base interaction patterns including Q&A agents, meeting summarizers, and automated knowledge extraction workflows.",
-    },
-    {
-      id: PAGE.promptLibrary,
-      title: "Prompt Library",
-      icon: "\u{1F4AC}",
-      position: 2,
-      parentId: PAGE.research,
-      oneLiner: "Curated collection of reusable prompts for AI agents",
-      summary: "A library of tested prompt templates organized by use case: summarization, Q&A extraction, knowledge graph generation, and content classification.",
-    },
-    {
-      id: PAGE.knowledgePipe,
-      title: "Knowledge Extraction Pipeline",
-      icon: "\u{1F52C}",
-      position: 3,
-      parentId: PAGE.research,
-      oneLiner: "Automated pipeline for extracting structured knowledge from documents",
-      summary: "Describes the end-to-end pipeline for ingesting raw documents, extracting entities and relationships, and populating the knowledge graph automatically.",
-    },
-    {
-      id: PAGE.meetingSprint13,
-      title: "Meeting Notes - Sprint 13",
-      icon: "\u{1F4DD}",
-      position: 10,
-      parentId: null,
-      oneLiner: "Sprint 13 review covering database views and sidebar redesign",
-      summary: "Sprint 13 review and retrospective notes. Key topics: database view implementation, sidebar tree redesign, and API key management improvements.",
-    },
-    {
-      id: PAGE.meetingSprint12,
-      title: "Meeting Notes - Sprint 12",
-      icon: "\u{1F4DD}",
-      position: 11,
-      parentId: null,
-      oneLiner: "Sprint 12 review covering editor improvements and graph MVP",
-      summary: "Sprint 12 review and retrospective notes. Key topics: TipTap editor enhancements, initial knowledge graph MVP, and block-level permissions.",
-    },
-    {
-      id: PAGE.onboarding,
-      title: "Onboarding Guide",
-      icon: "\u{1F44B}",
-      position: 12,
-      parentId: null,
-      oneLiner: "New team member onboarding checklist and resource guide",
-      summary: "A structured onboarding guide for new team members covering account setup, key documentation links, development environment configuration, and team introductions.",
-    },
-    {
-      id: PAGE.contributing,
-      title: "Contributing Guide",
-      icon: "\u{1F91D}",
-      position: 13,
-      parentId: null,
-      oneLiner: "How to contribute code, documentation, and bug reports",
-      summary: "Guidelines for contributing to the project including branch naming conventions, pull request workflow, code review expectations, and documentation standards.",
-    },
-    {
-      id: PAGE.troubleshoot,
-      title: "Troubleshooting FAQ",
-      icon: "\u{2753}",
-      position: 14,
-      parentId: null,
-      oneLiner: "Common issues and their solutions for developers",
-      summary: "Frequently asked questions and troubleshooting steps for common development issues including database connectivity, build errors, auth problems, and deployment failures.",
-    },
-    {
-      id: PAGE.cicd,
-      title: "CI/CD Pipeline",
-      icon: "\u{1F504}",
-      position: 7,
-      parentId: PAGE.arch,
-      oneLiner: "Automated build, test, and deployment pipeline configuration",
-      summary: "Documents the GitHub Actions CI/CD pipeline including lint checks, test runners, preview deployments on PRs, and production deployment triggers.",
-    },
-    {
-      id: PAGE.dbMigration,
-      title: "Database Migration Guide",
-      icon: "\u{1F4E6}",
-      position: 8,
-      parentId: PAGE.arch,
-      oneLiner: "Database schema migration procedures and best practices",
-      summary: "Covers Prisma migration workflow, safe migration patterns for production, rollback procedures, and data migration scripts for schema changes.",
-    },
-    {
-      id: PAGE.accessibility,
-      title: "Accessibility Guidelines",
-      icon: "\u{267F}",
-      position: 0,
-      parentId: PAGE.designDoc,
-      oneLiner: "WCAG compliance standards and accessibility implementation guide",
-      summary: "Covers WCAG 2.1 AA compliance requirements including keyboard navigation, screen reader support, color contrast ratios, and ARIA attribute usage.",
-    },
-    {
-      id: PAGE.mobileDesign,
-      title: "Mobile Design Specs",
-      icon: "\u{1F4F1}",
-      position: 1,
-      parentId: PAGE.designDoc,
-      oneLiner: "Responsive design specifications and mobile-first layout patterns",
-      summary: "Defines responsive breakpoints, touch-friendly interaction targets, mobile navigation patterns, and performance budgets for mobile devices.",
-    },
-    // ── Agent pages — AI agent knowledge base ──
-    // These pages contain organizational information that agents can search:
-    // equipment operation manuals, database access instructions, QR code procedures, etc.
-    {
-      id: PAGE.agentDbAccess,
-      title: "Database Access Instructions",
-      icon: "\u{1F5C4}\u{FE0F}",
-      position: 0,
-      parentId: null,
-      spaceType: SpaceType.AGENT,
-      oneLiner: "Connection strings and credential management for database access",
-      summary: "Provides agents with database connection details, credential rotation procedures, allowed query patterns, and access control boundaries.",
-    },
-    {
-      id: PAGE.agentEquipOps,
-      title: "Equipment Operation Manuals",
-      icon: "\u{2699}\u{FE0F}",
-      position: 1,
-      parentId: null,
-      spaceType: SpaceType.AGENT,
-      oneLiner: "Standard operating procedures for lab and facility equipment",
-      summary: "Contains step-by-step operating instructions for laboratory and facility equipment, including startup procedures, calibration steps, and shutdown checklists.",
-    },
-    {
-      id: PAGE.agentQrCodes,
-      title: "QR Code Procedures",
-      icon: "\u{1F4F7}",
-      position: 2,
-      parentId: null,
-      spaceType: SpaceType.AGENT,
-      oneLiner: "QR code generation, scanning, and processing procedures",
-      summary: "Instructions for generating, scanning, and processing QR codes used for asset tracking, equipment identification, and workflow triggering.",
-    },
-    {
-      id: PAGE.agentOrgInstructions,
-      title: "Organization Policies & Instructions",
-      icon: "\u{1F4D1}",
-      position: 3,
-      parentId: null,
-      spaceType: SpaceType.AGENT,
-      oneLiner: "Organizational behavior guidelines and policy rules for agents",
-      summary: "Defines acceptable behavior boundaries, response tone guidelines, data handling policies, and escalation procedures that all AI agents must follow.",
-    },
-    {
-      id: PAGE.agentApiIntegrations,
-      title: "External API Integrations",
-      icon: "\u{1F517}",
-      position: 4,
-      parentId: null,
-      spaceType: SpaceType.AGENT,
-      oneLiner: "Third-party service endpoints and integration configurations",
-      summary: "Lists external API endpoints, authentication methods, rate limits, and example request/response payloads for services agents can interact with.",
-    },
-    {
-      id: PAGE.agentSafetyProto,
-      title: "Safety Protocols & Compliance",
-      icon: "\u{1F6E1}\u{FE0F}",
-      position: 5,
-      parentId: null,
-      spaceType: SpaceType.AGENT,
-      oneLiner: "Safety requirements and compliance rules for agent operations",
-      summary: "Defines safety boundaries, data privacy compliance requirements, emergency procedures, and audit logging obligations for all automated agent actions.",
-    },
-    // ── Team pages — Engineering teamspace ──
-    {
-      id: PAGE.teamEngStandards,
-      title: "Engineering Standards",
-      icon: "\u{1F4D0}",
-      position: 0,
-      parentId: null,
-      spaceType: SpaceType.TEAM,
-      teamspaceId: TEAMSPACE.engineering,
-      oneLiner: "Code quality standards and engineering best practices",
-      summary: "Defines coding conventions, TypeScript strict mode requirements, linting rules, code review checklist, and architectural decision records for the engineering team.",
-    },
-    {
-      id: PAGE.teamEngRunbooks,
-      title: "Runbooks & Playbooks",
-      icon: "\u{1F4D6}",
-      position: 1,
-      parentId: null,
-      spaceType: SpaceType.TEAM,
-      teamspaceId: TEAMSPACE.engineering,
-      oneLiner: "Operational runbooks for common and emergency procedures",
-      summary: "Step-by-step playbooks for production incidents, database recovery, deployment rollbacks, and scaling operations used by the engineering team.",
-    },
-    {
-      id: PAGE.teamEngIncidents,
-      title: "Incident Response Log",
-      icon: "\u{1F6A8}",
-      position: 2,
-      parentId: null,
-      spaceType: SpaceType.TEAM,
-      teamspaceId: TEAMSPACE.engineering,
-      oneLiner: "Incident records, post-mortems, and resolution timelines",
-      summary: "Logs all production incidents with severity classification, timeline of events, root cause analysis, and corrective actions taken.",
-    },
-    {
-      id: PAGE.teamEngOnCall,
-      title: "On-Call Schedule",
-      icon: "\u{1F4DE}",
-      position: 3,
-      parentId: null,
-      spaceType: SpaceType.TEAM,
-      teamspaceId: TEAMSPACE.engineering,
-      oneLiner: "Weekly on-call rotation and escalation contact list",
-      summary: "Current on-call rotation schedule, escalation paths, contact information for each rotation slot, and handoff procedures between shifts.",
-    },
-    // ── Team pages — Product teamspace ──
-    {
-      id: PAGE.teamProdRoadmap,
-      title: "Product Strategy & Roadmap",
-      icon: "\u{1F5FA}\u{FE0F}",
-      position: 0,
-      parentId: null,
-      spaceType: SpaceType.TEAM,
-      teamspaceId: TEAMSPACE.product,
-      oneLiner: "Long-term product vision and strategic roadmap",
-      summary: "Defines the product team's strategic direction, quarterly OKRs, feature prioritization framework, and competitive landscape analysis.",
-    },
-    {
-      id: PAGE.teamProdMetrics,
-      title: "Key Metrics & KPIs",
-      icon: "\u{1F4C8}",
-      position: 1,
-      parentId: null,
-      spaceType: SpaceType.TEAM,
-      teamspaceId: TEAMSPACE.product,
-      oneLiner: "Product health metrics, KPIs, and tracking dashboards",
-      summary: "Tracks key product metrics including daily active users, page creation rate, API call volume, agent adoption, and user retention cohorts.",
-    },
-    {
-      id: PAGE.teamProdUserRes,
-      title: "User Research Findings",
-      icon: "\u{1F50E}",
-      position: 2,
-      parentId: null,
-      spaceType: SpaceType.TEAM,
-      teamspaceId: TEAMSPACE.product,
-      oneLiner: "User interview insights and usability test results",
-      summary: "Synthesizes findings from user interviews, usability testing sessions, and survey responses. Highlights pain points, feature requests, and satisfaction trends.",
-    },
-    {
-      id: PAGE.teamProdSpecs,
-      title: "Feature Specifications",
-      icon: "\u{1F4DD}",
-      position: 3,
-      parentId: null,
-      spaceType: SpaceType.TEAM,
-      teamspaceId: TEAMSPACE.product,
-      oneLiner: "Detailed feature specs with requirements and acceptance criteria",
-      summary: "Contains detailed specifications for planned features including user stories, acceptance criteria, technical constraints, and design mockup references.",
-    },
-  ];
-
+  // ── Step 5: pages + DOCUMENT blocks ────────────────────────────────
+  console.log(`[5] Upserting ${pages.length} pages + their DOCUMENT blocks…`);
+  // Wipe any stale blocks pointed at the new-namespace pages so a re-run
+  // can't leave an old block (under a different id derivation) attached.
+  await prisma.block.deleteMany({
+    where: { tenantId: TENANT_ID, pageId: { in: pages.map((p) => p.id) } },
+  });
+  const now = new Date();
   for (const p of pages) {
     await prisma.page.upsert({
       where: { id: p.id },
@@ -621,2391 +2008,185 @@ async function main() {
         title: p.title,
         icon: p.icon,
         position: p.position,
-        parentId: p.parentId,
+        parentId: p.parentId ?? null,
+        teamspaceId: p.teamspaceId ?? null,
+        spaceType: p.spaceType,
         oneLiner: p.oneLiner,
         summary: p.summary,
-        spaceType: (p as { spaceType?: string }).spaceType as "PRIVATE" | "TEAM" | "AGENT" | undefined,
-        teamspaceId: (p as { teamspaceId?: string }).teamspaceId,
+        summaryUpdatedAt: now,
+        lastAgentVisitAt: now,
       },
-      create: { id: p.id, tenantId: TENANT_ID, ...p },
+      create: {
+        id: p.id,
+        tenantId: TENANT_ID,
+        title: p.title,
+        icon: p.icon,
+        position: p.position,
+        parentId: p.parentId ?? null,
+        teamspaceId: p.teamspaceId ?? null,
+        spaceType: p.spaceType,
+        oneLiner: p.oneLiner,
+        summary: p.summary,
+        summaryUpdatedAt: now,
+        lastAgentVisitAt: now,
+      },
     });
-    console.log(`  Page: ${p.icon} ${p.title}`);
+
+    // One DOCUMENT block per page, holding the whole TipTap tree.
+    // Derive a unique block id by replacing only the first nibble of the page
+    // id (page IDs use f1-f7; blocks shift the leading "f" to "a" → a1-a7).
+    // Preserves the namespace byte so different page namespaces don't collide.
+    const blockId = "a" + p.id.slice(1);
+    const plainText = extractPlainText(p.content).replace(/\s+/g, " ").trim();
+    await prisma.block.upsert({
+      where: { id: blockId },
+      update: {
+        content: p.content as object,
+        plainText,
+        type: BlockType.DOCUMENT,
+        position: 0,
+      },
+      create: {
+        id: blockId,
+        pageId: p.id,
+        tenantId: TENANT_ID,
+        type: BlockType.DOCUMENT,
+        content: p.content as object,
+        position: 0,
+        plainText,
+      },
+    });
   }
 
-  // ── Blocks (DOCUMENT type with full TipTap content) ──
-
-  const blocks: Array<{
-    id: string;
-    pageId: string;
-    type: BlockType;
-    content: unknown;
-    position: number;
-    plainText: string;
-  }> = [
-    // ─── Welcome Page ───
-    {
-      id: "b0000000-0000-4000-a001-000000000001",
-      pageId: PAGE.welcome,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Welcome to SymbioKnowledgeBase. Your AI-agent-first knowledge management platform.",
-      content: doc(
-        heading(1, "Welcome to SymbioKnowledgeBase"),
-        paragraph(
-          text("Your "),
-          text("AI-agent-first", [{ type: "bold" }]),
-          text(" knowledge management platform. Build structured knowledge bases that both humans and AI agents can read, write, and query through a unified interface.")
-        ),
-        divider(),
-        heading(2, "Quick Start"),
-        orderedList(
-          "Create pages and organize them into a hierarchy",
-          "Link ideas together using [[wikilinks]] for a connected knowledge graph",
-          "Generate API keys in Settings for programmatic access",
-          "Connect your AI agents via the REST API",
-          "Explore the Knowledge Graph to visualize connections"
-        ),
-        heading(2, "Key Features"),
-        bulletList(
-          "Block-based editor with rich text, code blocks, and embeds",
-          "Wikilink-based page linking with automatic backlink tracking",
-          "Interactive knowledge graph visualization",
-          "Notion-style database tables with filtering and sorting",
-          "Full REST API with OpenAPI documentation",
-          "Multi-tenant architecture with API key authentication"
-        ),
-        heading(2, "Getting Started Checklist"),
-        taskList(
-          { text: "Read the System Architecture overview", checked: false },
-          { text: "Set up your development environment", checked: false },
-          { text: "Explore the API Reference", checked: false },
-          { text: "Create your first database", checked: false },
-          { text: "Connect an AI agent", checked: false }
-        ),
-        blockquote("The best knowledge base is one that grows organically through both human curation and AI contribution."),
-      ),
-    },
-
-    // ─── System Architecture ───
-    {
-      id: "b0000000-0000-4000-a002-000000000001",
-      pageId: PAGE.arch,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "System Architecture. SymbioKnowledgeBase is built on a modern stack.",
-      content: doc(
-        heading(1, "System Architecture"),
-        paragraph(
-          text("SymbioKnowledgeBase is built on a modern full-stack TypeScript architecture designed for both human and AI-agent interaction.")
-        ),
-        heading(2, "Tech Stack"),
-        bulletList(
-          "Frontend: Next.js 16 with React 19 and TailwindCSS 4",
-          "Editor: TipTap (ProseMirror-based block editor)",
-          "Backend: Next.js API Routes with Zod validation",
-          "Database: PostgreSQL 18 with Prisma ORM",
-          "Auth: NextAuth.js with JWT sessions",
-          "Graph: react-force-graph for knowledge visualization"
-        ),
-        heading(2, "Request Flow"),
-        codeBlock("text",
-`Client (Browser / AI Agent)
-    |
-    v
-Next.js Middleware (JWT auth check)
-    |
-    v
-API Route Handler (Zod validation)
-    |
-    v
-Service Layer (business logic)
-    |
-    v
-Prisma ORM (tenant-scoped queries)
-    |
-    v
-PostgreSQL (multi-tenant data)`
-        ),
-        heading(2, "Multi-Tenant Design"),
-        paragraph(
-          text("Every table includes a "),
-          text("tenant_id", [{ type: "code" }]),
-          text(" column. All queries are scoped by tenant to ensure complete data isolation. Composite indexes on "),
-          text("(tenant_id, id)", [{ type: "code" }]),
-          text(" ensure efficient lookups.")
-        ),
-        heading(2, "Key Design Decisions"),
-        bulletList(
-          "Single DOCUMENT block per page stores full TipTap JSON for atomic saves",
-          "Wikilinks parsed from content JSON for automatic link tracking",
-          "Full-text search via PostgreSQL tsvector with trigram support",
-          "API key auth alongside session auth for agent access"
-        ),
-        divider(),
-        paragraph(
-          text("See also: "),
-          text("Data Models & Schema", [{ type: "bold" }]),
-          text(" and "),
-          text("Developer Setup Guide", [{ type: "bold" }]),
-        ),
-      ),
-    },
-
-    // ─── API Reference ───
-    {
-      id: "b0000000-0000-4000-a003-000000000001",
-      pageId: PAGE.api,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "API Reference. Complete REST API documentation for SymbioKnowledgeBase.",
-      content: doc(
-        heading(1, "API Reference"),
-        paragraph(text("Complete REST API for programmatic access. All endpoints require authentication via session cookie or API key header.")),
-        heading(2, "Authentication"),
-        paragraph(
-          text("Include your API key in the "),
-          text("Authorization", [{ type: "code" }]),
-          text(" header:")
-        ),
-        codeBlock("bash", `curl -H "Authorization: Bearer sk_your_api_key_here" \\
-  http://localhost:3000/api/pages`),
-        heading(2, "Pages"),
-        codeBlock("text",
-`GET    /api/pages          List all pages
-POST   /api/pages          Create a new page
-GET    /api/pages/:id      Get a page by ID
-PUT    /api/pages/:id      Update a page
-DELETE /api/pages/:id      Delete a page
-GET    /api/pages/tree     Get page hierarchy tree`),
-        heading(2, "Blocks"),
-        codeBlock("text",
-`GET    /api/pages/:id/blocks   Get blocks for a page
-PUT    /api/pages/:id/blocks   Save page content (full doc)
-POST   /api/blocks             Create a block
-PUT    /api/blocks/:id         Update a block
-DELETE /api/blocks/:id         Delete a block`),
-        heading(2, "Databases"),
-        codeBlock("text",
-`GET    /api/databases              List databases
-POST   /api/databases              Create a database
-GET    /api/databases/:id          Get database with schema
-PUT    /api/databases/:id          Update database schema
-DELETE /api/databases/:id          Delete a database
-GET    /api/databases/:id/rows     List rows
-POST   /api/databases/:id/rows     Create a row
-PUT    /api/databases/:id/rows/:r  Update a row
-DELETE /api/databases/:id/rows/:r  Delete a row`),
-        heading(2, "Search & Graph"),
-        codeBlock("text",
-`GET    /api/search?q=term    Full-text search across blocks
-GET    /api/graph            Knowledge graph (nodes + edges)`),
-        heading(2, "Example: Create a Page with Content"),
-        codeBlock("javascript",
-`const response = await fetch("/api/pages", {
-  method: "POST",
-  headers: {
-    "Authorization": "Bearer sk_your_key",
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    title: "New Page",
-    icon: "📄",
-  }),
-});
-
-const { data: page } = await response.json();
-
-// Save content
-await fetch(\`/api/pages/\${page.id}/blocks\`, {
-  method: "PUT",
-  headers: {
-    "Authorization": "Bearer sk_your_key",
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    content: {
-      type: "doc",
-      content: [
-        {
-          type: "heading",
-          attrs: { level: 1 },
-          content: [{ type: "text", text: "Hello from API" }],
-        },
-        {
-          type: "paragraph",
-          content: [{ type: "text", text: "Created programmatically!" }],
-        },
+  // ── Step 6: page links ──────────────────────────────────────────────
+  console.log(`[6] Inserting ${links.length} page links…`);
+  // Drop any existing links scoped to the new namespace pages first, so a
+  // re-run produces a stable set.
+  const newPageIds = pages.map((p) => p.id);
+  await prisma.pageLink.deleteMany({
+    where: {
+      tenantId: TENANT_ID,
+      OR: [
+        { sourcePageId: { in: newPageIds } },
+        { targetPageId: { in: newPageIds } },
       ],
     },
-  }),
-});`),
-      ),
-    },
-
-    // ─── AI Research Notes ───
-    {
-      id: "b0000000-0000-4000-a004-000000000001",
-      pageId: PAGE.research,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "AI Research Notes. Collection of findings from LLM integration experiments.",
-      content: doc(
-        heading(1, "AI Research Notes"),
-        paragraph(text("Collection of findings from our LLM integration experiments and agent-based knowledge management research.")),
-        divider(),
-        heading(2, "RAG Architecture Findings"),
-        paragraph(
-          text("After testing multiple retrieval-augmented generation approaches, we found that "),
-          text("hybrid search", [{ type: "bold" }]),
-          text(" (combining BM25 with vector embeddings) outperforms pure semantic search for knowledge base queries.")
-        ),
-        bulletList(
-          "BM25 alone: 68% relevance on our benchmark",
-          "Vector search alone: 74% relevance",
-          "Hybrid (RRF fusion): 82% relevance",
-          "Hybrid + metadata filtering: 89% relevance"
-        ),
-        heading(2, "Agent Interaction Patterns"),
-        paragraph(text("Three primary patterns emerged for how AI agents use the knowledge base:")),
-        orderedList(
-          "Read-heavy: Agent queries existing knowledge to answer user questions (80% of requests)",
-          "Write-after-read: Agent reads context, performs reasoning, writes conclusions back (15%)",
-          "Structured data: Agent populates database tables from unstructured sources (5%)"
-        ),
-        heading(2, "Prompt Engineering for Knowledge Extraction"),
-        codeBlock("text",
-`System: You are a knowledge extraction agent. Given a document,
-extract structured facts and store them in the knowledge base.
-
-Rules:
-1. Each fact should be atomic (one concept per block)
-2. Use wikilinks [[Page Name]] to reference related concepts
-3. Prefer specific over general statements
-4. Include source attribution when available`),
-        heading(2, "Open Questions"),
-        taskList(
-          { text: "How to handle conflicting information from different agents?", checked: false },
-          { text: "Should we version block content for audit trails?", checked: false },
-          { text: "Evaluate pg_vector vs. external vector DB for embeddings", checked: true },
-          { text: "Benchmark concurrent agent writes (optimistic locking)", checked: true },
-          { text: "Test context window impact on extraction quality", checked: false }
-        ),
-        blockquote("Knowledge bases that integrate AI agents from the ground up will define the next generation of productivity tools. The key is treating the API as a first-class interface, not an afterthought."),
-      ),
-    },
-
-    // ─── Meeting Notes ───
-    {
-      id: "b0000000-0000-4000-a005-000000000001",
-      pageId: PAGE.meeting,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Meeting Notes Sprint 14. Weekly standup and sprint planning.",
-      content: doc(
-        heading(1, "Meeting Notes - Sprint 14"),
-        paragraph(
-          text("Date: "),
-          text("February 18, 2026", [{ type: "bold" }]),
-          text(" | Attendees: Martin, Sarah, James, Priya")
-        ),
-        divider(),
-        heading(2, "Sprint Review"),
-        paragraph(text("Completed items from Sprint 13:")),
-        taskList(
-          { text: "Database table view with sorting and filtering", checked: true },
-          { text: "API key management in Settings page", checked: true },
-          { text: "Full-text search with PostgreSQL tsvector", checked: true },
-          { text: "Wikilink parsing and backlink display", checked: true },
-          { text: "Knowledge graph visualization (basic)", checked: true }
-        ),
-        heading(2, "Sprint 14 Planning"),
-        paragraph(text("Priority items for this sprint:")),
-        taskList(
-          { text: "Page templates and quick-create flows", checked: false },
-          { text: "Collaborative editing (WebSocket foundation)", checked: false },
-          { text: "Import/Export (Markdown, JSON)", checked: false },
-          { text: "Graph view: local neighborhood mode", checked: false },
-          { text: "Performance: virtualize block list for large pages", checked: false }
-        ),
-        heading(2, "Discussion Notes"),
-        bulletList(
-          "Sarah raised concern about real-time sync - agreed to start with last-write-wins for v1",
-          "James will prototype WebSocket integration with Hocuspocus",
-          "Priya to design the import/export UX flow",
-          "Martin to finalize the OpenAPI spec for external consumers"
-        ),
-        heading(2, "Action Items"),
-        taskList(
-          { text: "@james - WebSocket spike by Wednesday", checked: false },
-          { text: "@priya - Import flow wireframes by Thursday", checked: false },
-          { text: "@martin - OpenAPI spec review with API consumers", checked: false },
-          { text: "@sarah - Write performance benchmarks for block rendering", checked: false }
-        ),
-      ),
-    },
-
-    // ─── Product Roadmap ───
-    {
-      id: "b0000000-0000-4000-a006-000000000001",
-      pageId: PAGE.roadmap,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Product Roadmap Q1 2026.",
-      content: doc(
-        heading(1, "Product Roadmap Q1 2026"),
-        paragraph(text("Strategic priorities and milestones for Q1.")),
-        divider(),
-        heading(2, "January - Foundation"),
-        taskList(
-          { text: "Core block editor with TipTap", checked: true },
-          { text: "Page CRUD and hierarchy (parent/child)", checked: true },
-          { text: "User auth (NextAuth + JWT)", checked: true },
-          { text: "Multi-tenant data isolation", checked: true },
-          { text: "REST API with Zod validation", checked: true }
-        ),
-        heading(2, "February - Intelligence"),
-        taskList(
-          { text: "Full-text search (PostgreSQL tsvector)", checked: true },
-          { text: "Wikilink parsing and bidirectional links", checked: true },
-          { text: "Knowledge graph visualization", checked: true },
-          { text: "Database tables (Notion-style)", checked: true },
-          { text: "API key auth for agents", checked: true },
-          { text: "OpenAPI documentation", checked: false }
-        ),
-        heading(2, "March - Scale & Polish"),
-        taskList(
-          { text: "Real-time collaboration (WebSocket)", checked: false },
-          { text: "Import/Export (Markdown, Notion JSON)", checked: false },
-          { text: "Page templates", checked: false },
-          { text: "Advanced graph filters and search", checked: false },
-          { text: "Performance optimization (virtualized rendering)", checked: false },
-          { text: "Mobile responsive layout", checked: false }
-        ),
-        heading(2, "Success Metrics"),
-        bulletList(
-          "API response time p95 < 200ms",
-          "Support 10,000+ blocks per tenant without degradation",
-          "Knowledge graph renders 500+ nodes at 60fps",
-          "AI agent can populate 100 pages/hour via API"
-        ),
-      ),
-    },
-
-    // ─── Developer Setup Guide ───
-    {
-      id: "b0000000-0000-4000-a007-000000000001",
-      pageId: PAGE.devSetup,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Developer Setup Guide. How to get the development environment running.",
-      content: doc(
-        heading(1, "Developer Setup Guide"),
-        paragraph(text("Get the development environment running in under 5 minutes.")),
-        heading(2, "Prerequisites"),
-        bulletList(
-          "Node.js 20+ (recommend using fnm or nvm)",
-          "Docker & Docker Compose (for PostgreSQL)",
-          "Git"
-        ),
-        heading(2, "1. Clone & Install"),
-        codeBlock("bash",
-`git clone https://github.com/mpriessner/SymbioKnowledgeBase.git
-cd SymbioKnowledgeBase
-npm install`),
-        heading(2, "2. Environment Setup"),
-        codeBlock("bash",
-`cp .env.example .env
-# Default values work with Docker Compose`),
-        heading(2, "3. Database"),
-        codeBlock("bash",
-`# Start PostgreSQL
-docker compose up db -d
-
-# Run migrations
-npm run db:generate
-npm run db:migrate
-
-# Optional: seed demo data
-npm run db:seed`),
-        heading(2, "4. Run the App"),
-        codeBlock("bash",
-`npm run dev
-# Open http://localhost:3000`),
-        heading(2, "5. Run Tests"),
-        codeBlock("bash",
-`npm test           # Run once
-npm run test:watch # Watch mode`),
-        heading(2, "Common Issues"),
-        bulletList(
-          "Port 5432 in use: stop local PostgreSQL or change the port in .env",
-          "Postgres 18 volume error: use docker compose down -v to reset volumes",
-          "Prisma generate fails: ensure DATABASE_URL is set correctly"
-        ),
-      ),
-    },
-
-    // ─── LLM Integration Guide ───
-    {
-      id: "b0000000-0000-4000-a008-000000000001",
-      pageId: PAGE.llmGuide,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "LLM Integration Guide. How to connect AI agents to SymbioKnowledgeBase.",
-      content: doc(
-        heading(1, "LLM Integration Guide"),
-        paragraph(
-          text("This guide covers how to connect AI agents (Claude, GPT, etc.) to SymbioKnowledgeBase as a "),
-          text("knowledge backend", [{ type: "bold" }]),
-          text(".")
-        ),
-        heading(2, "Overview"),
-        paragraph(text("AI agents interact with SymbioKnowledgeBase through the REST API. The typical flow is:")),
-        orderedList(
-          "Agent receives a user query",
-          "Agent searches the knowledge base for relevant context",
-          "Agent uses context to formulate a response",
-          "Optionally, agent writes new knowledge back to the KB"
-        ),
-        heading(2, "Tool Definitions"),
-        paragraph(text("Here's how to define SymbioKnowledgeBase tools for an AI agent:")),
-        codeBlock("json",
-`{
-  "tools": [
-    {
-      "name": "search_knowledge",
-      "description": "Search the knowledge base for information",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "query": { "type": "string", "description": "Search query" }
-        }
-      }
-    },
-    {
-      "name": "read_page",
-      "description": "Read the full content of a knowledge base page",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "page_id": { "type": "string", "description": "Page UUID" }
-        }
-      }
-    },
-    {
-      "name": "create_page",
-      "description": "Create a new knowledge base page",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "title": { "type": "string" },
-          "content": { "type": "string", "description": "Markdown content" }
-        }
-      }
-    }
-  ]
-}`),
-        heading(2, "Best Practices"),
-        bulletList(
-          "Use search before creating - avoid duplicate pages",
-          "Keep pages focused on a single topic",
-          "Use wikilinks to connect related concepts",
-          "Write plain text in blocks for better search indexing",
-          "Rate limit agent writes to prevent flooding"
-        ),
-      ),
-    },
-
-    // ─── Data Models & Schema ───
-    {
-      id: "b0000000-0000-4000-a009-000000000001",
-      pageId: PAGE.dataModels,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Data Models and Schema. Core data models powering SymbioKnowledgeBase.",
-      content: doc(
-        heading(1, "Data Models & Schema"),
-        paragraph(text("Core data models powering SymbioKnowledgeBase. All models are tenant-scoped.")),
-        heading(2, "Entity Relationship"),
-        codeBlock("text",
-`Tenant
-  ├── User (1:N)
-  │     └── ApiKey (1:N)
-  ├── Page (1:N, self-referencing hierarchy)
-  │     ├── Block (1:N)
-  │     ├── PageLink (N:N via source/target)
-  │     └── Database (1:N)
-  │           └── DbRow (1:N)
-  └── (all above scoped by tenant_id)`),
-        heading(2, "Key Models"),
-        heading(3, "Page"),
-        codeBlock("typescript",
-`interface Page {
-  id: string;          // UUID
-  tenantId: string;    // Tenant scope
-  parentId?: string;   // Hierarchy (nullable)
-  title: string;       // Default: "Untitled"
-  icon?: string;       // Emoji
-  coverUrl?: string;   // Cover image
-  position: number;    // Sort order
-}`),
-        heading(3, "Block"),
-        codeBlock("typescript",
-`interface Block {
-  id: string;
-  pageId: string;
-  tenantId: string;
-  type: BlockType;     // DOCUMENT, PARAGRAPH, HEADING_1, etc.
-  content: JsonValue;  // TipTap JSONContent
-  position: number;
-  plainText: string;   // Extracted text for search
-  searchVector?: unknown; // PostgreSQL tsvector
-}`),
-        heading(3, "Database & DbRow"),
-        codeBlock("typescript",
-`interface Database {
-  id: string;
-  pageId: string;      // Linked to a page
-  tenantId: string;
-  schema: JsonValue;   // Column definitions
-}
-
-interface DbRow {
-  id: string;
-  databaseId: string;
-  pageId?: string;     // Optional linked page
-  tenantId: string;
-  properties: JsonValue; // Row data matching schema
-}`),
-      ),
-    },
-
-    // ─── Changelog ───
-    {
-      id: "b0000000-0000-4000-a00a-000000000001",
-      pageId: PAGE.changelog,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Changelog. History of notable changes and releases.",
-      content: doc(
-        heading(1, "Changelog"),
-        heading(2, "v0.4.0 - 2026-02-21"),
-        bulletList(
-          "Added: Full-text search with PostgreSQL tsvector and ts_headline",
-          "Added: Knowledge graph visualization with react-force-graph",
-          "Added: Wikilink parsing and automatic backlink tracking",
-          "Added: Database tables with column schema and row CRUD",
-          "Fixed: Block reordering race condition on rapid drag-and-drop",
-          "Improved: API response envelope with consistent error format"
-        ),
-        heading(2, "v0.3.0 - 2026-02-07"),
-        bulletList(
-          "Added: API key management (generate, revoke, rotate)",
-          "Added: Settings page with user profile and API keys",
-          "Added: OpenAPI specification at /api/openapi.yaml",
-          "Fixed: Page deletion not cascading to child pages",
-          "Improved: Prisma query performance with composite indexes"
-        ),
-        heading(2, "v0.2.0 - 2026-01-24"),
-        bulletList(
-          "Added: TipTap block editor with code blocks, quotes, callouts",
-          "Added: Page hierarchy (parent/child) with sidebar tree",
-          "Added: Auto-save with debounce (1000ms)",
-          "Fixed: JWT token not refreshing on session extension",
-          "Improved: Tenant isolation with middleware-level checks"
-        ),
-        heading(2, "v0.1.0 - 2026-01-10"),
-        bulletList(
-          "Initial release",
-          "User registration and login (NextAuth.js)",
-          "Basic page CRUD with title and icon",
-          "Multi-tenant architecture with Prisma",
-          "Docker Compose development setup"
-        ),
-      ),
-    },
-
-    // ─── Bug Tracker (page for the database) ───
-    {
-      id: "b0000000-0000-4000-a00b-000000000001",
-      pageId: PAGE.bugTracker,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Bug Tracker. Active bugs and issues.",
-      content: doc(
-        heading(1, "Bug Tracker"),
-        paragraph(text("Active bugs and issues tracked in the database below. Use the table to filter by status and priority.")),
-      ),
-    },
-
-    // ─── Design System ───
-    {
-      id: "b0000000-0000-4000-a00c-000000000001",
-      pageId: PAGE.designDoc,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Design System. Visual language and component guidelines.",
-      content: doc(
-        heading(1, "Design System"),
-        paragraph(text("Visual language and component guidelines for SymbioKnowledgeBase.")),
-        heading(2, "Color Palette"),
-        paragraph(text("We use CSS custom properties for theming. All colors are defined as semantic tokens.")),
-        codeBlock("css",
-`:root {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f9fafb;
-  --bg-hover: #f3f4f6;
-  --text-primary: #111827;
-  --text-secondary: #6b7280;
-  --text-inverse: #ffffff;
-  --accent-primary: #3b82f6;
-  --accent-primary-hover: #2563eb;
-  --border-default: #e5e7eb;
-  --border-strong: #d1d5db;
-}`),
-        heading(2, "Typography"),
-        bulletList(
-          "Headings: System font stack, semibold weight",
-          "Body: 16px base, 1.6 line height for readability",
-          "Code: JetBrains Mono or system monospace",
-          "Sidebar: 14px, medium weight"
-        ),
-        heading(2, "Component Patterns"),
-        bulletList(
-          "Buttons: Rounded-lg, 2.5rem height, primary/secondary/ghost variants",
-          "Inputs: Border with focus ring, consistent padding",
-          "Cards: Subtle border, no shadow (flat design)",
-          "Modals: Centered overlay with backdrop blur",
-          "Tooltips: Dark background, small text, 200ms delay"
-        ),
-        heading(2, "Spacing Scale"),
-        codeBlock("text",
-`4px  - tight (inline elements, icon gaps)
-8px  - compact (list items, small cards)
-12px - default (form elements, buttons)
-16px - comfortable (card padding)
-24px - spacious (section gaps)
-32px - loose (page sections)
-48px - extra (hero spacing)`),
-        heading(2, "Iconography"),
-        paragraph(text("We use native emoji for page icons and system UI icons are from a minimal SVG set. No icon library dependency.")),
-      ),
-    },
-
-    // ─── Security & Authentication ───
-    {
-      id: "b0000000-0000-4000-a010-000000000001",
-      pageId: PAGE.security,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Security and Authentication. Multi-layered auth and tenant isolation.",
-      content: doc(
-        heading(1, "Security & Authentication"),
-        paragraph(text("Multi-layered security model combining session-based auth for humans and API key auth for agents.")),
-        heading(2, "Authentication Methods"),
-        bulletList(
-          "Session auth: NextAuth.js with JWT tokens, 30-day expiry",
-          "API key auth: Bearer token in Authorization header",
-          "Middleware validation on every API route",
-          "Tenant scoping enforced at the Prisma query level"
-        ),
-        heading(2, "API Key Lifecycle"),
-        orderedList(
-          "User generates key in Settings > API Keys",
-          "Key is hashed with bcrypt before storage",
-          "Only the prefix (sk_...abc) is stored for identification",
-          "User can revoke keys at any time",
-          "Revoked keys return 401 immediately"
-        ),
-        heading(2, "Security Headers"),
-        codeBlock("typescript",
-`// Middleware security headers
-response.headers.set("X-Content-Type-Options", "nosniff");
-response.headers.set("X-Frame-Options", "DENY");
-response.headers.set("X-XSS-Protection", "1; mode=block");
-response.headers.set("Strict-Transport-Security", "max-age=31536000");`),
-        heading(2, "Data Isolation"),
-        paragraph(
-          text("Every database query is scoped by "),
-          text("tenantId", [{ type: "code" }]),
-          text(". Even if an attacker obtains a valid session, they can only access data within their own tenant. Cross-tenant access is architecturally impossible.")
-        ),
-        heading(2, "Known Limitations"),
-        bulletList(
-          "No rate limiting on API endpoints yet (planned for v0.5)",
-          "No IP allowlist for API keys",
-          "No MFA support (planned for Q2)",
-          "Audit logging not yet implemented"
-        ),
-      ),
-    },
-
-    // ─── Testing Strategy ───
-    {
-      id: "b0000000-0000-4000-a011-000000000001",
-      pageId: PAGE.testing,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Testing Strategy. Comprehensive testing approach for the platform.",
-      content: doc(
-        heading(1, "Testing Strategy"),
-        paragraph(text("Our testing pyramid ensures confidence at every level of the stack.")),
-        heading(2, "Testing Pyramid"),
-        codeBlock("text",
-`    /  E2E Tests  \\        (Playwright - 15 tests)
-   / Integration    \\      (API route tests - 45 tests)
-  /  Unit Tests      \\    (Service layer - 120 tests)
- /  Type Checking     \\  (TypeScript strict mode)`),
-        heading(2, "Test Commands"),
-        codeBlock("bash",
-`npm test                    # Run all tests
-npm run test:watch          # Watch mode
-npm run test:coverage       # Coverage report
-npm run test:e2e            # Playwright E2E
-npx tsc --noEmit            # Type check`),
-        heading(2, "What We Test"),
-        bulletList(
-          "Service layer: All CRUD operations with tenant isolation",
-          "API routes: Request validation, auth, error responses",
-          "Prisma queries: Edge cases (empty results, large datasets)",
-          "TipTap content: Wikilink extraction, content normalization",
-          "Search: Full-text search relevance and ranking"
-        ),
-        heading(2, "Test Data Strategy"),
-        paragraph(text("Tests use isolated tenants created in beforeAll. Each test suite gets its own tenant to prevent interference. Cleanup happens in afterAll.")),
-        heading(2, "Coverage Targets"),
-        bulletList(
-          "Service layer: 90%+ line coverage",
-          "API routes: 85%+ line coverage",
-          "UI components: 60%+ (growing)",
-          "E2E: Critical user journeys covered"
-        ),
-      ),
-    },
-
-    // ─── Deployment Guide ───
-    {
-      id: "b0000000-0000-4000-a012-000000000001",
-      pageId: PAGE.deployment,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Deployment Guide. How to deploy SymbioKnowledgeBase to production.",
-      content: doc(
-        heading(1, "Deployment Guide"),
-        paragraph(text("Production deployment options and configuration for SymbioKnowledgeBase.")),
-        heading(2, "Docker Compose (Recommended)"),
-        codeBlock("bash",
-`# Production build
-docker compose -f docker-compose.prod.yml up -d
-
-# With custom environment
-docker compose --env-file .env.production up -d`),
-        heading(2, "Environment Variables"),
-        codeBlock("bash",
-`DATABASE_URL=postgresql://user:pass@db:5432/symbio
-NEXTAUTH_SECRET=your-secret-key-min-32-chars
-NEXTAUTH_URL=https://your-domain.com
-NODE_ENV=production`),
-        heading(2, "Database Setup"),
-        orderedList(
-          "Provision PostgreSQL 16+ (RDS, Cloud SQL, or self-hosted)",
-          "Run migrations: npx prisma migrate deploy",
-          "Run base seed: npx tsx prisma/seed.ts",
-          "Optionally run demo seed: npx tsx prisma/seed-demo.ts"
-        ),
-        heading(2, "Reverse Proxy"),
-        paragraph(text("Place nginx or Caddy in front for TLS termination and caching of static assets.")),
-        heading(2, "Health Check"),
-        codeBlock("bash", `curl -f http://localhost:3000/api/health || exit 1`),
-        heading(2, "Monitoring"),
-        bulletList(
-          "Application logs via Docker stdout/stderr",
-          "PostgreSQL monitoring via pg_stat_statements",
-          "Memory usage: Watch for Next.js memory leaks in long-running processes",
-          "Disk usage: TipTap content JSON can grow; consider archiving old versions"
-        ),
-      ),
-    },
-
-    // ─── Frontend Components ───
-    {
-      id: "b0000000-0000-4000-a013-000000000001",
-      pageId: PAGE.frontend,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Frontend Components. React component architecture and patterns.",
-      content: doc(
-        heading(1, "Frontend Components"),
-        paragraph(text("React component architecture using Next.js App Router with server and client components.")),
-        heading(2, "Component Organization"),
-        codeBlock("text",
-`src/components/
-  ├── ui/           # Reusable primitives (Button, Input, Toggle)
-  ├── editor/       # TipTap editor and extensions
-  ├── workspace/    # Sidebar, page tree, navigation
-  ├── settings/     # Settings page sections
-  ├── graph/        # Knowledge graph visualization
-  └── database/     # Table view, row editor`),
-        heading(2, "Key Components"),
-        bulletList(
-          "BlockEditor: TipTap instance with custom extensions for wikilinks, slash commands",
-          "Sidebar: Collapsible page tree with drag-and-drop reordering",
-          "GraphView: Force-directed graph using react-force-graph-2d",
-          "DatabaseTable: Sortable/filterable table with inline editing",
-          "CommandPalette: Cmd+K quick actions and page search"
-        ),
-        heading(2, "State Management"),
-        paragraph(text("We use a combination of approaches:")),
-        bulletList(
-          "Server state: TanStack Query (React Query) for all API data",
-          "Local UI state: React useState/useReducer",
-          "Persistent preferences: localStorage via useSyncExternalStore",
-          "URL state: Next.js searchParams for filters and views"
-        ),
-        heading(2, "Performance Patterns"),
-        bulletList(
-          "React.memo for expensive list items",
-          "useDeferredValue for search input debouncing",
-          "Dynamic imports for heavy components (Graph, Editor)",
-          "Optimistic updates via TanStack Query mutations"
-        ),
-      ),
-    },
-
-    // ─── Performance Optimization ───
-    {
-      id: "b0000000-0000-4000-a014-000000000001",
-      pageId: PAGE.performance,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Performance Optimization. Benchmarks and optimization techniques.",
-      content: doc(
-        heading(1, "Performance Optimization"),
-        paragraph(text("Benchmarks, bottlenecks, and optimization techniques for the platform.")),
-        heading(2, "Current Benchmarks"),
-        codeBlock("text",
-`Endpoint                    p50     p95     p99
-GET /api/pages              12ms    28ms    45ms
-GET /api/pages/:id          8ms     15ms    22ms
-PUT /api/pages/:id/blocks   18ms    42ms    68ms
-GET /api/search?q=...       35ms    85ms    120ms
-GET /api/graph              45ms    110ms   180ms`),
-        heading(2, "Database Optimization"),
-        bulletList(
-          "Composite indexes on (tenant_id, id) for all tables",
-          "GIN index on search_vector for full-text search",
-          "pg_trgm extension for fuzzy matching",
-          "Connection pooling via PgBouncer in production"
-        ),
-        heading(2, "Frontend Optimization"),
-        bulletList(
-          "Code splitting: Editor loaded only when page is open",
-          "Image optimization: Next.js Image component with lazy loading",
-          "Font subsetting: Only Latin character set loaded",
-          "Bundle size: <200KB first load JS (gzipped)"
-        ),
-        heading(2, "Caching Strategy"),
-        bulletList(
-          "TanStack Query: 10s staleTime for page data",
-          "Next.js: Static generation for public pages",
-          "Browser: Service worker for offline access (planned)",
-          "CDN: Static assets cached at edge"
-        ),
-        heading(2, "Known Bottlenecks"),
-        taskList(
-          { text: "Graph endpoint slow for >200 nodes (needs pagination)", checked: false },
-          { text: "Search re-indexes on every block save (batch it)", checked: false },
-          { text: "TipTap large doc serialization blocks main thread", checked: false },
-          { text: "Sidebar tree re-renders on any page update", checked: true },
-        ),
-      ),
-    },
-
-    // ─── Embedding & Vector Search ───
-    {
-      id: "b0000000-0000-4000-a015-000000000001",
-      pageId: PAGE.vectorSearch,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Embedding and Vector Search. Semantic search implementation.",
-      content: doc(
-        heading(1, "Embedding & Vector Search"),
-        paragraph(text("Design and implementation of semantic search using vector embeddings alongside PostgreSQL full-text search.")),
-        heading(2, "Architecture"),
-        codeBlock("text",
-`User Query
-    |
-    ├─> BM25 (PostgreSQL tsvector)  ──┐
-    |                                  ├─> RRF Fusion ─> Results
-    └─> Semantic (pgvector cosine)  ──┘`),
-        heading(2, "Embedding Models Evaluated"),
-        bulletList(
-          "OpenAI text-embedding-3-small: 1536 dims, best quality/cost ratio",
-          "Cohere embed-v3: 1024 dims, good for multilingual",
-          "all-MiniLM-L6-v2: 384 dims, free but lower quality",
-          "BGE-large-en-v1.5: 1024 dims, open-source best performer"
-        ),
-        heading(2, "Implementation Status"),
-        taskList(
-          { text: "pgvector extension installed and configured", checked: true },
-          { text: "Embedding generation pipeline (batch async)", checked: true },
-          { text: "Hybrid search with RRF fusion", checked: false },
-          { text: "Re-embed on block content change", checked: false },
-          { text: "Embedding cache to avoid recomputation", checked: false },
-        ),
-        heading(2, "Cost Estimation"),
-        paragraph(
-          text("At ~1000 blocks averaging 500 tokens each: ~$0.01/day for embeddings with OpenAI. Scales linearly. For 100K blocks: ~$1/day.")
-        ),
-      ),
-    },
-
-    // ─── Agent Workflows ───
-    {
-      id: "b0000000-0000-4000-a016-000000000001",
-      pageId: PAGE.agentWorkflows,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Agent Workflows. Common patterns for AI agent interaction.",
-      content: doc(
-        heading(1, "Agent Workflows"),
-        paragraph(text("Documented patterns for how AI agents interact with the knowledge base.")),
-        heading(2, "Workflow 1: Research Assistant"),
-        codeBlock("text",
-`User asks question
-  → Agent searches KB via /api/search
-  → Agent reads top 3 pages via /api/pages/:id
-  → Agent synthesizes answer with citations
-  → Agent optionally creates summary page`),
-        heading(2, "Workflow 2: Meeting Summarizer"),
-        codeBlock("text",
-`Meeting transcript input
-  → Agent extracts action items
-  → Agent creates new meeting notes page
-  → Agent links to relevant existing pages via wikilinks
-  → Agent updates bug tracker database rows`),
-        heading(2, "Workflow 3: Documentation Generator"),
-        codeBlock("text",
-`Code repository input
-  → Agent analyzes code structure
-  → Agent creates/updates architecture pages
-  → Agent generates API documentation
-  → Agent creates cross-reference links`),
-        heading(2, "Error Handling"),
-        bulletList(
-          "Retry with exponential backoff on 429 (rate limit)",
-          "Skip and log on 404 (page deleted between search and read)",
-          "Alert human on 500 (server error)",
-          "Validate content before write (prevent malformed TipTap JSON)"
-        ),
-        heading(2, "Rate Limits"),
-        paragraph(text("Current limits: 100 requests/minute per API key. Planned: configurable per-tenant limits.")),
-      ),
-    },
-
-    // ─── Prompt Library ───
-    {
-      id: "b0000000-0000-4000-a017-000000000001",
-      pageId: PAGE.promptLibrary,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Prompt Library. Curated prompts for knowledge base operations.",
-      content: doc(
-        heading(1, "Prompt Library"),
-        paragraph(text("Curated system prompts for AI agent interactions with the knowledge base.")),
-        heading(2, "Knowledge Extraction"),
-        codeBlock("text",
-`System: You are a knowledge extraction agent. Given a document:
-1. Extract atomic facts (one concept per statement)
-2. Identify entities and their relationships
-3. Use [[wikilinks]] to reference existing KB pages
-4. Create new pages for novel concepts
-5. Always include source attribution`),
-        heading(2, "Summarization"),
-        codeBlock("text",
-`System: Summarize the following content for a knowledge base entry.
-Rules:
-- Use bullet points for key facts
-- Keep under 500 words
-- Preserve technical accuracy
-- Link to related concepts using [[Page Name]] syntax
-- Include a "Related Pages" section at the end`),
-        heading(2, "Question Answering"),
-        codeBlock("text",
-`System: Answer questions using only the provided knowledge base context.
-Rules:
-- Cite specific pages: "According to [[Page Name]]..."
-- If the answer isn't in the KB, say so explicitly
-- Suggest which pages might need updating if info is stale
-- Never fabricate information not in the provided context`),
-        heading(2, "Code Documentation"),
-        codeBlock("text",
-`System: Generate documentation for the following code.
-Output format:
-- Title: Component/function name
-- Purpose: One-line description
-- Parameters: Type-annotated list
-- Examples: At least one usage example
-- Related: Links to relevant architecture pages`),
-      ),
-    },
-
-    // ─── Knowledge Extraction Pipeline ───
-    {
-      id: "b0000000-0000-4000-a018-000000000001",
-      pageId: PAGE.knowledgePipe,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Knowledge Extraction Pipeline. Automated pipeline for ingesting unstructured data.",
-      content: doc(
-        heading(1, "Knowledge Extraction Pipeline"),
-        paragraph(text("Automated pipeline for converting unstructured data sources into structured knowledge base entries.")),
-        heading(2, "Pipeline Architecture"),
-        codeBlock("text",
-`Source Documents ─> Chunking ─> Entity Extraction ─> Deduplication ─> KB Write
-     │                                                        │
-     └──────── Embedding Generation ──────────────────────────┘`),
-        heading(2, "Supported Sources"),
-        bulletList(
-          "Markdown files (.md)",
-          "PDF documents (via pdf-parse)",
-          "Notion exports (JSON)",
-          "Confluence exports (XML)",
-          "Slack conversations (JSON export)",
-          "GitHub issues and PRs (via API)"
-        ),
-        heading(2, "Deduplication Strategy"),
-        paragraph(text("Before writing a new page, the pipeline:")),
-        orderedList(
-          "Searches for pages with similar titles (fuzzy match > 0.8)",
-          "Computes embedding similarity against existing blocks",
-          "If match > 0.9: updates existing page instead of creating new",
-          "If match 0.7-0.9: creates page with link to potential duplicate",
-          "If match < 0.7: creates new page"
-        ),
-        heading(2, "Implementation Status"),
-        taskList(
-          { text: "Markdown ingestion", checked: true },
-          { text: "PDF ingestion", checked: true },
-          { text: "Notion JSON import", checked: false },
-          { text: "Deduplication pipeline", checked: false },
-          { text: "Scheduled batch processing", checked: false },
-        ),
-      ),
-    },
-
-    // ─── Meeting Notes Sprint 13 ───
-    {
-      id: "b0000000-0000-4000-a019-000000000001",
-      pageId: PAGE.meetingSprint13,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Meeting Notes Sprint 13. Sprint review and planning.",
-      content: doc(
-        heading(1, "Meeting Notes - Sprint 13"),
-        paragraph(
-          text("Date: "),
-          text("February 11, 2026", [{ type: "bold" }]),
-          text(" | Attendees: Martin, Sarah, James, Priya")
-        ),
-        divider(),
-        heading(2, "Sprint Review"),
-        paragraph(text("Completed items from Sprint 12:")),
-        taskList(
-          { text: "Wikilink autocomplete with page search", checked: true },
-          { text: "Block drag-and-drop reordering", checked: true },
-          { text: "Settings page redesign", checked: true },
-          { text: "API key rotation support", checked: true },
-          { text: "Page cover images", checked: false },
-        ),
-        heading(2, "Velocity"),
-        paragraph(text("Sprint 12 velocity: 34 points. Sprint 13 capacity: 38 points.")),
-        heading(2, "Discussion Notes"),
-        bulletList(
-          "Team agreed to prioritize search improvements over collaboration features",
-          "Martin demoed the knowledge graph - team excited about visualization potential",
-          "Sarah reported intermittent test failures in CI - investigating Docker memory",
-          "Priya completed design specs for mobile-responsive layout"
-        ),
-      ),
-    },
-
-    // ─── Meeting Notes Sprint 12 ───
-    {
-      id: "b0000000-0000-4000-a01a-000000000001",
-      pageId: PAGE.meetingSprint12,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Meeting Notes Sprint 12. Sprint review and planning.",
-      content: doc(
-        heading(1, "Meeting Notes - Sprint 12"),
-        paragraph(
-          text("Date: "),
-          text("February 4, 2026", [{ type: "bold" }]),
-          text(" | Attendees: Martin, Sarah, James")
-        ),
-        divider(),
-        heading(2, "Sprint Review"),
-        taskList(
-          { text: "User authentication with NextAuth", checked: true },
-          { text: "Basic page CRUD", checked: true },
-          { text: "Sidebar page tree", checked: true },
-          { text: "TipTap editor integration", checked: true },
-        ),
-        heading(2, "Key Decisions"),
-        bulletList(
-          "Chose TipTap over Slate.js for editor (better docs, ProseMirror ecosystem)",
-          "Decided on single DOCUMENT block per page instead of block-per-paragraph",
-          "PostgreSQL chosen over MongoDB for relational integrity and tsvector search",
-          "Priya joining the team starting Sprint 13"
-        ),
-        heading(2, "Tech Debt"),
-        taskList(
-          { text: "Add TypeScript strict mode", checked: true },
-          { text: "Set up Prettier + ESLint", checked: true },
-          { text: "Configure CI pipeline", checked: false },
-          { text: "Write initial unit tests", checked: false },
-        ),
-      ),
-    },
-
-    // ─── Onboarding Guide ───
-    {
-      id: "b0000000-0000-4000-a01b-000000000001",
-      pageId: PAGE.onboarding,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Onboarding Guide. For new team members joining the project.",
-      content: doc(
-        heading(1, "Onboarding Guide"),
-        paragraph(text("Welcome to the team! This guide will get you up to speed within your first week.")),
-        heading(2, "Day 1: Environment Setup"),
-        taskList(
-          { text: "Get access to GitHub repo and Slack channels", checked: false },
-          { text: "Follow the Developer Setup Guide to get running locally", checked: false },
-          { text: "Read the System Architecture overview", checked: false },
-          { text: "Run the test suite to verify everything works", checked: false },
-        ),
-        heading(2, "Day 2-3: Codebase Tour"),
-        taskList(
-          { text: "Read Data Models & Schema", checked: false },
-          { text: "Read Frontend Components guide", checked: false },
-          { text: "Explore the API Reference", checked: false },
-          { text: "Make a small PR (fix a typo, add a test)", checked: false },
-        ),
-        heading(2, "Day 4-5: Deep Dives"),
-        taskList(
-          { text: "Read Testing Strategy and write a test", checked: false },
-          { text: "Read Security & Authentication", checked: false },
-          { text: "Review recent Meeting Notes for context", checked: false },
-          { text: "Pick up your first issue from the Bug Tracker", checked: false },
-        ),
-        heading(2, "Key Contacts"),
-        bulletList(
-          "Martin - Architecture, backend, API design",
-          "Sarah - Performance, testing, infrastructure",
-          "James - Frontend, editor, real-time features",
-          "Priya - Design, UX, accessibility"
-        ),
-      ),
-    },
-
-    // ─── Contributing Guide ───
-    {
-      id: "b0000000-0000-4000-a01c-000000000001",
-      pageId: PAGE.contributing,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Contributing Guide. How to contribute code to the project.",
-      content: doc(
-        heading(1, "Contributing Guide"),
-        paragraph(text("How to contribute to SymbioKnowledgeBase. We welcome contributions of all sizes!")),
-        heading(2, "Branch Naming"),
-        codeBlock("text",
-`feat/short-description    # New features
-fix/short-description     # Bug fixes
-refactor/short-desc       # Code improvements
-docs/short-description    # Documentation
-test/short-description    # Test additions`),
-        heading(2, "Commit Messages"),
-        paragraph(text("We follow Conventional Commits:")),
-        codeBlock("text",
-`feat: add wikilink autocomplete
-fix: resolve search ranking for short queries
-refactor: extract PageService from API route
-docs: update API reference for /search endpoint
-test: add unit tests for tenant isolation`),
-        heading(2, "Pull Request Process"),
-        orderedList(
-          "Create a branch from main",
-          "Write tests for your changes",
-          "Ensure all tests pass: npm test",
-          "Ensure types check: npx tsc --noEmit",
-          "Open PR with description of changes",
-          "Get at least one review approval",
-          "Squash merge into main"
-        ),
-        heading(2, "Code Style"),
-        bulletList(
-          "TypeScript strict mode (no any, no implicit returns)",
-          "Functional components with hooks (no class components)",
-          "Named exports (no default exports except pages)",
-          "Zod schemas for all API input validation"
-        ),
-      ),
-    },
-
-    // ─── Troubleshooting FAQ ───
-    {
-      id: "b0000000-0000-4000-a01d-000000000001",
-      pageId: PAGE.troubleshoot,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Troubleshooting FAQ. Common issues and solutions.",
-      content: doc(
-        heading(1, "Troubleshooting FAQ"),
-        paragraph(text("Common issues and their solutions.")),
-        heading(2, "Database connection refused"),
-        paragraph(text("Error: Can't reach database server at localhost:5432")),
-        codeBlock("bash",
-`# Check if PostgreSQL is running
-docker compose ps
-# Restart the database
-docker compose restart db
-# Check logs
-docker compose logs db --tail 50`),
-        heading(2, "Prisma generate fails"),
-        paragraph(text("Error: Can't find generator client")),
-        codeBlock("bash",
-`# Regenerate Prisma client
-npx prisma generate
-# If that fails, clear node_modules
-rm -rf node_modules/.prisma
-npm install`),
-        heading(2, "Next.js build fails with type errors"),
-        codeBlock("bash",
-`# Check types first
-npx tsc --noEmit
-# Common fix: regenerate Prisma types
-npx prisma generate`),
-        heading(2, "Search returns no results"),
-        bulletList(
-          "Ensure blocks have plainText populated",
-          "Run: SELECT count(*) FROM blocks WHERE search_vector IS NOT NULL",
-          "If 0: the search_vector trigger may not be installed",
-          "Run migration: npx prisma migrate deploy"
-        ),
-        heading(2, "Knowledge graph is empty"),
-        bulletList(
-          "Graph requires PageLink records to show edges",
-          "Wikilinks in content are parsed on save and stored as PageLinks",
-          "Check: SELECT count(*) FROM page_links",
-          "Run demo seed for sample data: npx tsx prisma/seed-demo.ts"
-        ),
-      ),
-    },
-
-    // ─── CI/CD Pipeline ───
-    {
-      id: "b0000000-0000-4000-a01e-000000000001",
-      pageId: PAGE.cicd,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "CI/CD Pipeline. Continuous integration and deployment setup.",
-      content: doc(
-        heading(1, "CI/CD Pipeline"),
-        paragraph(text("GitHub Actions-based CI/CD for automated testing and deployment.")),
-        heading(2, "Pipeline Stages"),
-        codeBlock("text",
-`Push to PR branch
-  → Lint (ESLint + Prettier)
-  → Type Check (tsc --noEmit)
-  → Unit Tests (Vitest)
-  → Integration Tests (with test DB)
-  → Build (next build)
-  → E2E Tests (Playwright)
-
-Merge to main
-  → All above +
-  → Docker image build
-  → Push to registry
-  → Deploy to staging`),
-        heading(2, "GitHub Actions Config"),
-        codeBlock("yaml",
-`name: CI
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_DB: symbio_test
-          POSTGRES_PASSWORD: test
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-      - run: npm ci
-      - run: npx prisma migrate deploy
-      - run: npm test
-      - run: npm run build`),
-        heading(2, "Deployment Targets"),
-        bulletList(
-          "Staging: Auto-deploy on merge to main",
-          "Production: Manual trigger with approval gate",
-          "Preview: Vercel preview deployments for PRs"
-        ),
-      ),
-    },
-
-    // ─── Database Migration Guide ───
-    {
-      id: "b0000000-0000-4000-a01f-000000000001",
-      pageId: PAGE.dbMigration,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Database Migration Guide. How to write and run migrations.",
-      content: doc(
-        heading(1, "Database Migration Guide"),
-        paragraph(text("Best practices for writing and running Prisma migrations.")),
-        heading(2, "Creating Migrations"),
-        codeBlock("bash",
-`# After editing schema.prisma:
-npx prisma migrate dev --name add_embedding_column
-
-# This will:
-# 1. Generate SQL migration file
-# 2. Apply it to your local DB
-# 3. Regenerate Prisma client`),
-        heading(2, "Migration Best Practices"),
-        bulletList(
-          "Always test migrations against a copy of production data",
-          "Use --create-only to review SQL before applying",
-          "Never edit a migration that's already been applied",
-          "Add indexes concurrently for large tables (manual SQL)",
-          "Include rollback instructions in migration comments"
-        ),
-        heading(2, "Common Patterns"),
-        heading(3, "Adding a column with default"),
-        codeBlock("sql",
-`-- Safe: adds with default, no table rewrite
-ALTER TABLE pages ADD COLUMN archived BOOLEAN DEFAULT FALSE;`),
-        heading(3, "Adding an index concurrently"),
-        codeBlock("sql",
-`-- Won't lock the table during creation
-CREATE INDEX CONCURRENTLY idx_blocks_plain_text ON blocks USING gin(to_tsvector('english', plain_text));`),
-        heading(2, "Production Deployment"),
-        orderedList(
-          "Run migrations in a maintenance window",
-          "Take a database backup first",
-          "Apply: npx prisma migrate deploy",
-          "Verify: npx prisma migrate status",
-          "Test critical queries after migration"
-        ),
-      ),
-    },
-
-    // ─── Accessibility Guidelines ───
-    {
-      id: "b0000000-0000-4000-a020-000000000001",
-      pageId: PAGE.accessibility,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Accessibility Guidelines. WCAG compliance and a11y patterns.",
-      content: doc(
-        heading(1, "Accessibility Guidelines"),
-        paragraph(text("WCAG 2.1 AA compliance guidelines for all UI components.")),
-        heading(2, "Core Requirements"),
-        bulletList(
-          "All interactive elements must be keyboard accessible",
-          "Color contrast ratio: 4.5:1 for normal text, 3:1 for large text",
-          "All images and icons must have alt text or aria-label",
-          "Focus indicators must be visible on all interactive elements",
-          "Screen reader announcements for dynamic content changes"
-        ),
-        heading(2, "Component Checklist"),
-        taskList(
-          { text: "Sidebar: keyboard navigation with arrow keys", checked: true },
-          { text: "Editor: ARIA roles for toolbar buttons", checked: true },
-          { text: "Modals: focus trap and Escape to close", checked: true },
-          { text: "Tables: proper th/td semantics", checked: false },
-          { text: "Graph: text alternative for visualization", checked: false },
-          { text: "Color blind mode: icons alongside color indicators", checked: false },
-        ),
-        heading(2, "Testing Tools"),
-        bulletList(
-          "axe-core: Automated a11y testing in CI",
-          "Lighthouse: Accessibility audit scores",
-          "VoiceOver (macOS): Manual screen reader testing",
-          "Keyboard-only navigation: Tab through entire app"
-        ),
-      ),
-    },
-
-    // ─── Mobile Design Specs ───
-    {
-      id: "b0000000-0000-4000-a021-000000000001",
-      pageId: PAGE.mobileDesign,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Mobile Design Specs. Responsive design specifications.",
-      content: doc(
-        heading(1, "Mobile Design Specs"),
-        paragraph(text("Responsive design specifications for tablet and mobile viewports.")),
-        heading(2, "Breakpoints"),
-        codeBlock("css",
-`/* Tailwind breakpoints */
-sm: 640px    /* Large phones */
-md: 768px    /* Tablets */
-lg: 1024px   /* Small laptops */
-xl: 1280px   /* Desktop */`),
-        heading(2, "Mobile Layout Changes"),
-        bulletList(
-          "Sidebar: Collapses to hamburger menu below md",
-          "Editor toolbar: Sticky at bottom on mobile (thumb-friendly)",
-          "Page tree: Full-screen overlay on mobile",
-          "Settings: Single-column layout below lg",
-          "Graph: Touch gestures for pan/zoom, tap to select node"
-        ),
-        heading(2, "Touch Targets"),
-        paragraph(text("All interactive elements must be at least 44x44px on mobile viewports per Apple HIG guidelines.")),
-        heading(2, "Implementation Status"),
-        taskList(
-          { text: "Responsive sidebar (hamburger on mobile)", checked: false },
-          { text: "Mobile-optimized editor toolbar", checked: false },
-          { text: "Touch-friendly page tree", checked: false },
-          { text: "Responsive settings layout", checked: true },
-          { text: "Graph touch gestures", checked: false },
-        ),
-      ),
-    },
-
-    // ─── Agent: Database Access Instructions ───
-    {
-      id: "b0000000-0000-4000-a030-000000000001",
-      pageId: PAGE.agentDbAccess,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Database Access Instructions. Connection strings and credentials for production and staging databases.",
-      content: doc(
-        heading(1, "Database Access Instructions"),
-        paragraph(text("Connection details and access patterns for all organizational databases.")),
-        heading(2, "PostgreSQL (Primary)"),
-        codeBlock("bash",
-`# Production (read-only replica for agents)
-host: db-prod-ro.internal.corp
-port: 5432
-database: symbio_prod
-user: agent_readonly
-# Credentials stored in Vault at secret/data/db/prod-readonly`),
-        heading(2, "Redis (Cache Layer)"),
-        codeBlock("bash",
-`host: redis.internal.corp
-port: 6379
-db: 0
-# Credentials in Vault at secret/data/redis/agent`),
-        heading(2, "Access Policies"),
-        bulletList(
-          "Agents have READ-ONLY access to production databases",
-          "Write operations require approval through the change management system",
-          "All queries must include a timeout of 30 seconds maximum",
-          "Rate limit: 100 queries per minute per agent"
-        ),
-      ),
-    },
-
-    // ─── Agent: Equipment Operation Manuals ───
-    {
-      id: "b0000000-0000-4000-a031-000000000001",
-      pageId: PAGE.agentEquipOps,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Equipment Operation Manuals. Instructions for operating lab and manufacturing equipment.",
-      content: doc(
-        heading(1, "Equipment Operation Manuals"),
-        paragraph(text("Standard operating procedures for all lab and manufacturing equipment.")),
-        heading(2, "Centrifuge (Model XR-500)"),
-        orderedList(
-          "Verify rotor is properly seated and balanced",
-          "Set speed (RPM) and duration via touch panel",
-          "Close lid firmly until audible click",
-          "Press START — do not open during operation",
-          "Wait for full stop before opening lid"
-        ),
-        heading(2, "Spectrophotometer (UV-2600)"),
-        orderedList(
-          "Power on and allow 15-minute warm-up",
-          "Run baseline calibration with blank cuvette",
-          "Insert sample cuvette in correct orientation",
-          "Select wavelength range and scan mode",
-          "Export results to shared network drive"
-        ),
-        heading(2, "3D Printer (Formlabs Form 4)"),
-        bulletList(
-          "Always check resin level before starting a print",
-          "Calibrate build platform monthly",
-          "Post-processing: wash in IPA for 10 minutes, then UV cure",
-          "Log all print jobs in the equipment tracker database"
-        ),
-      ),
-    },
-
-    // ─── Agent: QR Code Procedures ───
-    {
-      id: "b0000000-0000-4000-a032-000000000001",
-      pageId: PAGE.agentQrCodes,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "QR Code Procedures. Instructions for reading and processing QR codes on equipment and assets.",
-      content: doc(
-        heading(1, "QR Code Procedures"),
-        paragraph(text("QR codes are used to identify equipment, track assets, and trigger automated workflows.")),
-        heading(2, "QR Code Format"),
-        codeBlock("json",
-`{
-  "type": "EQUIPMENT" | "ASSET" | "LOCATION" | "PROCEDURE",
-  "id": "uuid-v4",
-  "version": 1,
-  "url": "https://app.symbio.local/scan/{id}"
-}`),
-        heading(2, "Scanning Workflow"),
-        orderedList(
-          "Agent scans QR code via camera or image input",
-          "Parse JSON payload from QR data",
-          "Look up entity by type and id in the asset database",
-          "Execute the associated procedure or return entity details",
-          "Log scan event with timestamp and agent ID"
-        ),
-        heading(2, "Error Handling"),
-        bulletList(
-          "Invalid QR format: Return error with expected format",
-          "Unknown entity ID: Flag for manual review",
-          "Expired QR code (version mismatch): Prompt for re-scan after update"
-        ),
-      ),
-    },
-
-    // ─── Agent: Organization Policies ───
-    {
-      id: "b0000000-0000-4000-a033-000000000001",
-      pageId: PAGE.agentOrgInstructions,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Organization Policies & Instructions. General guidelines for agent behavior within the organization.",
-      content: doc(
-        heading(1, "Organization Policies & Instructions"),
-        paragraph(text("General guidelines and policies that all AI agents must follow when operating within the organization.")),
-        heading(2, "Communication Standards"),
-        bulletList(
-          "Always identify yourself as an AI agent when interacting with external parties",
-          "Use formal language in customer-facing communications",
-          "Escalate to human supervisor for decisions exceeding $1,000 impact",
-          "Log all external communications in the audit trail"
-        ),
-        heading(2, "Data Handling"),
-        bulletList(
-          "PII data must never leave the internal network",
-          "Anonymize data before using it in reports or analytics",
-          "Follow GDPR guidelines for EU customer data",
-          "Retention: Delete temporary data after 24 hours"
-        ),
-        heading(2, "Working Hours"),
-        paragraph(text("Agents operate 24/7 but must respect the on-call escalation schedule for human handoffs between 22:00-07:00 local time.")),
-      ),
-    },
-
-    // ─── Agent: External API Integrations ───
-    {
-      id: "b0000000-0000-4000-a034-000000000001",
-      pageId: PAGE.agentApiIntegrations,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "External API Integrations. Endpoints and authentication for third-party services the agent can use.",
-      content: doc(
-        heading(1, "External API Integrations"),
-        paragraph(text("Approved third-party APIs and integration patterns for AI agents.")),
-        heading(2, "Slack Notifications"),
-        codeBlock("bash",
-`POST https://hooks.slack.com/services/T00/B00/xxx
-Content-Type: application/json
-# Token stored in Vault at secret/data/slack/webhook`),
-        heading(2, "Jira Ticket Creation"),
-        codeBlock("bash",
-`POST https://corp.atlassian.net/rest/api/3/issue
-Authorization: Bearer <jira-api-token>
-# Token in Vault at secret/data/jira/agent-token`),
-        heading(2, "Weather API (for facility operations)"),
-        codeBlock("bash",
-`GET https://api.openweathermap.org/data/2.5/weather?q=Munich&appid=<key>
-# Key in Vault at secret/data/weather/api-key`),
-        heading(2, "Rate Limits"),
-        bulletList(
-          "Slack: 1 message per second",
-          "Jira: 50 requests per minute",
-          "Weather: 60 calls per minute (free tier)"
-        ),
-      ),
-    },
-
-    // ─── Agent: Safety Protocols ───
-    {
-      id: "b0000000-0000-4000-a035-000000000001",
-      pageId: PAGE.agentSafetyProto,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Safety Protocols & Compliance. Safety requirements for agent operations in lab and manufacturing environments.",
-      content: doc(
-        heading(1, "Safety Protocols & Compliance"),
-        paragraph(text("Critical safety requirements that agents must enforce when operating in lab and manufacturing environments.")),
-        heading(2, "Emergency Procedures"),
-        orderedList(
-          "Detect abnormal sensor readings (temperature > 80C, pressure > 150 PSI)",
-          "Immediately trigger equipment shutdown via SCADA API",
-          "Send emergency alert to on-call engineering team",
-          "Log incident with full sensor data snapshot",
-          "Do NOT attempt to restart equipment — wait for human confirmation"
-        ),
-        heading(2, "Chemical Handling"),
-        bulletList(
-          "Always verify Material Safety Data Sheet (MSDS) before processing chemical-related tasks",
-          "Never recommend mixing chemicals without MSDS cross-reference",
-          "Flag expired chemicals for disposal (check expiry_date field)"
-        ),
-        heading(2, "Compliance Checklist"),
-        taskList(
-          { text: "ISO 9001 quality management procedures loaded", checked: true },
-          { text: "OSHA workplace safety guidelines indexed", checked: true },
-          { text: "EPA environmental compliance rules loaded", checked: false },
-          { text: "GMP manufacturing standards indexed", checked: false },
-        ),
-      ),
-    },
-
-    // ─── Team: Engineering Standards ───
-    {
-      id: "b0000000-0000-4000-a040-000000000001",
-      pageId: PAGE.teamEngStandards,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Engineering Standards. Code quality, review, and deployment standards for the engineering team.",
-      content: doc(
-        heading(1, "Engineering Standards"),
-        paragraph(text("Shared standards and best practices for the engineering team.")),
-        heading(2, "Code Review Requirements"),
-        bulletList(
-          "All PRs require at least 1 approval from a senior engineer",
-          "Critical path changes (auth, payments, data) need 2 approvals",
-          "Max PR size: 400 lines changed (excluding generated files)",
-          "Review turnaround SLA: 24 hours on business days"
-        ),
-        heading(2, "Testing Requirements"),
-        bulletList(
-          "Unit test coverage minimum: 80%",
-          "Integration tests required for all API endpoints",
-          "E2E tests for critical user flows (login, checkout, data export)",
-          "Performance benchmarks for queries exceeding 100ms"
-        ),
-        heading(2, "Deployment Checklist"),
-        taskList(
-          { text: "All CI checks passing", checked: false },
-          { text: "Changelog updated", checked: false },
-          { text: "Feature flags configured for gradual rollout", checked: false },
-          { text: "Monitoring dashboards reviewed", checked: false },
-          { text: "Rollback plan documented", checked: false },
-        ),
-      ),
-    },
-
-    // ─── Team: Runbooks & Playbooks ───
-    {
-      id: "b0000000-0000-4000-a041-000000000001",
-      pageId: PAGE.teamEngRunbooks,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Runbooks & Playbooks. Standard procedures for common operational tasks.",
-      content: doc(
-        heading(1, "Runbooks & Playbooks"),
-        paragraph(text("Step-by-step procedures for common operational tasks and incident response.")),
-        heading(2, "Database Migration Runbook"),
-        orderedList(
-          "Create migration branch from main",
-          "Run prisma migrate dev to generate migration",
-          "Review generated SQL in prisma/migrations/",
-          "Test migration on staging environment",
-          "Deploy to production during maintenance window",
-          "Verify migration with automated health checks"
-        ),
-        heading(2, "Production Hotfix Runbook"),
-        orderedList(
-          "Create hotfix branch from production tag",
-          "Apply minimal fix with test coverage",
-          "Get expedited review from on-call engineer",
-          "Deploy to staging for 15-minute soak test",
-          "Deploy to production with monitoring",
-          "Backport fix to main branch"
-        ),
-      ),
-    },
-
-    // ─── Team: Incident Response Log ───
-    {
-      id: "b0000000-0000-4000-a042-000000000001",
-      pageId: PAGE.teamEngIncidents,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Incident Response Log. Record of past incidents and post-mortems.",
-      content: doc(
-        heading(1, "Incident Response Log"),
-        paragraph(text("Historical record of production incidents, their root causes, and remediation actions.")),
-        heading(2, "INC-2026-003: Database Connection Pool Exhaustion"),
-        bulletList(
-          "Date: 2026-02-10",
-          "Duration: 45 minutes",
-          "Impact: 30% of API requests returning 503",
-          "Root Cause: Connection leak in background job worker",
-          "Fix: Added connection pool monitoring and auto-recovery"
-        ),
-        heading(2, "INC-2026-002: Search Index Corruption"),
-        bulletList(
-          "Date: 2026-01-28",
-          "Duration: 2 hours",
-          "Impact: Search returned stale results",
-          "Root Cause: Failed index rebuild during deployment",
-          "Fix: Added index integrity check to deployment pipeline"
-        ),
-      ),
-    },
-
-    // ─── Team: On-Call Schedule ───
-    {
-      id: "b0000000-0000-4000-a043-000000000001",
-      pageId: PAGE.teamEngOnCall,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "On-Call Schedule. Weekly rotation for engineering on-call duties.",
-      content: doc(
-        heading(1, "On-Call Schedule"),
-        paragraph(text("Weekly on-call rotation for production support. On-call engineer is the first responder for all P0/P1 alerts.")),
-        heading(2, "Current Rotation"),
-        bulletList(
-          "Week of Feb 24: Alice Chen",
-          "Week of Mar 3: Bob Martinez",
-          "Week of Mar 10: Carol Park",
-          "Week of Mar 17: David Kim"
-        ),
-        heading(2, "Escalation Path"),
-        orderedList(
-          "On-call engineer (Slack + PagerDuty)",
-          "Engineering lead (after 30 minutes)",
-          "VP Engineering (after 1 hour for P0)",
-          "CTO (after 2 hours for customer-facing P0)"
-        ),
-      ),
-    },
-
-    // ─── Team: Product Strategy & Roadmap ───
-    {
-      id: "b0000000-0000-4000-a050-000000000001",
-      pageId: PAGE.teamProdRoadmap,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Product Strategy & Roadmap. Strategic direction and quarterly roadmap for the product team.",
-      content: doc(
-        heading(1, "Product Strategy & Roadmap"),
-        paragraph(text("Strategic goals and quarterly roadmap for the product team.")),
-        heading(2, "Q1 2026 Priorities"),
-        orderedList(
-          "Launch AI agent knowledge base (in progress)",
-          "Implement team collaboration features",
-          "Build API marketplace for third-party integrations",
-          "Improve onboarding flow — target: 50% reduction in time-to-value"
-        ),
-        heading(2, "Q2 2026 Planning"),
-        bulletList(
-          "Mobile app MVP (iOS + Android)",
-          "Enterprise SSO integration (SAML 2.0)",
-          "Advanced permissions and role-based access",
-          "Analytics dashboard for workspace insights"
-        ),
-      ),
-    },
-
-    // ─── Team: Key Metrics & KPIs ───
-    {
-      id: "b0000000-0000-4000-a051-000000000001",
-      pageId: PAGE.teamProdMetrics,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Key Metrics & KPIs. Product metrics the team tracks weekly.",
-      content: doc(
-        heading(1, "Key Metrics & KPIs"),
-        paragraph(text("Core product metrics tracked weekly by the product team.")),
-        heading(2, "North Star Metric"),
-        paragraph(text("Weekly Active Knowledge Contributors (WAKC): Users who create or meaningfully edit at least one page per week.")),
-        heading(2, "Supporting Metrics"),
-        bulletList(
-          "DAU/MAU ratio: 42% (target: 50%)",
-          "Pages created per user per week: 3.2",
-          "Average session duration: 14 minutes",
-          "API calls per workspace per day: 1,200",
-          "Knowledge graph density (edges/nodes): 4.5"
-        ),
-        heading(2, "Retention"),
-        bulletList(
-          "Week 1 retention: 68%",
-          "Week 4 retention: 45%",
-          "Week 12 retention: 32%"
-        ),
-      ),
-    },
-
-    // ─── Team: User Research Findings ───
-    {
-      id: "b0000000-0000-4000-a052-000000000001",
-      pageId: PAGE.teamProdUserRes,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "User Research Findings. Insights from user interviews and usability tests.",
-      content: doc(
-        heading(1, "User Research Findings"),
-        paragraph(text("Synthesized insights from recent user interviews and usability testing sessions.")),
-        heading(2, "Key Insights (Feb 2026)"),
-        bulletList(
-          "Users love the knowledge graph but find initial setup overwhelming",
-          "Teams want shared templates for common page types",
-          "API users want webhooks for real-time change notifications",
-          "Mobile users need offline access for field work"
-        ),
-        heading(2, "Pain Points"),
-        bulletList(
-          "Search ranking needs improvement — relevant results not always first",
-          "Bulk import from Notion/Confluence requested by 7/10 enterprise leads",
-          "Permission model too simple for large teams (need page-level ACLs)"
-        ),
-      ),
-    },
-
-    // ─── Team: Feature Specifications ───
-    {
-      id: "b0000000-0000-4000-a053-000000000001",
-      pageId: PAGE.teamProdSpecs,
-      type: BlockType.DOCUMENT,
-      position: 0,
-      plainText: "Feature Specifications. Detailed specs for upcoming features.",
-      content: doc(
-        heading(1, "Feature Specifications"),
-        paragraph(text("Detailed specifications for features currently in development or planned.")),
-        heading(2, "Spec: Webhooks for Page Changes"),
-        bulletList(
-          "Trigger events: page.created, page.updated, page.deleted, page.moved",
-          "Payload: JSON with page ID, title, changed fields, actor",
-          "Authentication: HMAC-SHA256 signature verification",
-          "Retry policy: 3 attempts with exponential backoff",
-          "Status: In Development — ETA: March 2026"
-        ),
-        heading(2, "Spec: Bulk Import from Notion"),
-        bulletList(
-          "Accept Notion export ZIP file (HTML format)",
-          "Parse page hierarchy from folder structure",
-          "Convert HTML to TipTap JSON blocks",
-          "Preserve internal links as wikilinks",
-          "Status: Planning — ETA: Q2 2026"
-        ),
-      ),
-    },
-  ];
-
-  for (const b of blocks) {
-    await prisma.block.upsert({
-      where: { id: b.id },
-      update: { content: b.content as object, plainText: b.plainText },
-      create: {
-        id: b.id,
-        pageId: b.pageId,
-        tenantId: TENANT_ID,
-        type: b.type,
-        content: b.content as object,
-        position: b.position,
-        plainText: b.plainText,
-      },
-    });
-  }
-  console.log(`\n  Created ${blocks.length} document blocks`);
-
-  // ── Page Links ─────────────────────────────────────────
-
-  const links = [
-    // ── Welcome hub — links to most top-level pages ──
-    { id: "10000000-0000-4000-a000-000000000001", sourcePageId: PAGE.welcome, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-000000000002", sourcePageId: PAGE.welcome, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-000000000003", sourcePageId: PAGE.welcome, targetPageId: PAGE.research },
-    { id: "10000000-0000-4000-a000-000000000010", sourcePageId: PAGE.welcome, targetPageId: PAGE.roadmap },
-    { id: "10000000-0000-4000-a000-000000000011", sourcePageId: PAGE.welcome, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000012", sourcePageId: PAGE.welcome, targetPageId: PAGE.bugTracker },
-    { id: "10000000-0000-4000-a000-000000000030", sourcePageId: PAGE.welcome, targetPageId: PAGE.onboarding },
-    { id: "10000000-0000-4000-a000-000000000031", sourcePageId: PAGE.welcome, targetPageId: PAGE.contributing },
-    { id: "10000000-0000-4000-a000-000000000032", sourcePageId: PAGE.welcome, targetPageId: PAGE.designDoc },
-    { id: "10000000-0000-4000-a000-000000000033", sourcePageId: PAGE.welcome, targetPageId: PAGE.changelog },
-
-    // ── Architecture cluster — dense hub ──
-    { id: "10000000-0000-4000-a000-000000000004", sourcePageId: PAGE.arch, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000005", sourcePageId: PAGE.arch, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-000000000006", sourcePageId: PAGE.arch, targetPageId: PAGE.llmGuide },
-    { id: "10000000-0000-4000-a000-000000000013", sourcePageId: PAGE.arch, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-000000000014", sourcePageId: PAGE.arch, targetPageId: PAGE.designDoc },
-    { id: "10000000-0000-4000-a000-000000000034", sourcePageId: PAGE.arch, targetPageId: PAGE.security },
-    { id: "10000000-0000-4000-a000-000000000035", sourcePageId: PAGE.arch, targetPageId: PAGE.testing },
-    { id: "10000000-0000-4000-a000-000000000036", sourcePageId: PAGE.arch, targetPageId: PAGE.deployment },
-    { id: "10000000-0000-4000-a000-000000000037", sourcePageId: PAGE.arch, targetPageId: PAGE.frontend },
-    { id: "10000000-0000-4000-a000-000000000038", sourcePageId: PAGE.arch, targetPageId: PAGE.performance },
-    { id: "10000000-0000-4000-a000-000000000039", sourcePageId: PAGE.arch, targetPageId: PAGE.cicd },
-    { id: "10000000-0000-4000-a000-00000000003a", sourcePageId: PAGE.arch, targetPageId: PAGE.dbMigration },
-
-    // ── API Reference — central node many pages reference ──
-    { id: "10000000-0000-4000-a000-000000000007", sourcePageId: PAGE.api, targetPageId: PAGE.llmGuide },
-    { id: "10000000-0000-4000-a000-00000000000b", sourcePageId: PAGE.devSetup, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-00000000000c", sourcePageId: PAGE.dataModels, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-00000000000d", sourcePageId: PAGE.llmGuide, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-000000000015", sourcePageId: PAGE.api, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-000000000016", sourcePageId: PAGE.api, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-00000000003b", sourcePageId: PAGE.api, targetPageId: PAGE.security },
-    { id: "10000000-0000-4000-a000-00000000003c", sourcePageId: PAGE.api, targetPageId: PAGE.agentWorkflows },
-    { id: "10000000-0000-4000-a000-00000000003d", sourcePageId: PAGE.api, targetPageId: PAGE.troubleshoot },
-
-    // ── Research & LLM cluster — expanded ──
-    { id: "10000000-0000-4000-a000-000000000008", sourcePageId: PAGE.research, targetPageId: PAGE.llmGuide },
-    { id: "10000000-0000-4000-a000-000000000017", sourcePageId: PAGE.research, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-000000000018", sourcePageId: PAGE.research, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-000000000019", sourcePageId: PAGE.llmGuide, targetPageId: PAGE.research },
-    { id: "10000000-0000-4000-a000-00000000001a", sourcePageId: PAGE.llmGuide, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-00000000003e", sourcePageId: PAGE.research, targetPageId: PAGE.vectorSearch },
-    { id: "10000000-0000-4000-a000-00000000003f", sourcePageId: PAGE.research, targetPageId: PAGE.agentWorkflows },
-    { id: "10000000-0000-4000-a000-000000000040", sourcePageId: PAGE.research, targetPageId: PAGE.promptLibrary },
-    { id: "10000000-0000-4000-a000-000000000041", sourcePageId: PAGE.research, targetPageId: PAGE.knowledgePipe },
-    { id: "10000000-0000-4000-a000-000000000042", sourcePageId: PAGE.vectorSearch, targetPageId: PAGE.llmGuide },
-    { id: "10000000-0000-4000-a000-000000000043", sourcePageId: PAGE.vectorSearch, targetPageId: PAGE.performance },
-    { id: "10000000-0000-4000-a000-000000000044", sourcePageId: PAGE.vectorSearch, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-000000000045", sourcePageId: PAGE.agentWorkflows, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-000000000046", sourcePageId: PAGE.agentWorkflows, targetPageId: PAGE.llmGuide },
-    { id: "10000000-0000-4000-a000-000000000047", sourcePageId: PAGE.agentWorkflows, targetPageId: PAGE.promptLibrary },
-    { id: "10000000-0000-4000-a000-000000000048", sourcePageId: PAGE.agentWorkflows, targetPageId: PAGE.knowledgePipe },
-    { id: "10000000-0000-4000-a000-000000000049", sourcePageId: PAGE.promptLibrary, targetPageId: PAGE.llmGuide },
-    { id: "10000000-0000-4000-a000-00000000004a", sourcePageId: PAGE.promptLibrary, targetPageId: PAGE.agentWorkflows },
-    { id: "10000000-0000-4000-a000-00000000004b", sourcePageId: PAGE.knowledgePipe, targetPageId: PAGE.vectorSearch },
-    { id: "10000000-0000-4000-a000-00000000004c", sourcePageId: PAGE.knowledgePipe, targetPageId: PAGE.agentWorkflows },
-    { id: "10000000-0000-4000-a000-00000000004d", sourcePageId: PAGE.knowledgePipe, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-00000000004e", sourcePageId: PAGE.llmGuide, targetPageId: PAGE.agentWorkflows },
-    { id: "10000000-0000-4000-a000-00000000004f", sourcePageId: PAGE.llmGuide, targetPageId: PAGE.promptLibrary },
-
-    // ── Planning cluster — roadmap, meetings, changelog ──
-    { id: "10000000-0000-4000-a000-000000000009", sourcePageId: PAGE.roadmap, targetPageId: PAGE.meeting },
-    { id: "10000000-0000-4000-a000-00000000000a", sourcePageId: PAGE.meeting, targetPageId: PAGE.roadmap },
-    { id: "10000000-0000-4000-a000-00000000000f", sourcePageId: PAGE.changelog, targetPageId: PAGE.roadmap },
-    { id: "10000000-0000-4000-a000-00000000001b", sourcePageId: PAGE.roadmap, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-00000000001c", sourcePageId: PAGE.roadmap, targetPageId: PAGE.bugTracker },
-    { id: "10000000-0000-4000-a000-00000000001d", sourcePageId: PAGE.meeting, targetPageId: PAGE.bugTracker },
-    { id: "10000000-0000-4000-a000-00000000001e", sourcePageId: PAGE.meeting, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-00000000001f", sourcePageId: PAGE.changelog, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-000000000050", sourcePageId: PAGE.roadmap, targetPageId: PAGE.performance },
-    { id: "10000000-0000-4000-a000-000000000051", sourcePageId: PAGE.roadmap, targetPageId: PAGE.research },
-    { id: "10000000-0000-4000-a000-000000000052", sourcePageId: PAGE.meeting, targetPageId: PAGE.meetingSprint13 },
-    { id: "10000000-0000-4000-a000-000000000053", sourcePageId: PAGE.meeting, targetPageId: PAGE.meetingSprint12 },
-    { id: "10000000-0000-4000-a000-000000000054", sourcePageId: PAGE.meetingSprint13, targetPageId: PAGE.meetingSprint12 },
-    { id: "10000000-0000-4000-a000-000000000055", sourcePageId: PAGE.meetingSprint13, targetPageId: PAGE.roadmap },
-    { id: "10000000-0000-4000-a000-000000000056", sourcePageId: PAGE.meetingSprint13, targetPageId: PAGE.bugTracker },
-    { id: "10000000-0000-4000-a000-000000000057", sourcePageId: PAGE.meetingSprint12, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-000000000058", sourcePageId: PAGE.meetingSprint12, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000059", sourcePageId: PAGE.changelog, targetPageId: PAGE.bugTracker },
-
-    // ── Design cluster — expanded ──
-    { id: "10000000-0000-4000-a000-00000000000e", sourcePageId: PAGE.designDoc, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-000000000020", sourcePageId: PAGE.designDoc, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000021", sourcePageId: PAGE.designDoc, targetPageId: PAGE.welcome },
-    { id: "10000000-0000-4000-a000-00000000005a", sourcePageId: PAGE.designDoc, targetPageId: PAGE.accessibility },
-    { id: "10000000-0000-4000-a000-00000000005b", sourcePageId: PAGE.designDoc, targetPageId: PAGE.mobileDesign },
-    { id: "10000000-0000-4000-a000-00000000005c", sourcePageId: PAGE.designDoc, targetPageId: PAGE.frontend },
-    { id: "10000000-0000-4000-a000-00000000005d", sourcePageId: PAGE.accessibility, targetPageId: PAGE.frontend },
-    { id: "10000000-0000-4000-a000-00000000005e", sourcePageId: PAGE.accessibility, targetPageId: PAGE.testing },
-    { id: "10000000-0000-4000-a000-00000000005f", sourcePageId: PAGE.mobileDesign, targetPageId: PAGE.frontend },
-    { id: "10000000-0000-4000-a000-000000000060", sourcePageId: PAGE.mobileDesign, targetPageId: PAGE.performance },
-    { id: "10000000-0000-4000-a000-000000000061", sourcePageId: PAGE.mobileDesign, targetPageId: PAGE.accessibility },
-
-    // ── Bug Tracker cross-links ──
-    { id: "10000000-0000-4000-a000-000000000022", sourcePageId: PAGE.bugTracker, targetPageId: PAGE.changelog },
-    { id: "10000000-0000-4000-a000-000000000023", sourcePageId: PAGE.bugTracker, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-000000000062", sourcePageId: PAGE.bugTracker, targetPageId: PAGE.testing },
-    { id: "10000000-0000-4000-a000-000000000063", sourcePageId: PAGE.bugTracker, targetPageId: PAGE.contributing },
-
-    // ── Data Models cross-links ──
-    { id: "10000000-0000-4000-a000-000000000024", sourcePageId: PAGE.dataModels, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-000000000025", sourcePageId: PAGE.dataModels, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000026", sourcePageId: PAGE.devSetup, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-000000000064", sourcePageId: PAGE.dataModels, targetPageId: PAGE.dbMigration },
-    { id: "10000000-0000-4000-a000-000000000065", sourcePageId: PAGE.dataModels, targetPageId: PAGE.security },
-
-    // ── Security cluster ──
-    { id: "10000000-0000-4000-a000-000000000066", sourcePageId: PAGE.security, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-000000000067", sourcePageId: PAGE.security, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-000000000068", sourcePageId: PAGE.security, targetPageId: PAGE.deployment },
-    { id: "10000000-0000-4000-a000-000000000069", sourcePageId: PAGE.security, targetPageId: PAGE.testing },
-
-    // ── Testing & CI/CD cluster ──
-    { id: "10000000-0000-4000-a000-00000000006a", sourcePageId: PAGE.testing, targetPageId: PAGE.cicd },
-    { id: "10000000-0000-4000-a000-00000000006b", sourcePageId: PAGE.testing, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-00000000006c", sourcePageId: PAGE.testing, targetPageId: PAGE.contributing },
-    { id: "10000000-0000-4000-a000-00000000006d", sourcePageId: PAGE.cicd, targetPageId: PAGE.testing },
-    { id: "10000000-0000-4000-a000-00000000006e", sourcePageId: PAGE.cicd, targetPageId: PAGE.deployment },
-    { id: "10000000-0000-4000-a000-00000000006f", sourcePageId: PAGE.cicd, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000070", sourcePageId: PAGE.cicd, targetPageId: PAGE.contributing },
-
-    // ── Deployment cluster ──
-    { id: "10000000-0000-4000-a000-000000000071", sourcePageId: PAGE.deployment, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000072", sourcePageId: PAGE.deployment, targetPageId: PAGE.cicd },
-    { id: "10000000-0000-4000-a000-000000000073", sourcePageId: PAGE.deployment, targetPageId: PAGE.dbMigration },
-    { id: "10000000-0000-4000-a000-000000000074", sourcePageId: PAGE.deployment, targetPageId: PAGE.troubleshoot },
-
-    // ── Database Migration cross-links ──
-    { id: "10000000-0000-4000-a000-000000000075", sourcePageId: PAGE.dbMigration, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-000000000076", sourcePageId: PAGE.dbMigration, targetPageId: PAGE.deployment },
-    { id: "10000000-0000-4000-a000-000000000077", sourcePageId: PAGE.dbMigration, targetPageId: PAGE.troubleshoot },
-
-    // ── Frontend cross-links ──
-    { id: "10000000-0000-4000-a000-000000000078", sourcePageId: PAGE.frontend, targetPageId: PAGE.designDoc },
-    { id: "10000000-0000-4000-a000-000000000079", sourcePageId: PAGE.frontend, targetPageId: PAGE.performance },
-    { id: "10000000-0000-4000-a000-00000000007a", sourcePageId: PAGE.frontend, targetPageId: PAGE.testing },
-    { id: "10000000-0000-4000-a000-00000000007b", sourcePageId: PAGE.frontend, targetPageId: PAGE.accessibility },
-
-    // ── Performance cross-links ──
-    { id: "10000000-0000-4000-a000-00000000007c", sourcePageId: PAGE.performance, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-00000000007d", sourcePageId: PAGE.performance, targetPageId: PAGE.frontend },
-    { id: "10000000-0000-4000-a000-00000000007e", sourcePageId: PAGE.performance, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-00000000007f", sourcePageId: PAGE.performance, targetPageId: PAGE.deployment },
-
-    // ── Onboarding & Contributing cluster ──
-    { id: "10000000-0000-4000-a000-000000000080", sourcePageId: PAGE.onboarding, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000081", sourcePageId: PAGE.onboarding, targetPageId: PAGE.arch },
-    { id: "10000000-0000-4000-a000-000000000082", sourcePageId: PAGE.onboarding, targetPageId: PAGE.dataModels },
-    { id: "10000000-0000-4000-a000-000000000083", sourcePageId: PAGE.onboarding, targetPageId: PAGE.frontend },
-    { id: "10000000-0000-4000-a000-000000000084", sourcePageId: PAGE.onboarding, targetPageId: PAGE.testing },
-    { id: "10000000-0000-4000-a000-000000000085", sourcePageId: PAGE.onboarding, targetPageId: PAGE.security },
-    { id: "10000000-0000-4000-a000-000000000086", sourcePageId: PAGE.onboarding, targetPageId: PAGE.bugTracker },
-    { id: "10000000-0000-4000-a000-000000000087", sourcePageId: PAGE.onboarding, targetPageId: PAGE.contributing },
-    { id: "10000000-0000-4000-a000-000000000088", sourcePageId: PAGE.contributing, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-000000000089", sourcePageId: PAGE.contributing, targetPageId: PAGE.testing },
-    { id: "10000000-0000-4000-a000-00000000008a", sourcePageId: PAGE.contributing, targetPageId: PAGE.cicd },
-
-    // ── Troubleshooting cross-links ──
-    { id: "10000000-0000-4000-a000-00000000008b", sourcePageId: PAGE.troubleshoot, targetPageId: PAGE.devSetup },
-    { id: "10000000-0000-4000-a000-00000000008c", sourcePageId: PAGE.troubleshoot, targetPageId: PAGE.dbMigration },
-    { id: "10000000-0000-4000-a000-00000000008d", sourcePageId: PAGE.troubleshoot, targetPageId: PAGE.deployment },
-    { id: "10000000-0000-4000-a000-00000000008e", sourcePageId: PAGE.troubleshoot, targetPageId: PAGE.api },
-    { id: "10000000-0000-4000-a000-00000000008f", sourcePageId: PAGE.troubleshoot, targetPageId: PAGE.cicd },
-  ];
-
-  for (const link of links) {
-    await prisma.pageLink.upsert({
-      where: {
-        sourcePageId_targetPageId: {
-          sourcePageId: link.sourcePageId,
-          targetPageId: link.targetPageId,
-        },
-      },
-      update: {},
-      create: {
-        id: link.id,
-        tenantId: TENANT_ID,
-        sourcePageId: link.sourcePageId,
-        targetPageId: link.targetPageId,
-      },
-    });
-  }
-  console.log(`  Created ${links.length} page links`);
-
-  // ── Database (Bug Tracker) ─────────────────────────────
-
+  });
+  // De-dupe in case any builder added the same edge twice.
+  const seenLinks = new Set<string>();
+  const dedupedLinks = links.filter((l) => {
+    const k = `${l.source}->${l.target}`;
+    if (seenLinks.has(k)) return false;
+    seenLinks.add(k);
+    return true;
+  });
+  await prisma.pageLink.createMany({
+    data: dedupedLinks.map((l) => ({
+      tenantId: TENANT_ID,
+      sourcePageId: l.source,
+      targetPageId: l.target,
+    })),
+    skipDuplicates: true,
+  });
+
+  // ── Step 7: Findings Index database + rows ─────────────────────────
+  console.log("[7] Creating Findings Index database…");
   await prisma.database.upsert({
-    where: { id: DB.bugs },
-    update: {},
+    where: { id: FINDINGS_DB_ID },
+    update: {
+      schema: {
+        properties: [
+          { id: "title",            name: "Title",            type: "title" },
+          { id: "status",           name: "Status",           type: "select", options: ["open", "validated", "archived"] },
+          { id: "topic",            name: "Topic",            type: "select", options: ["yield", "purity", "method", "instrument", "technique", "competent cells"] },
+          { id: "severity",         name: "Severity",         type: "select", options: ["info", "warning", "critical"] },
+          { id: "source_experiment",name: "Source experiment",type: "text" },
+        ],
+      } as object,
+      defaultView: "table",
+    },
     create: {
-      id: DB.bugs,
-      pageId: PAGE.bugTracker,
+      id: FINDINGS_DB_ID,
+      pageId: G.findingsIndex,
       tenantId: TENANT_ID,
       schema: {
-        columns: [
-          { id: "col-title", name: "Title", type: "text" },
-          { id: "col-status", name: "Status", type: "select", options: ["Open", "In Progress", "Resolved", "Closed"] },
-          { id: "col-priority", name: "Priority", type: "select", options: ["Critical", "High", "Medium", "Low"] },
-          { id: "col-assignee", name: "Assignee", type: "text" },
-          { id: "col-date", name: "Reported", type: "date" },
-          { id: "col-resolved", name: "Fixed", type: "checkbox" },
+        properties: [
+          { id: "title",            name: "Title",            type: "title" },
+          { id: "status",           name: "Status",           type: "select", options: ["open", "validated", "archived"] },
+          { id: "topic",            name: "Topic",            type: "select", options: ["yield", "purity", "method", "instrument", "technique", "competent cells"] },
+          { id: "severity",         name: "Severity",         type: "select", options: ["info", "warning", "critical"] },
+          { id: "source_experiment",name: "Source experiment",type: "text" },
         ],
-      },
+      } as object,
+      defaultView: "table",
     },
   });
 
-  const bugRows = [
-    {
-      id: "f0000000-0000-4000-a000-000000000001",
-      properties: {
-        "col-title": "Block reorder flickers on fast drag",
-        "col-status": "In Progress",
-        "col-priority": "High",
-        "col-assignee": "Sarah",
-        "col-date": "2026-02-15",
-        "col-resolved": false,
-      },
-    },
-    {
-      id: "f0000000-0000-4000-a000-000000000002",
-      properties: {
-        "col-title": "Search results don't highlight matched terms",
-        "col-status": "Open",
-        "col-priority": "Medium",
-        "col-assignee": "James",
-        "col-date": "2026-02-17",
-        "col-resolved": false,
-      },
-    },
-    {
-      id: "f0000000-0000-4000-a000-000000000003",
-      properties: {
-        "col-title": "API returns 500 for empty page title",
-        "col-status": "Resolved",
-        "col-priority": "High",
-        "col-assignee": "Martin",
-        "col-date": "2026-02-10",
-        "col-resolved": true,
-      },
-    },
-    {
-      id: "f0000000-0000-4000-a000-000000000004",
-      properties: {
-        "col-title": "Graph layout resets on window resize",
-        "col-status": "Open",
-        "col-priority": "Low",
-        "col-assignee": "Priya",
-        "col-date": "2026-02-18",
-        "col-resolved": false,
-      },
-    },
-    {
-      id: "f0000000-0000-4000-a000-000000000005",
-      properties: {
-        "col-title": "JWT refresh token not rotating",
-        "col-status": "Resolved",
-        "col-priority": "Critical",
-        "col-assignee": "Martin",
-        "col-date": "2026-02-05",
-        "col-resolved": true,
-      },
-    },
-    {
-      id: "f0000000-0000-4000-a000-000000000006",
-      properties: {
-        "col-title": "Code block syntax highlight missing for Rust",
-        "col-status": "Open",
-        "col-priority": "Low",
-        "col-assignee": "",
-        "col-date": "2026-02-19",
-        "col-resolved": false,
-      },
-    },
-    {
-      id: "f0000000-0000-4000-a000-000000000007",
-      properties: {
-        "col-title": "Deleting parent page orphans children",
-        "col-status": "Resolved",
-        "col-priority": "High",
-        "col-assignee": "Sarah",
-        "col-date": "2026-02-08",
-        "col-resolved": true,
-      },
-    },
-    {
-      id: "f0000000-0000-4000-a000-000000000008",
-      properties: {
-        "col-title": "Wikilink autocomplete shows deleted pages",
-        "col-status": "In Progress",
-        "col-priority": "Medium",
-        "col-assignee": "James",
-        "col-date": "2026-02-20",
-        "col-resolved": false,
-      },
-    },
-  ];
-
-  for (const row of bugRows) {
-    await prisma.dbRow.upsert({
-      where: { id: row.id },
-      update: { properties: row.properties },
-      create: {
-        id: row.id,
-        databaseId: DB.bugs,
-        tenantId: TENANT_ID,
-        properties: row.properties,
-      },
-    });
-  }
-  console.log(`  Created bug tracker database with ${bugRows.length} rows`);
-
-  // ── Database (Feature Requests — linked to Roadmap) ──
-
-  await prisma.database.upsert({
-    where: { id: DB.features },
-    update: {},
-    create: {
-      id: DB.features,
-      pageId: PAGE.roadmap,
+  // Wipe rows scoped to this database and re-insert (simpler than per-row upsert).
+  await prisma.dbRow.deleteMany({ where: { databaseId: FINDINGS_DB_ID } });
+  await prisma.dbRow.createMany({
+    data: findingRows.map((r) => ({
+      databaseId: FINDINGS_DB_ID,
       tenantId: TENANT_ID,
-      schema: {
-        columns: [
-          { id: "col-feat", name: "Feature", type: "text" },
-          { id: "col-category", name: "Category", type: "select", options: ["Editor", "API", "Graph", "Search", "Auth", "Performance", "Mobile"] },
-          { id: "col-status", name: "Status", type: "select", options: ["Proposed", "Approved", "In Development", "Shipped"] },
-          { id: "col-votes", name: "Votes", type: "number" },
-          { id: "col-owner", name: "Owner", type: "text" },
-          { id: "col-target", name: "Target Release", type: "text" },
-        ],
-      },
-    },
+      pageId: r.pageId,
+      properties: {
+        title: r.title,
+        status: r.status,
+        topic: r.topic,
+        severity: r.severity,
+        source_experiment: r.sourceExperiment,
+      } as object,
+    })),
   });
 
-  const featureRows = [
-    {
-      id: "f1000000-0000-4000-a000-000000000001",
-      properties: {
-        "col-feat": "Real-time collaborative editing",
-        "col-category": "Editor",
-        "col-status": "In Development",
-        "col-votes": 42,
-        "col-owner": "James",
-        "col-target": "v0.6.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-000000000002",
-      properties: {
-        "col-feat": "Markdown import/export",
-        "col-category": "Editor",
-        "col-status": "Approved",
-        "col-votes": 38,
-        "col-owner": "Martin",
-        "col-target": "v0.5.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-000000000003",
-      properties: {
-        "col-feat": "Graph neighborhood view (focus mode)",
-        "col-category": "Graph",
-        "col-status": "Proposed",
-        "col-votes": 27,
-        "col-owner": "",
-        "col-target": "v0.6.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-000000000004",
-      properties: {
-        "col-feat": "Semantic search with vector embeddings",
-        "col-category": "Search",
-        "col-status": "In Development",
-        "col-votes": 35,
-        "col-owner": "Martin",
-        "col-target": "v0.5.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-000000000005",
-      properties: {
-        "col-feat": "OAuth2 / SSO integration",
-        "col-category": "Auth",
-        "col-status": "Proposed",
-        "col-votes": 21,
-        "col-owner": "",
-        "col-target": "v0.7.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-000000000006",
-      properties: {
-        "col-feat": "Mobile responsive layout",
-        "col-category": "Mobile",
-        "col-status": "Approved",
-        "col-votes": 33,
-        "col-owner": "Priya",
-        "col-target": "v0.6.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-000000000007",
-      properties: {
-        "col-feat": "Webhook notifications on page change",
-        "col-category": "API",
-        "col-status": "Proposed",
-        "col-votes": 18,
-        "col-owner": "",
-        "col-target": "v0.7.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-000000000008",
-      properties: {
-        "col-feat": "Page templates and quick-create",
-        "col-category": "Editor",
-        "col-status": "Approved",
-        "col-votes": 29,
-        "col-owner": "Priya",
-        "col-target": "v0.5.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-000000000009",
-      properties: {
-        "col-feat": "Virtualized block list for large pages",
-        "col-category": "Performance",
-        "col-status": "In Development",
-        "col-votes": 15,
-        "col-owner": "Sarah",
-        "col-target": "v0.5.0",
-      },
-    },
-    {
-      id: "f1000000-0000-4000-a000-00000000000a",
-      properties: {
-        "col-feat": "API rate limiting per tenant",
-        "col-category": "API",
-        "col-status": "Approved",
-        "col-votes": 12,
-        "col-owner": "Martin",
-        "col-target": "v0.5.0",
-      },
-    },
-  ];
+  // ── Step 8: validation ─────────────────────────────────────────────
+  console.log("[8] Validating final state…");
+  const [
+    pageCount,
+    blockCount,
+    linkCount,
+    teamspaceCount,
+    teamspaceMemberCount,
+    dbCount,
+    dbRowCount,
+    orphanedNotifications,
+    orphanedFiles,
+  ] = await Promise.all([
+    prisma.page.count({ where: { tenantId: TENANT_ID } }),
+    prisma.block.count({ where: { tenantId: TENANT_ID } }),
+    prisma.pageLink.count({ where: { tenantId: TENANT_ID } }),
+    prisma.teamspace.count({ where: { tenantId: TENANT_ID } }),
+    prisma.teamspaceMember.count({ where: { teamspace: { tenantId: TENANT_ID } } }),
+    prisma.database.count({ where: { tenantId: TENANT_ID } }),
+    prisma.dbRow.count({ where: { tenantId: TENANT_ID } }),
+    prisma.notification.count({ where: { tenantId: TENANT_ID, pageId: null } }),
+    prisma.fileAttachment.count({ where: { tenantId: TENANT_ID, pageId: null } }),
+  ]);
 
-  for (const row of featureRows) {
-    await prisma.dbRow.upsert({
-      where: { id: row.id },
-      update: { properties: row.properties },
-      create: {
-        id: row.id,
-        databaseId: DB.features,
-        tenantId: TENANT_ID,
-        properties: row.properties,
-      },
-    });
+  console.log(`    Pages:              ${pageCount}`);
+  console.log(`    Blocks:             ${blockCount}`);
+  console.log(`    PageLinks:          ${linkCount}`);
+  console.log(`    Teamspaces:         ${teamspaceCount}`);
+  console.log(`    Teamspace members:  ${teamspaceMemberCount}`);
+  console.log(`    Databases:          ${dbCount}`);
+  console.log(`    DbRows:             ${dbRowCount}`);
+  console.info(`    Orphan notifications (pageId=null): ${orphanedNotifications}`);
+  console.info(`    Orphan file attachments (pageId=null): ${orphanedFiles}`);
+
+  if (pageCount === 0) console.warn("[!] WARN: page count is 0 — seed likely failed.");
+  if (linkCount === 0) console.warn("[!] WARN: link count is 0 — seed likely failed.");
+  if (teamspaceMemberCount < memberUserIds.length * teamspaceSpecs.length) {
+    console.warn("[!] WARN: not all expected teamspace memberships present.");
   }
-  console.log(`  Created feature requests database with ${featureRows.length} rows`);
 
-  console.log("\nDemo seed complete!");
+  console.log("\nDemo seed complete.");
 }
 
 main()
-  .then(async () => {
-    await prisma.$disconnect();
-  })
-  .catch(async (e) => {
+  .catch((e) => {
     console.error("Seed error:", e);
-    await prisma.$disconnect();
     process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
   });

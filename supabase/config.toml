@@ -32,7 +32,7 @@ file_size_limit = "50MiB"
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://martins-macbook-pro.tail3a744f.ts.net", "http://localhost:3000", "http://localhost:3001", "com.scisymbiolens.app://auth-callback"]
+additional_redirect_urls = ["https://martins-macbook-pro.tail4a14c4.ts.net", "http://localhost:3000", "http://localhost:3001", "com.scisymbiolens.app://auth-callback"]
 jwt_expiry = 3600
 enable_signup = true
 

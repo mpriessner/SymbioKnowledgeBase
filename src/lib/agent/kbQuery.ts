@@ -16,6 +16,9 @@ import {
   type SearchDepth,
   type DepthSearchResultItem,
 } from "@/lib/search/depthSearch";
+import { routeSearch, type SearchStrategy, type ResolvedStrategy } from "@/lib/search/searchRouter";
+import { smartTruncate } from "@/lib/search/contentUtils";
+import { getCachedResult, setCachedResult } from "@/lib/search/queryCache";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -47,11 +50,14 @@ export interface ContextBlock {
   content: string;
   relevance: number;
   source_page: string;
+  source_path: string | null;
+  char_count: number;
 }
 
 export interface QueryMetadata {
   intent: QueryIntent;
   search_depth: SearchDepth;
+  search_strategy: ResolvedStrategy;
   pages_searched: number;
   graph_hops: number;
   elapsed_ms: number;
@@ -60,6 +66,8 @@ export interface QueryMetadata {
 export interface KbQueryResult {
   answer: string;
   context_blocks: ContextBlock[];
+  formatted_context?: string;
+  context_truncated?: boolean;
   query_metadata: QueryMetadata;
 }
 
@@ -70,6 +78,11 @@ export interface KbQueryOptions {
   sessionId?: string;
   depth?: SearchDepth;
   maxBlocks?: number;
+  strategy?: SearchStrategy;
+  maxAnswerLength?: number;
+  maxBlockChars?: number;
+  includeFormatted?: boolean;
+  maxContextChars?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,8 +185,8 @@ async function extractEntity(
   }
 
   // Strategy 2: Search for entity pages by name in the query
-  // Try chemical pages, reaction type pages, researcher pages
-  const categories = ["Chemicals", "Reaction Types", "Researchers"];
+  // Try all category pages (experiments, chemicals, reaction types, researchers, substrate classes)
+  const categories = ["Experiments", "Chemicals", "Reaction Types", "Researchers", "Substrate Classes"];
 
   for (const cat of categories) {
     const catPage = await prisma.page.findFirst({
@@ -197,17 +210,38 @@ async function extractEntity(
     for (const page of sorted) {
       if (qLower.includes(page.title.toLowerCase())) {
         const type =
-          cat === "Chemicals"
+          cat === "Chemicals" || cat === "Substrate Classes"
             ? "chemical"
             : cat === "Reaction Types"
               ? "reaction"
-              : "researcher";
+              : cat === "Experiments"
+                ? "experiment"
+                : "researcher";
         return {
           name: page.title,
           pageId: page.id,
           type,
           category: cat.toLowerCase().replace(/\s+/g, "_"),
         };
+      }
+    }
+
+    // For experiments, also match ELN ID patterns (e.g., EXP-2025-0001)
+    if (cat === "Experiments") {
+      const elnIdMatch = query.match(/EXP-\d{4}-\d{3,4}/i);
+      if (elnIdMatch) {
+        const elnId = elnIdMatch[0].toUpperCase();
+        const expPage = entityPages.find((p) =>
+          p.title.toUpperCase().startsWith(elnId)
+        );
+        if (expPage) {
+          return {
+            name: expPage.title,
+            pageId: expPage.id,
+            type: "experiment",
+            category: "experiments",
+          };
+        }
       }
     }
 
@@ -318,6 +352,7 @@ interface PageContent {
   markdown: string;
   category: string | null;
   parentTitle: string | null;
+  path: string;
 }
 
 async function getPageContent(
@@ -351,6 +386,7 @@ async function getPageContent(
 
   const markdown = block ? tiptapToMarkdown(block.content) : "";
 
+  const parentPath = parent?.title ? `/${parent.title}` : "";
   return {
     id: page.id,
     title: page.title,
@@ -358,6 +394,7 @@ async function getPageContent(
     markdown,
     category: parent?.title?.toLowerCase().replace(/\s+/g, "_") || null,
     parentTitle: parent?.title || null,
+    path: `/Chemistry KB${parentPath}/${page.title}`,
   };
 }
 
@@ -530,6 +567,7 @@ function intentToBlockType(
 function classifyPageAsBlockType(parentTitle: string | null): ContextBlockType {
   switch (parentTitle) {
     case "Chemicals":
+    case "Substrate Classes":
       return "chemical_properties";
     case "Reaction Types":
       return "reaction_type";
@@ -545,8 +583,22 @@ function classifyPageAsBlockType(parentTitle: string | null): ContextBlockType {
 
 function extractRelevantContent(
   page: PageContent,
-  intent: QueryIntent
+  intent: QueryIntent,
+  depth: SearchDepth = "medium",
+  maxBlockChars: number = 300
 ): string {
+  // Deep mode: return full page markdown, capped at maxBlockChars
+  if (depth === "deep") {
+    const fullContent = page.markdown.trim();
+    if (fullContent) {
+      return fullContent.length <= maxBlockChars
+        ? fullContent
+        : smartTruncate(fullContent, maxBlockChars);
+    }
+    // Fall through to oneLiner if markdown is empty
+  }
+
+  // Default/medium mode: intent-focused section extraction
   const md = page.markdown;
 
   switch (intent) {
@@ -613,7 +665,9 @@ async function buildContextBlocks(
   entity: EntityMatch | null,
   searchResults: DepthSearchResultItem[],
   tenantId: string,
-  maxBlocks: number
+  maxBlocks: number,
+  depth: SearchDepth = "medium",
+  maxBlockChars: number = 300
 ): Promise<{ blocks: ContextBlock[]; graphHops: number }> {
   const blocks: ContextBlock[] = [];
   let graphHops = 0;
@@ -622,33 +676,65 @@ async function buildContextBlocks(
   if (entity) {
     const page = await getPageContent(entity.pageId, tenantId);
     if (page) {
+      const primaryContent = extractRelevantContent(page, intent, depth, maxBlockChars);
       blocks.push({
         type: intentToBlockType(intent, entity.category),
         entity: entity.name,
         entity_id: entity.pageId,
-        content: extractRelevantContent(page, intent),
+        content: primaryContent,
         relevance: 1.0,
         source_page: page.title,
+        source_path: page.path,
+        char_count: primaryContent.length,
       });
 
       // Get linked pages (1-hop)
       const linked = await getLinkedPages(entity.pageId, tenantId);
       graphHops = 1;
 
-      for (const lp of linked) {
+      // Filter linked pages we'll use
+      const linkedToUse = linked
+        .filter(lp => {
+          const blockType = classifyPageAsBlockType(lp.parentTitle);
+          return !(intent === "safety" && blockType === "general_knowledge");
+        })
+        .slice(0, maxBlocks - blocks.length);
+
+      // Deep mode: fetch full content for linked pages in parallel
+      let linkedContents: Map<string, PageContent> = new Map();
+      if (depth === "deep" && linkedToUse.length > 0) {
+        const fetched = await Promise.all(
+          linkedToUse.map(lp => getPageContent(lp.id, tenantId))
+        );
+        fetched.forEach((pc, i) => {
+          if (pc) linkedContents.set(linkedToUse[i].id, pc);
+        });
+      }
+
+      for (const lp of linkedToUse) {
         if (blocks.length >= maxBlocks) break;
         const blockType = classifyPageAsBlockType(lp.parentTitle);
 
-        // For safety queries, prioritize institutional knowledge links
-        if (intent === "safety" && blockType === "general_knowledge") continue;
+        let lpContent: string;
+        if (depth === "deep") {
+          const fullPage = linkedContents.get(lp.id);
+          lpContent = fullPage
+            ? extractRelevantContent(fullPage, intent, depth, maxBlockChars)
+            : (lp.oneLiner || lp.title);
+        } else {
+          lpContent = lp.oneLiner || lp.title;
+        }
 
+        const lpParentPath = lp.parentTitle ? `/${lp.parentTitle}` : "";
         blocks.push({
           type: blockType,
           entity: lp.title,
           entity_id: lp.id,
-          content: lp.oneLiner || lp.title,
+          content: lpContent,
           relevance: 0.7,
           source_page: lp.title,
+          source_path: `/Chemistry KB${lpParentPath}/${lp.title}`,
+          char_count: lpContent.length,
         });
       }
 
@@ -657,17 +743,42 @@ async function buildContextBlocks(
         const backlinks = await getBacklinks(entity.pageId, tenantId);
         graphHops = 2;
 
-        for (const bl of backlinks) {
+        // Deep mode: fetch full content for backlink pages in parallel
+        const backlinksToUse = backlinks.slice(0, maxBlocks - blocks.length);
+        let backlinkContents: Map<string, PageContent> = new Map();
+        if (depth === "deep" && backlinksToUse.length > 0) {
+          const fetched = await Promise.all(
+            backlinksToUse.map(bl => getPageContent(bl.id, tenantId))
+          );
+          fetched.forEach((pc, i) => {
+            if (pc) backlinkContents.set(backlinksToUse[i].id, pc);
+          });
+        }
+
+        for (const bl of backlinksToUse) {
           if (blocks.length >= maxBlocks) break;
           const blockType = classifyPageAsBlockType(bl.parentTitle);
 
+          let blContent: string;
+          if (depth === "deep") {
+            const fullPage = backlinkContents.get(bl.id);
+            blContent = fullPage
+              ? extractRelevantContent(fullPage, intent, depth, maxBlockChars)
+              : (bl.oneLiner || bl.title);
+          } else {
+            blContent = bl.oneLiner || bl.title;
+          }
+
+          const blParentPath = bl.parentTitle ? `/${bl.parentTitle}` : "";
           blocks.push({
             type: blockType,
             entity: bl.title,
             entity_id: bl.id,
-            content: bl.oneLiner || bl.title,
+            content: blContent,
             relevance: 0.5,
             source_page: bl.title,
+            source_path: `/Chemistry KB${blParentPath}/${bl.title}`,
+            char_count: blContent.length,
           });
         }
       }
@@ -677,9 +788,23 @@ async function buildContextBlocks(
   // Fill remaining slots from search results (skip pages already added)
   const addedIds = new Set(blocks.map((b) => b.entity_id).filter(Boolean));
 
-  for (const result of searchResults) {
+  // Deep mode: fetch full content for search results that will be included
+  const searchToUse = searchResults
+    .filter(r => !addedIds.has(r.pageId))
+    .slice(0, maxBlocks - blocks.length);
+
+  let searchContents: Map<string, PageContent> = new Map();
+  if (depth === "deep" && searchToUse.length > 0) {
+    const fetched = await Promise.all(
+      searchToUse.map(r => getPageContent(r.pageId, tenantId))
+    );
+    fetched.forEach((pc, i) => {
+      if (pc) searchContents.set(searchToUse[i].pageId, pc);
+    });
+  }
+
+  for (const result of searchToUse) {
     if (blocks.length >= maxBlocks) break;
-    if (addedIds.has(result.pageId)) continue;
 
     const blockType =
       result.category === "chemicals"
@@ -694,13 +819,26 @@ async function buildContextBlocks(
               ? "related_experiment"
               : "general_knowledge";
 
+    let resultContent: string;
+    if (depth === "deep") {
+      const fullPage = searchContents.get(result.pageId);
+      resultContent = fullPage
+        ? extractRelevantContent(fullPage, intent, depth, maxBlockChars)
+        : (result.snippet || result.oneLiner || result.title);
+    } else {
+      resultContent = result.snippet || result.oneLiner || result.title;
+    }
+
+    const resultCategory = result.category ? `/${result.category.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}` : "";
     blocks.push({
       type: blockType,
       entity: result.title,
       entity_id: result.pageId,
-      content: result.snippet || result.oneLiner || result.title,
+      content: resultContent,
       relevance: result.score * 0.6,
       source_page: result.title,
+      source_path: `/Chemistry KB${resultCategory}/${result.title}`,
+      char_count: resultContent.length,
     });
     addedIds.add(result.pageId);
   }
@@ -722,13 +860,17 @@ async function buildContextBlocks(
       if (addedIds.has(pr.pageId)) continue;
 
       if (pr.institutionalKnowledge && pr.institutionalKnowledge.length > 0) {
+        const practiceContent = pr.institutionalKnowledge.slice(0, 3).join(". ");
+        const prCategory = pr.category ? `/${pr.category.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}` : "";
         blocks.push({
           type: "institutional_practice",
           entity: null,
           entity_id: null,
-          content: pr.institutionalKnowledge.slice(0, 3).join(". "),
+          content: practiceContent,
           relevance: 0.6,
           source_page: pr.title,
+          source_path: `/Chemistry KB${prCategory}/${pr.title}`,
+          char_count: practiceContent.length,
         });
         break;
       }
@@ -745,7 +887,8 @@ async function buildContextBlocks(
 function synthesizeAnswer(
   query: string,
   intent: QueryIntent,
-  blocks: ContextBlock[]
+  blocks: ContextBlock[],
+  maxLength: number = 500
 ): string {
   if (blocks.length === 0) {
     return (
@@ -754,31 +897,100 @@ function synthesizeAnswer(
     );
   }
 
-  const intros: Record<QueryIntent, string> = {
-    safety: "Here's what I found about safety: ",
-    properties: "Here are the relevant properties: ",
-    procedure: "Here's the procedure information: ",
-    expertise: "Based on the lab records: ",
-    related: "Here's what I found about related work: ",
-    reaction: "Here's the reaction information: ",
-    general: "Here's what I found: ",
-  };
+  const sorted = [...blocks].sort((a, b) => b.relevance - a.relevance);
+  const contentBlocks = sorted.filter((b) => b.content.length > 20);
 
-  // Take top 2-3 blocks with the most content
-  const topBlocks = blocks
-    .filter((b) => b.content.length > 20)
-    .slice(0, 3);
+  const parts: string[] = [];
+  const citations: string[] = [];
+  let currentLength = 0;
 
-  if (topBlocks.length === 0) {
-    // All blocks have short content — just use the first one
-    return intros[intent] + blocks[0].content;
+  for (const block of contentBlocks) {
+    // Format block per intent
+    let text = "";
+    switch (intent) {
+      case "safety":
+        text = block.entity
+          ? `For ${block.entity}: ${block.content}`
+          : block.content;
+        break;
+      case "procedure":
+        text = block.entity
+          ? `In ${block.entity}: ${block.content}`
+          : block.content;
+        break;
+      case "expertise":
+        text = block.entity
+          ? `${block.entity} — ${block.content}`
+          : block.content;
+        break;
+      default:
+        if (block.type === "institutional_practice") {
+          text = `Our lab practice: ${block.content}`;
+        } else {
+          text = block.content;
+        }
+    }
+
+    // Check if adding this block would exceed budget
+    if (currentLength + text.length + 2 > maxLength && parts.length > 0) {
+      break; // Already have some content, stop here
+    }
+
+    parts.push(text);
+    currentLength += text.length + 2; // +2 for " " separator
+
+    if (block.source_page && !citations.includes(block.source_page)) {
+      citations.push(block.source_page);
+    }
   }
 
-  const parts = topBlocks.map((b) => b.content);
-  const answer = intros[intent] + parts.join(" Additionally, ");
+  let answer = parts.join(" ");
 
-  // Cap at 500 chars for speakability
-  return truncate(answer, 500);
+  // Add citations if space allows
+  if (citations.length > 0) {
+    const citationStr = ` (Sources: ${citations.slice(0, 5).join(", ")})`;
+    if (answer.length + citationStr.length <= maxLength) {
+      answer += citationStr;
+    }
+  }
+
+  return smartTruncate(answer, maxLength);
+}
+
+// ---------------------------------------------------------------------------
+// Step 6: Format Context for System Prompt Injection
+// ---------------------------------------------------------------------------
+
+function formatContextBlocks(
+  blocks: ContextBlock[],
+  maxChars: number
+): { text: string; truncated: boolean } {
+  const sorted = [...blocks].sort((a, b) => b.relevance - a.relevance);
+  const sections: string[] = [];
+  let totalChars = 0;
+  let truncated = false;
+
+  for (const block of sorted) {
+    const header = block.entity
+      ? `[${block.type}: ${block.entity}]`
+      : `[${block.type}]`;
+    const section = `${header}\n${block.content}`;
+
+    if (totalChars + section.length + 2 > maxChars) {
+      truncated = true;
+      break;
+    }
+
+    sections.push(section);
+    totalChars += section.length + 2; // +2 for \n\n separator
+  }
+
+  const text =
+    sections.length > 0
+      ? "--- Retrieved Knowledge ---\n" + sections.join("\n\n")
+      : "";
+
+  return { text, truncated };
 }
 
 // ---------------------------------------------------------------------------
@@ -795,7 +1007,24 @@ export async function executeKbQuery(
     experimentId,
     depth = "medium",
     maxBlocks = 5,
+    strategy = "auto",
+    maxAnswerLength = 500,
+    maxBlockChars = depth === "deep" ? 2000 : 300,
+    includeFormatted = false,
+    maxContextChars = 12000,
   } = options;
+
+  // Check cache first
+  const cached = getCachedResult<KbQueryResult>(tenantId, query, depth, strategy, maxBlockChars, maxAnswerLength);
+  if (cached) {
+    return {
+      ...cached,
+      query_metadata: {
+        ...cached.query_metadata,
+        elapsed_ms: Date.now() - startTime,
+      },
+    };
+  }
 
   // Step 1: Classify intent
   const intent = classifyIntent(query);
@@ -803,18 +1032,36 @@ export async function executeKbQuery(
   // Step 2: Extract entity
   const entity = await extractEntity(query, tenantId, experimentId);
 
-  // Step 3: Search
+  // Step 3: Search — use the dual search router
+  const depthToHops: Record<SearchDepth, 0 | 1 | 2> = {
+    default: 0,
+    medium: 1,
+    deep: 2,
+  };
+
   const categoryFilter = intentToSearchCategory(intent);
-  const searchResults = await depthSearch({
+  const routedResult = await routeSearch({
     tenantId,
     query,
-    depth,
-    scope: "team",
-    category: categoryFilter,
+    intent,
+    strategy,
+    depth: depthToHops[depth],
     limit: 15,
+    category: categoryFilter,
   });
 
-  // If experiment_id provided and intent is "related", also search via experiment links
+  // Convert routed results to DepthSearchResultItem format for buildContextBlocks
+  const searchResults: DepthSearchResultItem[] = routedResult.results.map((r) => ({
+    pageId: r.pageId,
+    title: r.title,
+    oneLiner: r.oneLiner,
+    score: r.score,
+    category: r.category,
+    space: "team",
+    snippet: r.snippet ?? r.content,
+  }));
+
+  // If experiment_id provided and intent is "related", also add experiment links
   if (experimentId && intent === "related") {
     const expPage = await prisma.page.findFirst({
       where: { tenantId, title: { startsWith: experimentId } },
@@ -832,12 +1079,9 @@ export async function executeKbQuery(
         take: 10,
       });
 
-      // Prepend linked experiment results
       for (const link of relatedLinks) {
-        if (
-          !searchResults.results.some((r) => r.pageId === link.targetPage.id)
-        ) {
-          searchResults.results.unshift({
+        if (!searchResults.some((r) => r.pageId === link.targetPage.id)) {
+          searchResults.unshift({
             pageId: link.targetPage.id,
             title: link.targetPage.title,
             oneLiner: link.targetPage.oneLiner,
@@ -854,25 +1098,39 @@ export async function executeKbQuery(
   const { blocks, graphHops } = await buildContextBlocks(
     intent,
     entity,
-    searchResults.results,
+    searchResults,
     tenantId,
-    maxBlocks
+    maxBlocks,
+    depth,
+    maxBlockChars
   );
 
   // Step 5: Synthesize answer
-  const answer = synthesizeAnswer(query, intent, blocks);
+  const answer = synthesizeAnswer(query, intent, blocks, maxAnswerLength);
 
-  return {
+  const result: KbQueryResult = {
     answer,
     context_blocks: blocks,
     query_metadata: {
       intent,
       search_depth: depth,
-      pages_searched: searchResults.totalCount,
+      search_strategy: routedResult.strategy,
+      pages_searched: routedResult.results.length,
       graph_hops: graphHops,
       elapsed_ms: Date.now() - startTime,
     },
   };
+
+  if (includeFormatted) {
+    const { text, truncated } = formatContextBlocks(blocks, maxContextChars);
+    result.formatted_context = text;
+    result.context_truncated = truncated;
+  }
+
+  // Cache the result
+  setCachedResult(tenantId, query, depth, strategy, maxBlockChars, maxAnswerLength, result);
+
+  return result;
 }
 
 function intentToSearchCategory(intent: QueryIntent): string | undefined {
