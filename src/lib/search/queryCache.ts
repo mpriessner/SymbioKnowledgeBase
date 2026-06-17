@@ -52,10 +52,17 @@ function generateCacheKey(
   tenantId: string,
   query: string,
   depth: string,
-  strategy: string
+  strategy: string,
+  maxBlockChars: number,
+  maxAnswerLength: number
 ): string {
   const normalized = normalizeQuery(query);
-  const raw = `${tenantId}|${normalized}|${depth}|${strategy}`;
+  // Content-budget params MUST be part of the key: the same query at the same
+  // depth/strategy can produce different per-block content sizes and answer
+  // lengths, so omitting them would serve a stale response sized for a
+  // different budget (e.g. a max_block_chars=500 request getting a 2000-char
+  // cached result).
+  const raw = `${tenantId}|${normalized}|${depth}|${strategy}|${maxBlockChars}|${maxAnswerLength}`;
   return createHash("sha256").update(raw).digest("hex").slice(0, 16);
 }
 
@@ -94,9 +101,11 @@ export function getCachedResult<T>(
   tenantId: string,
   query: string,
   depth: string,
-  strategy: string
+  strategy: string,
+  maxBlockChars: number,
+  maxAnswerLength: number
 ): T | undefined {
-  const key = generateCacheKey(tenantId, query, depth, strategy);
+  const key = generateCacheKey(tenantId, query, depth, strategy, maxBlockChars, maxAnswerLength);
   const entry = cache.get(key);
 
   if (!entry) return undefined;
@@ -116,10 +125,12 @@ export function setCachedResult<T>(
   query: string,
   depth: string,
   strategy: string,
+  maxBlockChars: number,
+  maxAnswerLength: number,
   value: T,
   ttlMs: number = DEFAULT_TTL_MS
 ): void {
-  const key = generateCacheKey(tenantId, query, depth, strategy);
+  const key = generateCacheKey(tenantId, query, depth, strategy, maxBlockChars, maxAnswerLength);
 
   cache.set(key, {
     value,

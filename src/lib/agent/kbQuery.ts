@@ -1015,7 +1015,7 @@ export async function executeKbQuery(
   } = options;
 
   // Check cache first
-  const cached = getCachedResult<KbQueryResult>(tenantId, query, depth, strategy);
+  const cached = getCachedResult<KbQueryResult>(tenantId, query, depth, strategy, maxBlockChars, maxAnswerLength);
   if (cached) {
     return {
       ...cached,
@@ -1128,7 +1128,7 @@ export async function executeKbQuery(
   }
 
   // Cache the result
-  setCachedResult(tenantId, query, depth, strategy, result);
+  setCachedResult(tenantId, query, depth, strategy, maxBlockChars, maxAnswerLength, result);
 
   return result;
 }

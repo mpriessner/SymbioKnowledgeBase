@@ -32,9 +32,9 @@ async function main() {
   });
   const reclaimed = files.reduce(
     (acc, f) => acc + (typeof f.fileSize === "bigint" ? f.fileSize : BigInt(f.fileSize ?? 0)),
-    0n,
+    BigInt(0),
   );
-  if (reclaimed > 0n) {
+  if (reclaimed > BigInt(0)) {
     await prisma.tenant.update({
       where: { id: TENANT_ID },
       data: { storageUsed: { decrement: reclaimed } },
