@@ -136,4 +136,28 @@ describe("useAutoSave serialization", () => {
     });
     expect(onConflict).toHaveBeenCalledTimes(1);
   });
+
+  it("flushes a pending edit when the editor unmounts before the debounce fires (A → B page switch)", () => {
+    const editor = makeFakeEditor({ v: 0 });
+    const { unmount } = renderHook(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      useAutoSave({ editor: editor as any, pageId: "p1", debounceMs: 1000 })
+    );
+
+    // User types, then navigates away BEFORE the 1s debounce elapses.
+    act(() => {
+      editor.setJSON({ v: 1 });
+      editor.emit("update");
+    });
+    expect(saveCalls).toHaveLength(0); // debounce has not fired yet
+
+    act(() => {
+      unmount(); // key={pageId} remounts the editor on the page switch
+    });
+
+    // The queued edit must be flushed on unmount, not dropped, so it persists
+    // to this page (and updates its cache) instead of vanishing on return.
+    expect(saveCalls).toHaveLength(1);
+    expect(saveCalls[0].content).toEqual({ v: 1 });
+  });
 });

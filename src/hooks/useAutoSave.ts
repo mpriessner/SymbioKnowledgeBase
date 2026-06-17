@@ -36,6 +36,10 @@ export function useAutoSave({
   // outpace the network.
   const inFlightRef = useRef(false);
   const pendingRef = useRef<JSONContent | null>(null);
+  // Most recent editor content, captured on every update. Lets us flush the
+  // last edit on unmount even after TipTap has destroyed the editor instance
+  // (e.g. an A → B page switch remounts the editor via key={pageId}).
+  const latestContentRef = useRef<JSONContent | null>(null);
 
   // Keep stable refs to callbacks so the save loop doesn't churn. Assigned in
   // effects (not during render) so they always reflect the latest props.
@@ -124,6 +128,10 @@ export function useAutoSave({
       clearTimeout(timerRef.current);
     }
     timerRef.current = setTimeout(() => {
+      // Null the ref once the timer fires so a non-null timerRef reliably means
+      // "a save is still queued but has not run yet" — relied on by the
+      // flush-on-unmount cleanup below.
+      timerRef.current = null;
       performSave();
     }, debounceMs);
   }, [performSave, debounceMs]);
@@ -142,6 +150,9 @@ export function useAutoSave({
     if (!editor) return;
 
     const handleUpdate = () => {
+      // Capture the latest content synchronously so it can still be flushed on
+      // unmount, even if the editor instance is destroyed before cleanup runs.
+      latestContentRef.current = editor.getJSON();
       debouncedSave();
     };
 
@@ -149,8 +160,19 @@ export function useAutoSave({
 
     return () => {
       editor.off("update", handleUpdate);
+      // A debounced save still queued when this editor unmounts would otherwise
+      // be silently dropped. That is exactly what happens on an in-app A → B
+      // page switch: key={pageId} remounts the editor, NO tab/window unload
+      // event fires, and the last edit is lost. Flush the latest captured
+      // content through the normal save pipeline so it is BOTH persisted to this
+      // page and written into its query cache — so navigating back to the page
+      // shows the saved text instead of the stale pre-edit version.
       if (timerRef.current) {
         clearTimeout(timerRef.current);
+        timerRef.current = null;
+        if (latestContentRef.current) {
+          flushSaveRef.current(latestContentRef.current);
+        }
       }
     };
   }, [editor, debouncedSave]);
@@ -184,10 +206,16 @@ export function useAutoSave({
         timerRef.current = null;
       }
       const content = editor.getJSON();
-      const blob = new Blob([JSON.stringify({ content })], {
-        type: "application/json",
+      // Use fetch with `keepalive` rather than navigator.sendBeacon: sendBeacon
+      // always issues a POST, but this endpoint only accepts PUT, so a beacon
+      // would be rejected (405) and the final edit lost. `keepalive` lets the
+      // PUT outlive the page during unload.
+      void fetch(`/api/pages/${pageId}/blocks`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+        keepalive: true,
       });
-      navigator.sendBeacon(`/api/pages/${pageId}/blocks`, blob);
     };
 
     const handleVisibilityChange = () => {

@@ -166,21 +166,31 @@ export function useSaveDocument(pageId: string): SaveDocumentResult {
       if (typeof savedBlock.version === "number") {
         versionRef.current = savedBlock.version;
       }
-      // Reconcile the cached DOCUMENT block's version (and timestamps) without
-      // discarding the content the user is actively editing.
+      // Reconcile the cache. If a DOCUMENT block already exists we update its
+      // version/timestamps WITHOUT discarding content the user may still be
+      // editing. If none exists — the first save of a brand-new/empty page —
+      // we INSERT the authoritative saved block, so navigating back to the page
+      // shows the just-saved content instead of an empty editor. (The
+      // flush-on-unmount path in useAutoSave depends on this for fresh pages:
+      // without it, a fast A → B → A switch on a new page would persist to the
+      // DB but still render blank from the stale cache.)
       queryClient.setQueryData<VersionedBlock[]>(
         blockKeys.byPage(pageId),
         (current) => {
-          if (!current) return current;
-          return current.map((b) =>
-            b.type === "DOCUMENT"
-              ? {
-                  ...b,
-                  version: savedBlock.version ?? b.version,
-                  updatedAt: savedBlock.updatedAt ?? b.updatedAt,
-                }
-              : b
-          );
+          const list = current ?? [];
+          const hasDocumentBlock = list.some((b) => b.type === "DOCUMENT");
+          if (hasDocumentBlock) {
+            return list.map((b) =>
+              b.type === "DOCUMENT"
+                ? {
+                    ...b,
+                    version: savedBlock.version ?? b.version,
+                    updatedAt: savedBlock.updatedAt ?? b.updatedAt,
+                  }
+                : b
+            );
+          }
+          return [...list, savedBlock];
         }
       );
     },
