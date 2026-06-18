@@ -45,9 +45,13 @@
    `SKB_AGENT_API_KEY` (used by `writer.ts`) is a real `skb_live_…` key. If you want per-end-user
    attribution on voice queries instead, configure the Gateway to forward the user's Supabase
    access token (the JWT path is implemented and ready).
-   - **Scope note:** a brand-new key now defaults to `["read"]`. The Gateway's `kb-query` is a
-     GET (read) — fine. But `writer.ts` does **page create/update/delete** (writes), so its key
-     MUST be granted `["read","write"]` at creation, or those writes 403.
+   - **Scope note:** a brand-new key now defaults to `["read"]`. This is NOT enough for the
+     Gateway. `/api/agent/kb-query` is a **POST**, and `withAgentAuth` gates every
+     POST/PUT/PATCH/DELETE on the `write` scope (`src/lib/agent/auth.ts:132-145`) — so a
+     `["read"]`-only key 403s the live iOS→Gateway voice path immediately on cutover. The Gateway
+     key MUST therefore be minted with `["read","write"]`. (`writer.ts` likewise does **page
+     create/update/delete** writes and needs `["read","write"]`.) In short: **every** live
+     agent-path caller here needs write scope, so always mint these keys with `["read","write"]`.
 2. **Update the callers** to send the real credential (Gateway config + `SKB_AGENT_API_KEY`).
 3. **Verify against the still-mock-free pre-prod / current prod:** confirm a live `kb-query`
    succeeds with the `skb_` key (or JWT) BEFORE the mock deletion is the running code. Because
