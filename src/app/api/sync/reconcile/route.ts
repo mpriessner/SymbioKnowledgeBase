@@ -5,6 +5,10 @@ import {
   getLastReconciliationResult,
   getActiveSyncId,
 } from "@/lib/chemistryKb/reconciliationSync";
+import { corsHeaders } from "@/lib/security/cors";
+
+const CORS_METHODS = "GET, POST, OPTIONS";
+const CORS_HEADERS = "Content-Type, Authorization, X-Tenant-ID";
 
 const SYNC_SERVICE_KEY = process.env.SYNC_SERVICE_KEY;
 
@@ -29,15 +33,10 @@ function resolveTenantId(req: NextRequest): string | null {
 /**
  * OPTIONS /api/sync/reconcile — CORS preflight
  */
-export async function OPTIONS() {
+export async function OPTIONS(req: NextRequest) {
   return new NextResponse(null, {
     status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers":
-        "Content-Type, Authorization, X-Tenant-ID",
-    },
+    headers: corsHeaders(req, { methods: CORS_METHODS, headers: CORS_HEADERS }),
   });
 }
 
@@ -131,7 +130,7 @@ export async function POST(req: NextRequest) {
       },
       {
         status: result.status === "failed" ? 500 : 200,
-        headers: { "Access-Control-Allow-Origin": "*" },
+        headers: corsHeaders(req, { methods: CORS_METHODS }),
       }
     );
   } catch (error) {

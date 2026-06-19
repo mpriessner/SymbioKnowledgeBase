@@ -13,7 +13,7 @@ A modern, AI-powered knowledge management platform built with Next.js 14, featur
 - **Rich Text Editor** - Block-based editor with TipTap
 - **Hierarchical Organization** - Unlimited nesting with drag & drop
 - **Page Templates** - Quick-start templates for common use cases
-- **Full-Text Search** - Instant search across all documents (Cmd+K)
+- **Full-Text Search** - Instant search across all documents (Cmd+K). Retrieval is PostgreSQL full-text search (FTS) with heuristic ranking — keyword/lexical matching, **not** vector/embedding semantic similarity.
 - **Backlinks** - Automatic bi-directional linking between pages
 
 ### 🤖 AI Assistant (Symbio AI)
