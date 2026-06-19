@@ -1,6 +1,9 @@
 /**
  * Reusable experiment page finder by ELN experiment ID.
- * Searches page titles that start with the ELN ID prefix (e.g., "EXP-2025-0001").
+ *
+ * Lookup is keyed on the exact `Page.externalId` (the ELN experiment id) so that
+ * `EXP-1` never matches `EXP-12`. A title-prefix match is kept only as a fallback
+ * for legacy rows created before `externalId` was populated.
  */
 
 import { prisma } from "@/lib/db";
@@ -12,23 +15,43 @@ export interface ExperimentPageMatch {
   parentId: string | null;
 }
 
+const PAGE_SELECT = { id: true, title: true, parentId: true } as const;
+
+/**
+ * Build a title-prefix fallback that only matches legacy rows lacking an
+ * externalId. We require the title to be exactly the ELN id or start with
+ * "<elnId>:" / "<elnId> " so `EXP-1` cannot accidentally swallow `EXP-12`.
+ */
+function legacyTitleWhere(elnExperimentId: string) {
+  return {
+    externalId: null,
+    OR: [
+      { title: elnExperimentId },
+      { title: { startsWith: `${elnExperimentId}:` } },
+      { title: { startsWith: `${elnExperimentId} ` } },
+    ],
+  };
+}
+
 /**
  * Find an experiment page by its ELN ID (searches all pages).
- * Matches pages whose title starts with the experiment ID.
+ * Prefers an exact externalId match; falls back to a constrained title match
+ * for legacy rows.
  */
 export async function findExperimentByElnId(
   tenantId: string,
   elnExperimentId: string
 ): Promise<ExperimentPageMatch | null> {
-  const page = await prisma.page.findFirst({
-    where: {
-      tenantId,
-      title: { startsWith: elnExperimentId },
-    },
-    select: { id: true, title: true, parentId: true },
+  const byExternalId = await prisma.page.findFirst({
+    where: { tenantId, externalId: elnExperimentId },
+    select: PAGE_SELECT,
   });
+  if (byExternalId) return byExternalId;
 
-  return page;
+  return prisma.page.findFirst({
+    where: { tenantId, ...legacyTitleWhere(elnExperimentId) },
+    select: PAGE_SELECT,
+  });
 }
 
 /**
@@ -39,16 +62,25 @@ export async function findActiveExperiment(
   elnExperimentId: string
 ): Promise<ExperimentPageMatch | null> {
   const hierarchy = await setupChemistryKbHierarchy(tenantId);
-  const page = await prisma.page.findFirst({
+
+  const byExternalId = await prisma.page.findFirst({
     where: {
       tenantId,
       parentId: hierarchy.experimentsId,
-      title: { startsWith: elnExperimentId },
+      externalId: elnExperimentId,
     },
-    select: { id: true, title: true, parentId: true },
+    select: PAGE_SELECT,
   });
+  if (byExternalId) return byExternalId;
 
-  return page;
+  return prisma.page.findFirst({
+    where: {
+      tenantId,
+      parentId: hierarchy.experimentsId,
+      ...legacyTitleWhere(elnExperimentId),
+    },
+    select: PAGE_SELECT,
+  });
 }
 
 /**
@@ -59,14 +91,23 @@ export async function findArchivedExperiment(
   elnExperimentId: string
 ): Promise<ExperimentPageMatch | null> {
   const hierarchy = await setupChemistryKbHierarchy(tenantId);
-  const page = await prisma.page.findFirst({
+
+  const byExternalId = await prisma.page.findFirst({
     where: {
       tenantId,
       parentId: hierarchy.archiveId,
-      title: { startsWith: elnExperimentId },
+      externalId: elnExperimentId,
     },
-    select: { id: true, title: true, parentId: true },
+    select: PAGE_SELECT,
   });
+  if (byExternalId) return byExternalId;
 
-  return page;
+  return prisma.page.findFirst({
+    where: {
+      tenantId,
+      parentId: hierarchy.archiveId,
+      ...legacyTitleWhere(elnExperimentId),
+    },
+    select: PAGE_SELECT,
+  });
 }

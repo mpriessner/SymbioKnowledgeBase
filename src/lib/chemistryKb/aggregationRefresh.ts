@@ -5,7 +5,34 @@
  */
 
 import { prisma } from "@/lib/db";
-import { tiptapToMarkdown, markdownToTiptap } from "@/lib/agent/markdown";
+
+/**
+ * Minimal slice of the Prisma client used inside a refresh batch. Declared as an
+ * interface so the transaction client (`tx`) and the base client are
+ * interchangeable here.
+ */
+type RefreshTxClient = {
+  page: {
+    findFirst: typeof prisma.page.findFirst;
+    findMany: typeof prisma.page.findMany;
+    update: typeof prisma.page.update;
+  };
+};
+
+/**
+ * Run `fn` inside an interactive transaction when the client supports one,
+ * otherwise fall back to the base client. The fallback keeps unit tests that
+ * stub only the model methods (and not `$transaction`) working, while
+ * production still gets atomicity.
+ */
+async function runInTransaction<T>(
+  fn: (tx: RefreshTxClient) => Promise<T>
+): Promise<T> {
+  if (typeof prisma.$transaction === "function") {
+    return prisma.$transaction((tx) => fn(tx as unknown as RefreshTxClient));
+  }
+  return fn(prisma as unknown as RefreshTxClient);
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -28,7 +55,7 @@ export interface RefreshResult {
 
 const pendingRefreshes = new Map<string, Set<string>>();
 const pendingTriggers = new Map<string, RefreshTrigger>();
-let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const DEBOUNCE_MS = 5000;
 
@@ -173,51 +200,60 @@ export async function refreshAggregationPages(
   pageIds: string[]
 ): Promise<RefreshResult> {
   const startTime = Date.now();
-  let refreshedCount = 0;
 
-  for (const pageId of pageIds) {
-    const page = await prisma.page.findFirst({
-      where: { id: pageId, tenantId, spaceType: "TEAM" },
-      select: { id: true, title: true, parentId: true },
-    });
+  // Track the ids that were ACTUALLY refreshed (not all input ids qualify — some
+  // are missing, non-TEAM, or have no children). Previously the result reported
+  // `pageIds.slice(0, count)`, which named the first N *input* ids rather than
+  // the ones really updated — wrong and misleading for callers/telemetry.
+  const refreshedIds: string[] = [];
 
-    if (!page) continue;
-
-    // Get the parent to determine if this is a category page
-    const parent = page.parentId
-      ? await prisma.page.findFirst({
-          where: { id: page.parentId, tenantId },
-          select: { title: true },
-        })
-      : null;
-
-    // Refresh summary/oneLiner based on child pages
-    const children = await prisma.page.findMany({
-      where: { parentId: pageId, tenantId },
-      select: { id: true, title: true },
-    });
-
-    if (children.length > 0) {
-      // Update the oneLiner with current child count
-      const pageType = parent?.title ?? "items";
-      const newOneLiner = `${children.length} ${pageType.toLowerCase()} documented`;
-
-      await prisma.page.update({
-        where: { id: pageId },
-        data: {
-          oneLiner: newOneLiner,
-          summaryUpdatedAt: new Date(),
-        },
+  // The whole batch is applied in one transaction so a failure partway through
+  // doesn't leave some aggregation pages updated and others stale.
+  await runInTransaction(async (tx) => {
+    for (const pageId of pageIds) {
+      const page = await tx.page.findFirst({
+        where: { id: pageId, tenantId, spaceType: "TEAM" },
+        select: { id: true, title: true, parentId: true },
       });
 
-      refreshedCount++;
+      if (!page) continue;
+
+      // Get the parent to determine if this is a category page
+      const parent = page.parentId
+        ? await tx.page.findFirst({
+            where: { id: page.parentId, tenantId },
+            select: { title: true },
+          })
+        : null;
+
+      // Refresh summary/oneLiner based on child pages
+      const children = await tx.page.findMany({
+        where: { parentId: pageId, tenantId },
+        select: { id: true, title: true },
+      });
+
+      if (children.length > 0) {
+        // Update the oneLiner with current child count
+        const pageType = parent?.title ?? "items";
+        const newOneLiner = `${children.length} ${pageType.toLowerCase()} documented`;
+
+        await tx.page.update({
+          where: { id: pageId },
+          data: {
+            oneLiner: newOneLiner,
+            summaryUpdatedAt: new Date(),
+          },
+        });
+
+        refreshedIds.push(pageId);
+      }
     }
-  }
+  });
 
   return {
-    refreshed: refreshedCount,
+    refreshed: refreshedIds.length,
     duration: Date.now() - startTime,
-    pageIds: pageIds.slice(0, refreshedCount),
+    pageIds: refreshedIds,
   };
 }
 
@@ -230,8 +266,6 @@ export async function immediateRefresh(
   pageIds: string[],
   trigger: RefreshTrigger
 ): Promise<RefreshResult> {
-  const startTime = Date.now();
-
   // Find affected aggregation pages if not specified directly
   const targetIds =
     pageIds.length > 0

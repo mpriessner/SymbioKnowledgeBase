@@ -184,49 +184,94 @@ export async function depthSearch(
     orderBy: { updatedAt: "desc" },
   });
 
-  // Step 2: For medium/deep, also search block content
-  let contentMatches: typeof titleMatches = [];
+  // Step 2: For medium/deep, also search block content using PostgreSQL FTS
+  type FtsMatch = {
+    page_id: string;
+    page_title: string;
+    page_one_liner: string | null;
+    space_type: string;
+    parent_id: string | null;
+    fts_rank: number;
+    fts_snippet: string | null;
+  };
+  let ftsMatches: FtsMatch[] = [];
   if (depth === "medium" || depth === "deep") {
-    const blocks = await prisma.block.findMany({
-      where: {
-        tenantId,
-        type: "DOCUMENT",
-        plainText: { contains: query, mode: "insensitive" as const },
-        page: { ...scopeFilter },
-      },
-      select: {
-        page: {
-          select: {
-            id: true,
-            title: true,
-            oneLiner: true,
-            spaceType: true,
-            parentId: true,
-          },
-        },
-      },
-      take: limit,
-    });
-    contentMatches = blocks.map((b) => b.page);
+    const sanitizedQuery = query.replace(/[<>]/g, "").trim();
+    if (sanitizedQuery.length > 0) {
+      const scopeWhere = scope === "private"
+        ? `AND p.space_type = 'PRIVATE'`
+        : scope === "team"
+          ? `AND p.space_type = 'TEAM'`
+          : "";
+      try {
+        ftsMatches = await prisma.$queryRawUnsafe<FtsMatch[]>(
+          `SELECT DISTINCT ON (p.id)
+            p.id AS page_id,
+            p.title AS page_title,
+            p.one_liner AS page_one_liner,
+            p.space_type,
+            p.parent_id,
+            ts_rank(b.search_vector, plainto_tsquery('english', $1)) AS fts_rank,
+            ts_headline(
+              'english',
+              b.plain_text,
+              plainto_tsquery('english', $1),
+              'MaxFragments=1, MinWords=15, MaxWords=35, HighlightAll=false'
+            ) AS fts_snippet
+          FROM pages p
+          JOIN blocks b ON b.page_id = p.id
+          WHERE b.search_vector @@ plainto_tsquery('english', $1)
+            AND b.tenant_id::text = $2
+            ${scopeWhere}
+          ORDER BY p.id, fts_rank DESC
+          LIMIT $3`,
+          sanitizedQuery,
+          tenantId,
+          limit
+        );
+      } catch {
+        // FTS failed (e.g., empty search_vector) — fall back to no content matches
+      }
+    }
   }
 
-  // Merge and deduplicate results
+  // Merge and deduplicate results, with scores
   const seenIds = new Set<string>();
-  const allMatches: typeof titleMatches = [];
+  const allMatches: Array<{
+    id: string;
+    title: string;
+    oneLiner: string | null;
+    spaceType: string;
+    parentId: string | null;
+    score: number;
+    ftsSnippet?: string | null;
+  }> = [];
 
-  // Title matches get higher score (added first)
+  // Title matches get higher score (1.0)
   for (const match of titleMatches) {
     if (!seenIds.has(match.id)) {
       seenIds.add(match.id);
-      allMatches.push(match);
+      allMatches.push({ ...match, score: 1.0 });
     }
   }
-  for (const match of contentMatches) {
-    if (!seenIds.has(match.id)) {
-      seenIds.add(match.id);
-      allMatches.push(match);
+  // FTS content matches get ts_rank-based score (capped at 0.9 so title matches always rank higher)
+  for (const match of ftsMatches) {
+    if (!seenIds.has(match.page_id)) {
+      seenIds.add(match.page_id);
+      allMatches.push({
+        id: match.page_id,
+        title: match.page_title,
+        oneLiner: match.page_one_liner,
+        spaceType: match.space_type,
+        parentId: match.parent_id,
+        score: Math.min(match.fts_rank, 0.9),
+        ftsSnippet: match.fts_snippet,
+      });
     }
   }
+
+  // Sort by score descending (relevance-based ranking)
+  allMatches.sort((a, b) => b.score - a.score);
 
   // Step 3: Determine categories and filter
   const categoryCache = new Map<string, string | null>();
@@ -262,27 +307,36 @@ export async function depthSearch(
   }
 
   // Step 4: Build result items
-  const titleSet = new Set(titleMatches.map((m) => m.id));
   const resultItems: DepthSearchResultItem[] = [];
+
+  // Build a map of FTS snippets for quick lookup
+  const ftsSnippetMap = new Map<string, string>();
+  for (const match of allMatches) {
+    if (match.ftsSnippet) {
+      ftsSnippetMap.set(match.id, match.ftsSnippet);
+    }
+  }
 
   for (const match of filtered.slice(0, limit)) {
     const item: DepthSearchResultItem = {
       pageId: match.id,
       title: match.title,
       oneLiner: match.oneLiner,
-      score: titleSet.has(match.id) ? 1.0 : 0.5,
+      score: match.score,
       category: match.category,
       space: match.spaceType.toLowerCase(),
     };
 
     // Medium/deep: add snippets and linked pages
     if (depth === "medium" || depth === "deep") {
-      const [snippet, linkedPages] = await Promise.all([
-        getSnippet(match.id, tenantId, query),
-        getLinkedPageTitles(match.id, tenantId),
-      ]);
-      item.snippet = snippet;
-      item.linkedPages = linkedPages;
+      // Use FTS snippet if available, fall back to keyword-based snippet
+      const existingFtsSnippet = ftsSnippetMap.get(match.id);
+      if (existingFtsSnippet) {
+        item.snippet = existingFtsSnippet;
+      } else {
+        item.snippet = await getSnippet(match.id, tenantId, query);
+      }
+      item.linkedPages = await getLinkedPageTitles(match.id, tenantId);
     }
 
     // Deep: add related pages (2-hop) and institutional knowledge

@@ -5,10 +5,12 @@ import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { z } from "zod";
 import type { TenantContext } from "@/types/auth";
 
+// NOTE: tenantId is intentionally NOT accepted from the request. A broadcast is
+// always scoped to the caller's own tenant (ctx.tenantId); allowing a
+// client-supplied tenantId let an admin notify users in OTHER tenants.
 const broadcastSchema = z.object({
   title: z.string().min(1).max(255),
   body: z.string().optional(),
-  tenantId: z.string().uuid().optional(),
 });
 
 export const POST = withTenant(
@@ -38,10 +40,11 @@ export const POST = withTenant(
         );
       }
 
-      const { title, body: notificationBody, tenantId } = parsed.data;
+      const { title, body: notificationBody } = parsed.data;
 
+      // Always scope the broadcast to the caller's own tenant.
       const users = await prisma.user.findMany({
-        where: tenantId ? { tenantId } : {},
+        where: { tenantId: ctx.tenantId },
         select: { id: true, tenantId: true },
       });
 

@@ -7,8 +7,11 @@
 #
 # Prerequisites:
 #   - Copy .env.production.example to .env and set production values
-#   - Generate NEXTAUTH_SECRET: openssl rand -base64 32
 #   - Set a strong DB_PASSWORD
+#   - Set Supabase auth vars (auth is provided by Supabase, NOT NextAuth):
+#       NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+#       SUPABASE_SERVICE_ROLE_KEY
+#   - Set DEFAULT_TENANT_ID and SYNC_SERVICE_KEY
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 services:
@@ -21,9 +24,18 @@ services:
       - "${APP_PORT:-3000}:3000"
     environment:
       DATABASE_URL: "postgresql://symbio:${DB_PASSWORD}@db:5432/symbio?schema=public&connection_limit=20"
-      NEXTAUTH_SECRET: "${NEXTAUTH_SECRET}"
-      NEXTAUTH_URL: "${NEXTAUTH_URL:-http://localhost:3000}"
       NODE_ENV: production
+      # Structured-logger verbosity (debug|info|warn|error). Read by src/lib/logger.ts.
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      # ── Supabase auth (auth is provided by Supabase, NOT NextAuth) ──
+      # These gate authentication and MUST be set; src/lib/env.ts fails fast at
+      # boot in production if any is missing/placeholder. Sourced from host env.
+      NEXT_PUBLIC_SUPABASE_URL: "${NEXT_PUBLIC_SUPABASE_URL}"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "${NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+      SUPABASE_SERVICE_ROLE_KEY: "${SUPABASE_SERVICE_ROLE_KEY}"
+      # ── Tenant + sync service config ──
+      DEFAULT_TENANT_ID: "${DEFAULT_TENANT_ID}"
+      SYNC_SERVICE_KEY: "${SYNC_SERVICE_KEY}"
     depends_on:
       db:
         condition: service_healthy
@@ -88,9 +100,52 @@ services:
     networks:
       - symbio-prod-network
 
+  # ── Database Backup (OPTIONAL sidecar — commented out by default) ─────────
+  # This repo ships scripts/backup.sh (pg_dump-based) but has NO automated,
+  # off-host backup configured. The stanza below runs scheduled dumps INSIDE the
+  # compose project, which is better than nothing but still on the same host as
+  # the database — a single-host failure loses both.
+  #
+  # RECOMMENDED: schedule backups OFF-HOST instead, e.g. a host cron / systemd
+  # timer that streams a dump to remote object storage. scripts/backup.sh
+  # supports this directly via --stdout:
+  #
+  #   # crontab on the host (daily at 02:30, upload to S3):
+  #   30 2 * * * cd /opt/symbio && ./scripts/backup.sh --stdout \
+  #     | aws s3 cp - s3://my-bucket/symbio-$(date +\%Y\%m\%d).dump
+  #
+  # To run an in-compose scheduled backup instead, uncomment and adjust:
+  #
+  # backup:
+  #   image: postgres:18-alpine   # provides pg_dump matching the db image
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   environment:
+  #     PGPASSWORD: "${DB_PASSWORD}"
+  #     # Dump cadence in seconds (default: daily).
+  #     BACKUP_INTERVAL: "${BACKUP_INTERVAL:-86400}"
+  #   volumes:
+  #     - ./scripts/backup.sh:/usr/local/bin/backup.sh:ro
+  #     - backup-data:/backups
+  #   entrypoint: ["/bin/sh", "-c"]
+  #   command:
+  #     - >
+  #       while true; do
+  #         pg_dump -h db -U symbio -d symbio -F c -f /backups/symbio-$(date +%Y%m%d-%H%M%S).dump
+  #         && echo "backup ok" || echo "backup FAILED";
+  #         sleep "${BACKUP_INTERVAL:-86400}";
+  #       done
+  #   restart: unless-stopped
+  #   networks:
+  #     - symbio-prod-network
+
 volumes:
   pgdata-prod:
     driver: local
+  # Uncomment alongside the backup sidecar above.
+  # backup-data:
+  #   driver: local
 
 networks:
   symbio-prod-network:

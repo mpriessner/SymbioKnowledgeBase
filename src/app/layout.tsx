@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { themeScript } from "@/lib/theme/themeScript";
+// Fail-fast environment validation. Importing for its module-load side effect:
+// in production this throws at boot if required runtime vars (DATABASE_URL,
+// Supabase auth keys) are missing/placeholder, rather than silently degrading.
+import "@/lib/env";
 import "./globals.css";
 
 const inter = Inter({

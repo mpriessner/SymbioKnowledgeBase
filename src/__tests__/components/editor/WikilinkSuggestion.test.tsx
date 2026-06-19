@@ -64,7 +64,7 @@ describe("WikilinkSuggestion", () => {
     vi.mocked(usePageSearch).mockReturnValueOnce({
       data: { data: [], meta: { total: 0, limit: 10, offset: 0 } },
       isLoading: false,
-    } as ReturnType<typeof usePageSearch>);
+    } as unknown as ReturnType<typeof usePageSearch>);
 
     render(<WikilinkSuggestion {...defaultProps} />, {
       wrapper: createWrapper(),

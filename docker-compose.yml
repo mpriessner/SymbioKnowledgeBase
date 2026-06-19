@@ -5,18 +5,14 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # NEXT_PUBLIC_* vars are baked into client JS at build time (browser-facing URL).
-        # URL is non-secret and stays defaulted; the anon key must be supplied
-        # (gates `docker compose build` too — see .env.example / the secret-rotation runbook).
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54351}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?set NEXT_PUBLIC_SUPABASE_ANON_KEY (no committed default)}
+        # NEXT_PUBLIC_* vars are baked into client JS at build time (browser-facing URL)
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54341}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://symbio:${DB_PASSWORD:?set DB_PASSWORD}@db:5432/symbio?schema=public
-      # NOTE: NEXTAUTH_SECRET is NOT the cookie-auth secret (auth is Supabase). It is only
-      # validated by docker-entrypoint.prod.sh / deploy-prod.sh — kept required for hygiene.
-      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?set NEXTAUTH_SECRET (openssl rand -base64 32)}
+      DATABASE_URL: postgresql://symbio:${DB_PASSWORD:-symbio_dev_password}@db:5432/symbio?schema=public
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev_secret_change_me_in_production}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NODE_ENV: ${NODE_ENV:-production}
       # Default tenant — new OAuth users join this workspace (with demo data)
@@ -24,9 +20,9 @@ services:
       # Supabase Auth
       # SUPABASE_INTERNAL_URL: Docker-internal URL for server-side API calls
       # NEXT_PUBLIC_SUPABASE_URL: Browser-facing URL (also used for cookie name matching)
-      SUPABASE_INTERNAL_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:54351}
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54351}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?set NEXT_PUBLIC_SUPABASE_ANON_KEY (no committed default)}
+      SUPABASE_INTERNAL_URL: ${SUPABASE_INTERNAL_URL:-http://host.docker.internal:54341}
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:54341}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -44,7 +40,7 @@ services:
     environment:
       POSTGRES_DB: symbio
       POSTGRES_USER: symbio
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-symbio_dev_password}
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:

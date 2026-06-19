@@ -31,6 +31,20 @@ import {
   ALL_SAMPLE_SUBSTRATE_CLASSES,
 } from "../src/lib/chemistryKb/sampleData";
 
+/** Strip markdown syntax to produce plainText for search/graph sizing. */
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/^#{1,6}\s+/gm, "")          // headings
+    .replace(/\*\*([^*]+)\*\*/g, "$1")     // bold
+    .replace(/\*([^*]+)\*/g, "$1")         // italic
+    .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1") // wikilinks
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links
+    .replace(/^[-*]\s+/gm, "")            // list markers
+    .replace(/`([^`]+)`/g, "$1")           // inline code
+    .replace(/\n{3,}/g, "\n\n")            // collapse blank lines
+    .trim();
+}
+
 async function findOrCreatePage(
   tenantId: string,
   title: string,
@@ -49,6 +63,7 @@ async function findOrCreatePage(
   if (existing && forceUpdate) {
     // Update existing page content with new template output
     const { content: tiptap } = markdownToTiptap(markdown);
+    const plainText = stripMarkdown(markdown);
     // Update oneLiner + teamspace assignment
     await prisma.page.update({
       where: { id: existing.id },
@@ -64,6 +79,7 @@ async function findOrCreatePage(
         pageId: existing.id,
         type: "DOCUMENT",
         content: tiptap as Record<string, unknown>,
+        plainText,
         position: 0,
       },
     });
@@ -101,12 +117,14 @@ async function findOrCreatePage(
   });
 
   const { content: tiptap } = markdownToTiptap(markdown);
+  const plainText = stripMarkdown(markdown);
   await prisma.block.create({
     data: {
       tenantId,
       pageId: page.id,
       type: "DOCUMENT",
       content: tiptap as Record<string, unknown>,
+      plainText,
       position: 0,
     },
   });
@@ -140,6 +158,26 @@ async function main() {
     console.error("Usage: npx tsx scripts/seed-chemistry-kb.ts --tenant <id>");
     console.error("   or: TENANT_ID=<id> npx tsx scripts/seed-chemistry-kb.ts");
     process.exit(1);
+  }
+
+  // Destructive-op guard: --force rewrites page content and deletes existing
+  // blocks for the tenant. Refuse to run it in production, and require an
+  // explicit opt-in everywhere else, so it can never be triggered accidentally.
+  if (force) {
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "Refusing to run --force seed in production (NODE_ENV=production). " +
+          "This rewrites page content and deletes blocks for the tenant."
+      );
+      process.exit(1);
+    }
+    if (process.env.ALLOW_DESTRUCTIVE_RESET !== "true") {
+      console.error(
+        "Refusing to run --force seed: it deletes and rewrites existing Chemistry KB " +
+          "content for the tenant. Re-run with ALLOW_DESTRUCTIVE_RESET=true to confirm."
+      );
+      process.exit(1);
+    }
   }
 
   console.log(`\n=== Seeding Chemistry KB for tenant: ${tenantId} ===\n`);
@@ -238,6 +276,44 @@ async function main() {
     );
     console.log(`  ${result.created ? "CREATED" : result.updated ? "UPDATED" : "EXISTS"}: ${sc.name}`);
   }
+
+  // Step 7: Re-process wikilinks now that ALL pages exist
+  // (Earlier steps create pages sequentially, so wikilinks from experiments
+  //  to chemicals/researchers/etc. couldn't resolve before those pages existed.)
+  console.log("\nStep 7: Re-processing wikilinks across all chemistry pages...");
+  const allChemPages = await prisma.page.findMany({
+    where: {
+      tenantId,
+      OR: [
+        { parentId: hierarchy.experimentsId },
+        { parentId: hierarchy.chemicalsId },
+        { parentId: hierarchy.reactionTypesId },
+        { parentId: hierarchy.researchersId },
+        { parentId: hierarchy.substrateClassesId },
+      ],
+    },
+    select: { id: true, title: true },
+  });
+
+  let linkCount = 0;
+  for (const page of allChemPages) {
+    const block = await prisma.block.findFirst({
+      where: { pageId: page.id, tenantId, type: "DOCUMENT" },
+      select: { content: true },
+    });
+    if (block?.content) {
+      // Count links before
+      const before = await prisma.pageLink.count({ where: { sourcePageId: page.id } });
+      await processAgentWikilinks(page.id, tenantId, block.content);
+      const after = await prisma.pageLink.count({ where: { sourcePageId: page.id } });
+      const newLinks = after - before;
+      if (newLinks > 0) {
+        linkCount += newLinks;
+        console.log(`  ${page.title}: +${newLinks} links (total: ${after})`);
+      }
+    }
+  }
+  console.log(`  Re-processed ${allChemPages.length} pages, created ${linkCount} new links.`);
 
   // Summary
   const totalCreated =

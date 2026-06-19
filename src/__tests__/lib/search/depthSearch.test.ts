@@ -5,6 +5,7 @@ const mockPageFindFirst = vi.fn();
 const mockBlockFindMany = vi.fn();
 const mockBlockFindFirst = vi.fn();
 const mockPageLinkFindMany = vi.fn();
+const mockQueryRawUnsafe = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -19,6 +20,8 @@ vi.mock("@/lib/db", () => ({
     pageLink: {
       findMany: (...args: unknown[]) => mockPageLinkFindMany(...args),
     },
+    // Block-content search now uses PostgreSQL full-text search via $queryRawUnsafe
+    $queryRawUnsafe: (...args: unknown[]) => mockQueryRawUnsafe(...args),
   },
 }));
 
@@ -69,6 +72,8 @@ beforeEach(() => {
 
   // Default: no content matches
   mockBlockFindMany.mockResolvedValue([]);
+  // Default: no FTS content matches (block-content search uses $queryRawUnsafe)
+  mockQueryRawUnsafe.mockResolvedValue([]);
 
   // Default: category parent lookup
   mockPageFindFirst.mockImplementation(({ where }) => {
@@ -113,20 +118,22 @@ describe("depthSearch", () => {
       scope: "all",
     });
 
-    // Block findMany should not be called at default depth
-    expect(mockBlockFindMany).not.toHaveBeenCalled();
+    // No block-content (FTS) search at default depth
+    expect(mockQueryRawUnsafe).not.toHaveBeenCalled();
   });
 
   test("medium depth searches block content", async () => {
-    mockBlockFindMany.mockResolvedValue([
+    // Block-content search uses PostgreSQL FTS ($queryRawUnsafe) at medium/deep,
+    // returning rows in the raw FTS shape.
+    mockQueryRawUnsafe.mockResolvedValue([
       {
-        page: {
-          id: "page-3",
-          title: "THF Handling Notes",
-          oneLiner: "Solvent handling",
-          spaceType: "TEAM",
-          parentId: "chemicals-parent",
-        },
+        page_id: "page-3",
+        page_title: "THF Handling Notes",
+        page_one_liner: "Solvent handling",
+        space_type: "TEAM",
+        parent_id: "chemicals-parent",
+        fts_rank: 0.5,
+        fts_snippet: "Solvent handling notes",
       },
     ]);
 
@@ -138,7 +145,7 @@ describe("depthSearch", () => {
     });
 
     expect(result.depth).toBe("medium");
-    expect(mockBlockFindMany).toHaveBeenCalled();
+    expect(mockQueryRawUnsafe).toHaveBeenCalled();
   });
 
   test("scope=team filters to TEAM pages only", async () => {
@@ -213,16 +220,16 @@ describe("depthSearch", () => {
   test("title matches get higher score than content matches", async () => {
     // First call: title matches return page-1
     mockPageFindMany.mockResolvedValueOnce([mockPages[0]]);
-    // Content search returns page-3
-    mockBlockFindMany.mockResolvedValue([
+    // FTS content search returns page-3 (raw FTS row shape)
+    mockQueryRawUnsafe.mockResolvedValue([
       {
-        page: {
-          id: "page-3",
-          title: "Related Notes",
-          oneLiner: null,
-          spaceType: "TEAM",
-          parentId: "experiments-parent",
-        },
+        page_id: "page-3",
+        page_title: "Related Notes",
+        page_one_liner: null,
+        space_type: "TEAM",
+        parent_id: "experiments-parent",
+        fts_rank: 0.5,
+        fts_snippet: "related notes",
       },
     ]);
 

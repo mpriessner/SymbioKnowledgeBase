@@ -79,10 +79,9 @@ class OpenAIProvider implements LLMProvider {
       );
 
       if (!response.ok) {
-        const errorBody = await response.text().catch(() => "");
-        throw new Error(
-          `OpenAI API error ${response.status}: ${errorBody}`
-        );
+        // Status only — never include the provider's raw error body (it can echo
+        // credential-adjacent data) or the API key in the thrown message.
+        throw new Error(`OpenAI API error: ${response.status}`);
       }
 
       const data = (await response.json()) as {
@@ -143,10 +142,8 @@ class AnthropicProvider implements LLMProvider {
       );
 
       if (!response.ok) {
-        const errorBody = await response.text().catch(() => "");
-        throw new Error(
-          `Anthropic API error ${response.status}: ${errorBody}`
-        );
+        // Status only — never include the provider's raw error body or the API key.
+        throw new Error(`Anthropic API error: ${response.status}`);
       }
 
       const data = (await response.json()) as {

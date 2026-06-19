@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveApiKey } from "@/lib/apiAuth";
 import { ensureUserExists } from "@/lib/auth/ensureUserExists";
-import { isSupabaseConfigured, isDevAuthAllowed } from "@/lib/supabase/config";
 import type { TenantContext } from "@/types/auth";
 
 /**
@@ -58,10 +57,10 @@ export async function getTenantContext(
   const supabaseInternalUrl = process.env.SUPABASE_INTERNAL_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (isSupabaseConfigured()) {
+  if (supabaseUrl && supabaseKey && !supabaseUrl.includes("xxxxx") && supabaseUrl.startsWith("http")) {
     const supabase = createServerClient(
-      supabaseUrl!,
-      supabaseKey!,
+      supabaseUrl,
+      supabaseKey,
       {
         cookies: {
           getAll() {
@@ -76,7 +75,7 @@ export async function getTenantContext(
           ? {
               global: {
                 fetch: (input: RequestInfo | URL, init?: RequestInit) => {
-                  const url = input.toString().replace(supabaseUrl!, supabaseInternalUrl);
+                  const url = input.toString().replace(supabaseUrl, supabaseInternalUrl);
                   return fetch(url, init);
                 },
               },
@@ -116,15 +115,32 @@ export async function getTenantContext(
         role: dbUser.role,
       };
     }
-  } else if (isDevAuthAllowed()) {
-    // Supabase not configured AND dev auth explicitly opted in (non-prod only):
-    // use the default dev tenant. This NEVER fires in production (audit S2).
-    const defaultTenantId = process.env.DEFAULT_TENANT_ID || "00000000-0000-4000-a000-000000000001";
-    return {
-      tenantId: defaultTenantId,
-      userId: "dev-user",
-      role: "ADMIN",
-    };
+  } else {
+    // Supabase is not configured (env unset or placeholder).
+    //
+    // FAIL CLOSED: never synthesize an ADMIN identity from a missing config.
+    // In production this is always an authentication failure. The convenient
+    // "default dev tenant as ADMIN" fallback is allowed only in non-production
+    // AND only when explicitly opted into via ALLOW_DEV_AUTH=true.
+    const isProduction = process.env.NODE_ENV === "production";
+    const devAuthAllowed = process.env.ALLOW_DEV_AUTH === "true";
+
+    if (!isProduction && devAuthAllowed) {
+      const defaultTenantId =
+        process.env.DEFAULT_TENANT_ID ||
+        "00000000-0000-4000-a000-000000000001";
+      return {
+        tenantId: defaultTenantId,
+        userId: "dev-user",
+        role: "ADMIN",
+      };
+    }
+
+    throw new AuthenticationError(
+      "Authentication is not configured. Supabase environment variables are missing.",
+      401,
+      "UNAUTHORIZED"
+    );
   }
 
   // 3. No valid authentication found

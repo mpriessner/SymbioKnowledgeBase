@@ -21,83 +21,64 @@ export async function ensureUserExists(supabaseUser: User) {
     return existing;
   }
 
-  // Resolve tenant placement (audit S4):
-  //  - an explicit user_metadata.tenantId always wins;
-  //  - otherwise, by default new users join the shared DEFAULT_TENANT_ID so the
-  //    seeded chemistry KB + synced experiments + the voice agent's kb-query keep
-  //    working for them (kb-query is tenant-scoped with NO cross-tenant
-  //    read-through — a personal tenant would silo them into an empty KB);
-  //  - personal-tenant-per-user is an OPT-IN multi-tenant posture behind
-  //    SKB_PERSONAL_TENANT_BY_DEFAULT=1 (breaks shared-KB visibility for them).
-  const personalTenantByDefault =
-    process.env.SKB_PERSONAL_TENANT_BY_DEFAULT === "1";
-
+  // Resolve tenant: metadata > DEFAULT_TENANT_ID env > create new workspace.
+  //
+  // Least privilege: a user who is dropped into a SHARED tenant (either one
+  // named in their auth metadata, or the env-configured DEFAULT_TENANT_ID demo
+  // workspace) is provisioned as a regular USER — auto-granting ADMIN of a
+  // shared workspace to anyone who logs in via cross-app SSO is a privilege-
+  // escalation risk. Only a user who creates their OWN personal workspace is
+  // its owner/ADMIN.
   const metadataTenantId = supabaseUser.user_metadata?.tenantId as
     | string
     | undefined;
+  const sharedTenantId = metadataTenantId ?? (await resolveDefaultTenant());
 
   let tenantId: string;
-  let isTenantCreator = false;
+  let userRole: "USER" | "ADMIN";
+  let memberRole: "owner" | "member";
 
-  if (metadataTenantId) {
-    tenantId = metadataTenantId;
-  } else if (personalTenantByDefault) {
-    // Opt-in isolation: the user owns their freshly-created personal tenant.
-    tenantId = await createPersonalTenant(supabaseUser);
-    isTenantCreator = true;
+  if (sharedTenantId) {
+    tenantId = sharedTenantId;
+    userRole = "USER";
+    memberRole = "member";
   } else {
-    const defaultTenantId = await resolveDefaultTenant();
-    if (defaultTenantId) {
-      tenantId = defaultTenantId;
-    } else {
-      // No shared tenant exists yet — fall back to a personal one (creator).
-      tenantId = await createPersonalTenant(supabaseUser);
-      isTenantCreator = true;
-    }
+    // No shared tenant — create a personal workspace this user owns.
+    tenantId = await createPersonalTenant(supabaseUser);
+    userRole = "ADMIN";
+    memberRole = "owner";
   }
 
-  // Least-privilege (audit S4): a brand-new SSO user is provisioned as USER, NOT
-  // ADMIN, and as a "member" of the shared tenant, NOT "owner". The only time a
-  // new user is "owner" is when they just created their own personal tenant.
-  // NOTE: Role enum is ADMIN | USER only — "MEMBER" does NOT exist; do not use it.
-  const memberRole = isTenantCreator ? "owner" : "member";
-
   try {
-    // Create the User row and its TenantMember atomically so a partial-failure
-    // can't leave a user without a membership (Kimi hardening).
-    const user = await prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          id: supabaseUser.id,
-          email: supabaseUser.email!,
-          tenantId,
-          role: "USER",
-          name:
-            supabaseUser.user_metadata?.full_name
-            ?? supabaseUser.user_metadata?.name
-            ?? null,
-        },
-        select: { id: true, tenantId: true, role: true },
-      });
+    const user = await prisma.user.create({
+      data: {
+        id: supabaseUser.id,
+        email: supabaseUser.email!,
+        tenantId,
+        role: userRole,
+        name:
+          supabaseUser.user_metadata?.full_name
+          ?? supabaseUser.user_metadata?.name
+          ?? null,
+      },
+      select: { id: true, tenantId: true, role: true },
+    });
 
-      // Also create a TenantMember record so workspace-switching works.
-      await tx.tenantMember.upsert({
-        where: {
-          userId_tenantId: { userId: supabaseUser.id, tenantId },
-        },
-        update: {},
-        create: {
-          userId: supabaseUser.id,
-          tenantId,
-          role: memberRole,
-        },
-      });
-
-      return created;
+    // Also create a TenantMember record so workspace-switching works
+    await prisma.tenantMember.upsert({
+      where: {
+        userId_tenantId: { userId: supabaseUser.id, tenantId },
+      },
+      update: {},
+      create: {
+        userId: supabaseUser.id,
+        tenantId,
+        role: memberRole,
+      },
     });
 
     console.log(
-      `[Auth] Created user ${supabaseUser.email} in tenant ${tenantId} (role=USER, member=${memberRole})`
+      `[Auth] Created user ${supabaseUser.email} in tenant ${tenantId}`
     );
     return user;
   } catch (error: unknown) {

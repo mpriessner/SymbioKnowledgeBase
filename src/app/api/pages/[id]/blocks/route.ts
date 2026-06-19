@@ -84,6 +84,20 @@ export const PUT = withTenant(
         return errorResponse("VALIDATION_ERROR", "Invalid input", details, 400);
       }
 
+      // Optimistic-concurrency token. The client sends the `version` it last
+      // observed; if it doesn't match the stored row, another writer (other
+      // tab, collaborator, agent) saved in between and a blind update would
+      // silently clobber their work. `expectedVersion` is optional for
+      // backward compatibility — when absent we fall back to a last-write-wins
+      // update (existing behavior).
+      const rawExpectedVersion = (body as { expectedVersion?: unknown })
+        ?.expectedVersion;
+      const expectedVersion =
+        typeof rawExpectedVersion === "number" &&
+        Number.isInteger(rawExpectedVersion)
+          ? rawExpectedVersion
+          : undefined;
+
       // Verify page exists and belongs to tenant
       const page = await prisma.page.findFirst({
         where: {
@@ -105,7 +119,7 @@ export const PUT = withTenant(
           tenantId: ctx.tenantId,
           type: "DOCUMENT",
         },
-        select: { id: true, content: true, plainText: true },
+        select: { id: true, content: true, plainText: true, version: true },
       });
 
       // Capture old plainText for summary change detection
@@ -113,11 +127,39 @@ export const PUT = withTenant(
 
       let block;
       if (existing) {
-        // Update existing DOCUMENT block
-        block = await prisma.block.update({
-          where: { id: existing.id },
-          data: { content },
-        });
+        if (expectedVersion !== undefined) {
+          // Conditional, version-checked update. updateMany only writes rows
+          // matching BOTH the id and the expected version; a count of 0 means
+          // the version moved on under us → conflict.
+          const result = await prisma.block.updateMany({
+            where: {
+              id: existing.id,
+              tenantId: ctx.tenantId,
+              version: expectedVersion,
+            },
+            data: { content, version: { increment: 1 } },
+          });
+
+          if (result.count === 0) {
+            return errorResponse(
+              "CONFLICT",
+              "This page was modified elsewhere since you last loaded it. Reload to get the latest version before saving again.",
+              undefined,
+              409
+            );
+          }
+
+          block = await prisma.block.findFirstOrThrow({
+            where: { id: existing.id },
+          });
+        } else {
+          // Legacy last-write-wins path (no version supplied). Still advance
+          // the version so version-aware clients stay in sync.
+          block = await prisma.block.update({
+            where: { id: existing.id },
+            data: { content, version: { increment: 1 } },
+          });
+        }
       } else {
         // Create new DOCUMENT block
         block = await prisma.block.create({

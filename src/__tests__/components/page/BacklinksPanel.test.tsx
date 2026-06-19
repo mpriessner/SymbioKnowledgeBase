@@ -104,7 +104,7 @@ describe("BacklinksPanel", () => {
       },
       isLoading: false,
       error: null,
-    } as ReturnType<typeof useBacklinks>);
+    } as unknown as ReturnType<typeof useBacklinks>);
 
     render(<BacklinksPanel pageId="test-page" />, {
       wrapper: createWrapper(),

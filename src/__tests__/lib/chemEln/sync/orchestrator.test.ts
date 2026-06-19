@@ -621,13 +621,26 @@ describe("BatchOrchestrator", () => {
 
       const report = await orchestrator.run(data);
 
-      // Pass 1: 2 chemicals + 2 reaction types + 2 researchers + 1 substrate = 7
-      // Pass 2: 3 experiments
-      // Pass 3: 2 chemicals (aggregation)
-      // Total = 12
-      expect(report.totalCreated).toBe(12);
+      // The orchestrator runs three passes (see orchestrator.ts):
+      //   Pass 1 "Entities":     all entity pages so wikilinks resolve
+      //   Pass 2 "Experiments":  experiment pages
+      //   Pass 3 "Aggregation":  ALL entity pages re-generated with cross-refs
+      // Derive the expected counts from the input so they don't drift.
+      const entityCount =
+        data.chemicals.length +
+        data.reactionTypes.length +
+        data.researchers.length +
+        data.substrateClasses.length; // 2 + 2 + 2 + 1 = 7
+      const experimentCount = data.experiments.length; // 3
+      // Pass 1 (entities) + Pass 2 (experiments) + Pass 3 (entities again)
+      const expectedCreated = entityCount + experimentCount + entityCount; // 17
+
+      expect(report.totalCreated).toBe(expectedCreated);
       expect(report.totalFailed).toBe(0);
       expect(report.passes).toHaveLength(3);
+      expect(report.passes[0].created).toBe(entityCount);
+      expect(report.passes[1].created).toBe(experimentCount);
+      expect(report.passes[2].created).toBe(entityCount);
     });
 
     it("should resolve researcher names via the resolver for experiments", async () => {

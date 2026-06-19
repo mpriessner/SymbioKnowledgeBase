@@ -1,25 +1,31 @@
 import { NextRequest } from "next/server";
 import { withTenant } from "@/lib/auth/withTenant";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { TenantContext } from "@/types/auth";
+import { z } from "zod";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB (Whisper limit)
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 10;
 const RATE_WINDOW_MS = 60 * 1000;
 
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-  if (entry.count >= RATE_LIMIT) return false;
-  entry.count++;
-  return true;
-}
+/**
+ * Allowed model id shape — same character class the AI chat/generate-page routes use.
+ * Bounded length keeps a hostile multipart field from carrying arbitrary data.
+ */
+const MODEL_ID_PATTERN = /^[A-Za-z0-9._\-:]+$/;
+
+/**
+ * Validation for the multipart fields (the audio file itself is validated separately).
+ * `provider` is an allowlist enum so unknown providers are rejected; `apiKey` is
+ * length-bounded; `model` is regex-constrained.
+ */
+const transcribeFieldsSchema = z.object({
+  provider: z.enum(["openai-whisper", "elevenlabs", "assemblyai"]).default("openai-whisper"),
+  model: z.string().max(100).regex(MODEL_ID_PATTERN, "Invalid model identifier").default("whisper-1"),
+  apiKey: z.string().min(1).max(500).optional(),
+});
 
 async function transcribeWithWhisper(file: Blob, apiKey: string, model: string): Promise<string> {
   const whisperForm = new FormData();
@@ -37,8 +43,8 @@ async function transcribeWithWhisper(file: Blob, apiKey: string, model: string):
   );
 
   if (!response.ok) {
-    const errText = await response.text();
-    console.error("[Transcribe] Whisper error:", response.status, errText);
+    // Status only — never read/log the raw provider error body.
+    console.error("[Transcribe] Whisper upstream error: HTTP", response.status);
     throw new Error("Transcription failed. Check your API key or try again.");
   }
 
@@ -60,8 +66,7 @@ async function transcribeWithElevenLabs(file: Blob, apiKey: string): Promise<str
   );
 
   if (!response.ok) {
-    const errText = await response.text();
-    console.error("[Transcribe] ElevenLabs error:", response.status, errText);
+    console.error("[Transcribe] ElevenLabs upstream error: HTTP", response.status);
     throw new Error("ElevenLabs transcription failed. Check your API key or try again.");
   }
 
@@ -126,7 +131,9 @@ async function transcribeWithAssemblyAI(file: Blob, apiKey: string, model: strin
       return (result.text || "").trim();
     }
     if (result.status === "error") {
-      throw new Error(result.error || "AssemblyAI transcription failed.");
+      // Don't propagate the provider's raw error string to the client/logs.
+      console.error("[Transcribe] AssemblyAI reported transcription error");
+      throw new Error("AssemblyAI transcription failed.");
     }
   }
 
@@ -135,20 +142,32 @@ async function transcribeWithAssemblyAI(file: Blob, apiKey: string, model: strin
 
 export const POST = withTenant(
   async (req: NextRequest, ctx: TenantContext) => {
-    if (!checkRateLimit(ctx.userId)) {
+    if (!checkRateLimit(`ai:transcribe:${ctx.tenantId}`, { limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS }).allowed) {
       return errorResponse("RATE_LIMITED", "Too many requests. Please wait.", undefined, 429);
     }
 
     try {
       const formData = await req.formData();
       const file = formData.get("file");
-      const provider = (formData.get("provider") as string) || "openai-whisper";
-      const model = (formData.get("model") as string) || "whisper-1";
-      const clientApiKey = formData.get("apiKey") as string | null;
 
       if (!file || !(file instanceof Blob)) {
         return errorResponse("VALIDATION_ERROR", "No audio file provided", undefined, 400);
       }
+
+      // Validate the string fields (provider allowlist, model regex, bounded apiKey).
+      // Empty-string form fields are treated as absent so defaults apply.
+      const rawProvider = formData.get("provider");
+      const rawModel = formData.get("model");
+      const rawApiKey = formData.get("apiKey");
+      const parsedFields = transcribeFieldsSchema.safeParse({
+        provider: typeof rawProvider === "string" && rawProvider ? rawProvider : undefined,
+        model: typeof rawModel === "string" && rawModel ? rawModel : undefined,
+        apiKey: typeof rawApiKey === "string" && rawApiKey ? rawApiKey : undefined,
+      });
+      if (!parsedFields.success) {
+        return errorResponse("VALIDATION_ERROR", "Invalid transcription request", undefined, 400);
+      }
+      const { provider, model, apiKey: clientApiKey } = parsedFields.data;
 
       // Validate size
       if (file.size > MAX_FILE_SIZE) {

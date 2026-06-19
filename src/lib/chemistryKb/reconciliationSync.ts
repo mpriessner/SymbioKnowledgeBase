@@ -6,6 +6,7 @@
  * This module compares ExpTube's experiment list with existing SKB pages and reconciles.
  */
 
+import { stringify as yamlStringify } from "yaml";
 import { prisma } from "@/lib/db";
 import {
   findExperimentByElnId,
@@ -15,6 +16,16 @@ import {
 import { setupChemistryKbHierarchy, type HierarchyResult } from "./setupHierarchy";
 import { markdownToTiptap } from "@/lib/markdown/deserializer";
 import { processAgentWikilinks } from "@/lib/agent/wikilinks";
+import type { Prisma } from "@/generated/prisma/client";
+
+/** Postgres unique-constraint violation surfaced by Prisma. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: string }).code === "P2002"
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,16 +135,20 @@ function generateExperimentKbMarkdown(
 
   const lines: string[] = [];
 
+  // Frontmatter via the yaml library so quotes/colons/newlines in field values
+  // are escaped safely rather than corrupting the YAML.
+  const frontmatter: Record<string, unknown> = {
+    title,
+    eln_id: elnId,
+  };
+  if (researcher) frontmatter.researcher = researcher;
+  frontmatter.date = date;
+  frontmatter.status = status;
+  if (reactionType) frontmatter.reaction_type = reactionType;
+  frontmatter.tags = [`eln:${elnId}`, "synced"];
+
   lines.push("---");
-  lines.push(`title: "${title}"`);
-  lines.push(`eln_id: "${elnId}"`);
-  if (researcher) lines.push(`researcher: "${researcher}"`);
-  lines.push(`date: "${date}"`);
-  lines.push(`status: "${status}"`);
-  if (reactionType) lines.push(`reaction_type: "${reactionType}"`);
-  lines.push("tags:");
-  lines.push(`  - "eln:${elnId}"`);
-  lines.push(`  - "synced"`);
+  lines.push(yamlStringify(frontmatter).trimEnd());
   lines.push("---");
   lines.push("");
   lines.push(`# ${title}`);
@@ -200,29 +215,48 @@ async function createExperimentPage(
     _max: { position: true },
   });
 
-  const page = await prisma.page.create({
-    data: {
-      tenantId,
-      title,
-      icon: "\u{1F9EA}",
-      oneLiner: experiment.summary || null,
-      parentId,
-      position: (maxPosition._max.position ?? -1) + 1,
-      spaceType: "TEAM",
-      teamspaceId: teamspaceId || undefined,
-    },
-  });
+  // Page + content block are created atomically so a block failure can't leave
+  // a contentless page. The unique (tenantId, externalId) index turns a
+  // concurrent reconcile/ingest race into a P2002 we treat as idempotent.
+  let page: { id: string };
+  try {
+    page = await prisma.$transaction(async (tx) => {
+      const created = await tx.page.create({
+        data: {
+          tenantId,
+          externalId: elnId,
+          title,
+          icon: "\u{1F9EA}",
+          oneLiner: experiment.summary || null,
+          parentId,
+          position: (maxPosition._max.position ?? -1) + 1,
+          spaceType: "TEAM",
+          teamspaceId: teamspaceId || undefined,
+        },
+      });
 
-  await prisma.block.create({
-    data: {
-      tenantId,
-      pageId: page.id,
-      type: "DOCUMENT",
-      content: tiptap as unknown as import("@/generated/prisma/client").Prisma.InputJsonValue,
-      position: 0,
-    },
-  });
+      await tx.block.create({
+        data: {
+          tenantId,
+          pageId: created.id,
+          type: "DOCUMENT",
+          content: tiptap as unknown as Prisma.InputJsonValue,
+          position: 0,
+        },
+      });
 
+      return created;
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      const existing = await findExperimentByElnId(tenantId, elnId);
+      if (existing) return existing.id;
+    }
+    throw error;
+  }
+
+  // Wikilinks resolved outside the transaction (reconcilable; must not roll back
+  // the durable page+block record on a link-resolution error).
   await processAgentWikilinks(page.id, tenantId, tiptap);
 
   return page.id;

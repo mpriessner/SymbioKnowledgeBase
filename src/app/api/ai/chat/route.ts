@@ -1,8 +1,23 @@
 import { NextRequest } from "next/server";
 import { withTenant } from "@/lib/auth/withTenant";
 import { errorResponse } from "@/lib/apiResponse";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { TenantContext } from "@/types/auth";
 import { z } from "zod";
+
+/**
+ * Allowed shape for a provider model id. Restricts to the characters real model
+ * identifiers use (alphanumerics, dot, underscore, dash, colon) so the value can be
+ * safely interpolated into a provider URL path without enabling request-splitting.
+ */
+const MODEL_ID_PATTERN = /^[A-Za-z0-9._\-:]+$/;
+
+/**
+ * Per-request output ceiling. Caps spend per call across every provider.
+ * FOLLOW-UP: a per-tenant DAILY token/cost budget (persisted, shared across instances)
+ * is the durable spend control — this constant only bounds a single request.
+ */
+const MAX_OUTPUT_TOKENS = 4096;
 
 /**
  * Provider API endpoints
@@ -35,35 +50,14 @@ const chatRequestSchema = z.object({
     content: z.string().min(1),
   })).min(1).max(50),
   context: z.string().max(50000).optional(),
-  model: z.string().max(100).optional(),
+  model: z.string().max(100).regex(MODEL_ID_PATTERN, "Invalid model identifier").optional(),
   provider: z.enum(["openai", "anthropic", "google"]).optional(),
   apiKey: z.string().max(500).optional(),
   stream: z.boolean().optional(),
 });
 
-/**
- * Simple in-memory rate limiter.
- */
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 30;
 const RATE_WINDOW_MS = 60 * 1000;
-
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId);
-
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-
-  if (entry.count >= RATE_LIMIT) {
-    return false;
-  }
-
-  entry.count++;
-  return true;
-}
 
 /**
  * Build OpenAI-compatible messages array
@@ -114,14 +108,15 @@ async function streamOpenAI(
       model,
       messages: openAIMessages,
       stream: true,
-      max_tokens: 4096,
+      max_tokens: MAX_OUTPUT_TOKENS,
       temperature: 0.7,
     }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[AI Chat] OpenAI error: ${response.status} - ${errorText}`);
+    // Do not log or surface the provider's error body — it can echo
+    // credential-adjacent data. Status only.
+    console.error(`[AI Chat] OpenAI upstream error: HTTP ${response.status}`);
     throw new Error(`OpenAI API error: ${response.status}`);
   }
 
@@ -212,13 +207,13 @@ async function streamAnthropic(
       system: systemPrompt,
       messages: anthropicMessages,
       stream: true,
-      max_tokens: 4096,
+      max_tokens: MAX_OUTPUT_TOKENS,
     }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[AI Chat] Anthropic error: ${response.status} - ${errorText}`);
+    // Status only — never log the raw provider body.
+    console.error(`[AI Chat] Anthropic upstream error: HTTP ${response.status}`);
     throw new Error(`Anthropic API error: ${response.status}`);
   }
 
@@ -296,26 +291,29 @@ async function streamGoogle(
     parts: [{ text: m.content }],
   }));
 
-  const url = `${PROVIDER_ENDPOINTS.google}/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
+  // Pass the API key via header, never the query string (keys in the URL leak
+  // into access logs and Referer). Model is regex-validated upstream.
+  const url = `${PROVIDER_ENDPOINTS.google}/${model}:streamGenerateContent?alt=sse`;
 
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
     },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: systemInstruction }] },
       contents: geminiContents,
       generationConfig: {
-        maxOutputTokens: 4096,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
         temperature: 0.7,
       },
     }),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[AI Chat] Google error: ${response.status} - ${errorText}`);
+    // Status only — never log the raw provider body.
+    console.error(`[AI Chat] Google upstream error: HTTP ${response.status}`);
     throw new Error(`Google API error: ${response.status}`);
   }
 
@@ -380,8 +378,8 @@ async function streamGoogle(
  */
 export const POST = withTenant(
   async (req: NextRequest, ctx: TenantContext) => {
-    // Rate limiting
-    if (!checkRateLimit(ctx.userId)) {
+    // Rate limiting — shared abstraction, scoped per tenant + route.
+    if (!checkRateLimit(`ai:chat:${ctx.tenantId}`, { limit: RATE_LIMIT, windowMs: RATE_WINDOW_MS }).allowed) {
       return errorResponse(
         "RATE_LIMITED",
         "Too many requests. Please wait a moment.",

@@ -4,6 +4,41 @@ import { MIRROR_ROOT, META_FILENAME } from "./config";
 import type { SyncMetadata } from "./types";
 
 /**
+ * Resolve a user-supplied path *inside* a tenant's mirror root and confine it
+ * to that root.
+ *
+ * Two traversal bugs are guarded here:
+ *   1. The previous guard used `resolved.startsWith(tenantRoot)` with no
+ *      trailing separator, so tenant "abc" matched sibling "abcd/..." and a
+ *      caller could read another tenant's files. We require the resolved path
+ *      to equal the root OR sit beneath `tenantRoot + sep`.
+ *   2. Any user path segment equal to ".." is rejected before joining, so a
+ *      crafted "../../etc/passwd" cannot climb out even if path normalization
+ *      would otherwise collapse it.
+ *
+ * Throws `"Path traversal detected"` on violation — the API routes match this
+ * exact message to return a 400, so it must not change.
+ */
+function resolveTenantPath(tenantId: string, userPath: string): string {
+  // Reject explicit parent-directory segments anywhere in the user path,
+  // independent of OS separator (handles "..", "a/../b", "a\..\b").
+  const segments = userPath.split(/[/\\]+/);
+  if (segments.some((seg) => seg === "..")) {
+    throw new Error("Path traversal detected");
+  }
+
+  const tenantRoot = path.resolve(MIRROR_ROOT, tenantId);
+  const absPath = path.join(tenantRoot, userPath);
+  const resolved = path.resolve(absPath);
+
+  if (resolved !== tenantRoot && !resolved.startsWith(tenantRoot + path.sep)) {
+    throw new Error("Path traversal detected");
+  }
+
+  return resolved;
+}
+
+/**
  * List files in the mirror directory for a tenant.
  * Returns relative paths within the tenant root.
  */
@@ -18,7 +53,14 @@ export async function listMirrorFiles(
     size?: number;
   }>
 > {
-  const dirPath = path.join(MIRROR_ROOT, tenantId, subPath);
+  // Confine the user-supplied subPath to the tenant root (was previously
+  // joined with no guard, allowing ?path=../<otherTenant> traversal).
+  let dirPath: string;
+  try {
+    dirPath = resolveTenantPath(tenantId, subPath);
+  } catch {
+    return [];
+  }
 
   let entries;
   try {
@@ -67,17 +109,11 @@ export async function readMirrorFile(
   tenantId: string,
   filePath: string
 ): Promise<string | null> {
-  const absPath = path.join(MIRROR_ROOT, tenantId, filePath);
-
-  // Security: ensure the resolved path is within the tenant root
-  const tenantRoot = path.join(MIRROR_ROOT, tenantId);
-  const resolved = path.resolve(absPath);
-  if (!resolved.startsWith(tenantRoot)) {
-    throw new Error("Path traversal detected");
-  }
+  // Throws "Path traversal detected" on escape (caught by the route → 400).
+  const resolved = resolveTenantPath(tenantId, filePath);
 
   try {
-    return await fs.readFile(absPath, "utf-8");
+    return await fs.readFile(resolved, "utf-8");
   } catch {
     return null;
   }
@@ -91,17 +127,11 @@ export async function writeMirrorFile(
   filePath: string,
   content: string
 ): Promise<void> {
-  const absPath = path.join(MIRROR_ROOT, tenantId, filePath);
+  // Throws "Path traversal detected" on escape (caught by the route → 400).
+  const resolved = resolveTenantPath(tenantId, filePath);
 
-  // Security: ensure the resolved path is within the tenant root
-  const tenantRoot = path.join(MIRROR_ROOT, tenantId);
-  const resolved = path.resolve(absPath);
-  if (!resolved.startsWith(tenantRoot)) {
-    throw new Error("Path traversal detected");
-  }
-
-  await fs.mkdir(path.dirname(absPath), { recursive: true });
-  await fs.writeFile(absPath, content, "utf-8");
+  await fs.mkdir(path.dirname(resolved), { recursive: true });
+  await fs.writeFile(resolved, content, "utf-8");
 }
 
 /**
@@ -111,16 +141,11 @@ export async function deleteMirrorFile(
   tenantId: string,
   filePath: string
 ): Promise<boolean> {
-  const absPath = path.join(MIRROR_ROOT, tenantId, filePath);
-
-  const tenantRoot = path.join(MIRROR_ROOT, tenantId);
-  const resolved = path.resolve(absPath);
-  if (!resolved.startsWith(tenantRoot)) {
-    throw new Error("Path traversal detected");
-  }
+  // Throws "Path traversal detected" on escape (caught by the route → 400).
+  const resolved = resolveTenantPath(tenantId, filePath);
 
   try {
-    await fs.unlink(absPath);
+    await fs.unlink(resolved);
     return true;
   } catch {
     return false;
@@ -142,7 +167,7 @@ export async function searchMirrorFiles(
     excerpts: string[];
   }>
 > {
-  const tenantRoot = path.join(MIRROR_ROOT, tenantId);
+  const tenantRoot = path.resolve(MIRROR_ROOT, tenantId);
   const metaPath = path.join(tenantRoot, META_FILENAME);
 
   // Load metadata to map files to page IDs
@@ -166,9 +191,19 @@ export async function searchMirrorFiles(
   async function walkDir(dir: string): Promise<void> {
     if (results.length >= maxResults) return;
 
+    // Confinement: never read or recurse outside the tenant root, even if a
+    // directory entry resolves elsewhere (e.g. a symlink).
+    const resolvedDir = path.resolve(dir);
+    if (
+      resolvedDir !== tenantRoot &&
+      !resolvedDir.startsWith(tenantRoot + path.sep)
+    ) {
+      return;
+    }
+
     let entries;
     try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
+      entries = await fs.readdir(resolvedDir, { withFileTypes: true });
     } catch {
       return;
     }
@@ -177,7 +212,7 @@ export async function searchMirrorFiles(
       if (results.length >= maxResults) return;
       if (entry.name.startsWith(".")) continue;
 
-      const fullPath = path.join(dir, entry.name);
+      const fullPath = path.join(resolvedDir, entry.name);
 
       if (entry.isDirectory()) {
         await walkDir(fullPath);
@@ -236,7 +271,7 @@ export async function getMirrorTree(
   tenantId: string,
   maxDepth: number = 5
 ): Promise<TreeNode[]> {
-  const tenantRoot = path.join(MIRROR_ROOT, tenantId);
+  const tenantRoot = path.resolve(MIRROR_ROOT, tenantId);
   return buildTree(tenantRoot, "", maxDepth, 0);
 }
 
@@ -255,7 +290,15 @@ async function buildTree(
 ): Promise<TreeNode[]> {
   if (currentDepth >= maxDepth) return [];
 
-  const fullPath = path.join(basePath, relativePath);
+  const fullPath = path.resolve(basePath, relativePath);
+
+  // Confinement: never recurse outside the tenant root (basePath), even if a
+  // directory entry resolves elsewhere (e.g. a symlink).
+  const root = path.resolve(basePath);
+  if (fullPath !== root && !fullPath.startsWith(root + path.sep)) {
+    return [];
+  }
+
   let entries;
   try {
     entries = await fs.readdir(fullPath, { withFileTypes: true });

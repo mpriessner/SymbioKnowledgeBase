@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sanitizeTiptapDoc } from "@/lib/editor/sanitizeTiptap";
 
 // Block types supported by the editor
 export const BlockType = z.enum([
@@ -39,6 +40,15 @@ const jsonContent = z
       return JSON.stringify(val).length <= MAX_CONTENT_SIZE;
     },
     { message: `Block content must not exceed ${MAX_CONTENT_SIZE} bytes` }
+  )
+  // Stored-XSS defense: neutralize dangerous URL attributes (javascript:,
+  // data:, vbscript:, …) on link/bookmark/image nodes before the document is
+  // persisted, so the public read-only /shared/[token] render path can never
+  // serve attacker-controlled script. Runs after the size guard so the limit
+  // applies to the original payload.
+  .transform(
+    (val): Record<string, unknown> =>
+      sanitizeTiptapDoc(val) as Record<string, unknown>
   );
 
 // Schema for creating a new block

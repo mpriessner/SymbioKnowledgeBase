@@ -17,7 +17,7 @@ describe("WikilinkExtension", () => {
 
   it("should define pageId, pageName, and displayText attributes", () => {
     const attrs = WikilinkExtension.config.addAttributes?.call(
-      WikilinkExtension
+      WikilinkExtension as never
     );
     expect(attrs).toHaveProperty("pageId");
     expect(attrs).toHaveProperty("pageName");

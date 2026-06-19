@@ -49,6 +49,7 @@ export const GET = withTenant(
         where: {
           id: idParsed.data,
           tenantId: context.tenantId,
+          deletedAt: null,
         },
         ...(wantsMarkdown ? { include: { blocks: { orderBy: { position: "asc" } } } } : {}),
       });
@@ -304,11 +305,24 @@ export const DELETE = withTenant(
       // Mark wikilinks as deleted and clean up page_links
       await markWikilinksAsDeleted(idParsed.data, context.tenantId);
 
-      await prisma.page.delete({
-        where: { id: idParsed.data },
+      // Recoverable soft delete instead of an irreversible hard delete: stamp
+      // deletedAt/deletedBy inside a transaction so the page (and all its
+      // blocks/versions) survive and can be restored. The previous hard
+      // `page.delete` cascaded blocks AND every DocumentVersion away, leaving
+      // nothing to recover. Done transactionally for atomicity.
+      await prisma.$transaction(async (tx) => {
+        await tx.page.update({
+          where: { id: idParsed.data },
+          data: {
+            deletedAt: new Date(),
+            deletedBy: context.userId,
+          },
+        });
       });
 
-      // Remove .md file from filesystem mirror (fire-and-forget)
+      // Remove .md file from filesystem mirror (fire-and-forget). The DB row
+      // remains the recoverable source of truth; the mirror is regenerated on
+      // restore.
       deletePageFile(context.tenantId, idParsed.data).catch((err) =>
         console.error("Sync delete failed:", err)
       );

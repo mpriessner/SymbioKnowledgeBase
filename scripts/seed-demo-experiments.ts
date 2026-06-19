@@ -1,8 +1,12 @@
 /**
- * Seed Script: Demo Cup Experiments
+ * Seed Script: Demo Cup Experiments (v2)
  *
- * Inserts the two cup-manipulation experiments from the SciSymbioLens
- * voice agent into the Chemistry KB as TEAM space pages.
+ * Seeds 6 pages into the Knowledge Base under "Demo Experiments":
+ *   - EXP-CUP-001 (EN + DE)
+ *   - EXP-CUP-002 (EN + DE)
+ *   - Voice Agent Prompt v5.1 (EN + DE)
+ *
+ * Reads content from data/DEMO_EXPERIMENTS/*.md files.
  *
  * Usage:
  *   npx tsx scripts/seed-demo-experiments.ts
@@ -10,6 +14,8 @@
  */
 
 import "dotenv/config";
+import { readFileSync } from "fs";
+import { join } from "path";
 import {
   PrismaClient,
   BlockType,
@@ -17,266 +23,269 @@ import {
 } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-// DATABASE_URL must be supplied via the environment (no committed credential fallback).
-const DATABASE_URL = process.env.DATABASE_URL;
-if (!DATABASE_URL) {
-  console.error("DATABASE_URL is required (set it in your .env / environment)");
-  process.exit(1);
-}
+const DATABASE_URL =
+  process.env.DATABASE_URL ||
+  "postgresql://symbio:symbio_dev_password@localhost:5432/symbio?schema=public";
 
 const adapter = new PrismaPg({ connectionString: DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
-// Use the same tenant/user from the demo seed
 const TENANT_ID = "00000000-0000-4000-a000-000000000001";
-const ADMIN_USER_ID = "00000000-0000-4000-a000-000000000002";
+
+const DATA_DIR = join(__dirname, "..", "data", "DEMO_EXPERIMENTS");
 
 // Fixed UUIDs for idempotent seeding
 const PAGE_IDS = {
   experimentsCategory: "d2000000-0000-4000-a000-000000000001",
-  experiment1: "d2000000-0000-4000-a000-000000000010",
-  experiment2: "d2000000-0000-4000-a000-000000000011",
+  experiment1_en: "d2000000-0000-4000-a000-000000000010",
+  experiment1_de: "d2000000-0000-4000-a000-000000000012",
+  experiment2_en: "d2000000-0000-4000-a000-000000000011",
+  experiment2_de: "d2000000-0000-4000-a000-000000000013",
+  voicePrompt_en: "d2000000-0000-4000-a000-000000000020",
+  voicePrompt_de: "d2000000-0000-4000-a000-000000000021",
 };
 
 const BLOCK_IDS = {
-  experiment1: "d2100000-0000-4000-a000-000000000010",
-  experiment2: "d2100000-0000-4000-a000-000000000011",
+  experiment1_en: "d2100000-0000-4000-a000-000000000010",
+  experiment1_de: "d2100000-0000-4000-a000-000000000012",
+  experiment2_en: "d2100000-0000-4000-a000-000000000011",
+  experiment2_de: "d2100000-0000-4000-a000-000000000013",
+  voicePrompt_en: "d2100000-0000-4000-a000-000000000020",
+  voicePrompt_de: "d2100000-0000-4000-a000-000000000021",
 };
 
-// ─── TipTap Document Builders ─────────────────────────────────────────────
+// ─── Markdown to TipTap Converter ────────────────────────────────────────
 
-function text(t: string) {
+function textNode(t: string) {
   return { type: "text", text: t };
 }
 
+function boldText(t: string) {
+  return { type: "text", text: t, marks: [{ type: "bold" }] };
+}
+
 function paragraph(...content: unknown[]) {
+  if (content.length === 0) return { type: "paragraph" };
   return { type: "paragraph", content };
 }
 
 function heading(level: number, t: string) {
-  return { type: "heading", attrs: { level }, content: [text(t)] };
+  return { type: "heading", attrs: { level }, content: [textNode(t)] };
 }
 
-function bulletList(...items: string[]) {
+function bulletList(...items: unknown[][]) {
   return {
     type: "bulletList",
-    content: items.map((item) => ({
+    content: items.map((content) => ({
       type: "listItem",
-      content: [paragraph(text(item))],
+      content: [{ type: "paragraph", content }],
     })),
   };
 }
 
-function orderedList(...items: string[]) {
+function orderedList(...items: unknown[][]) {
   return {
     type: "orderedList",
-    content: items.map((item) => ({
+    content: items.map((content) => ({
       type: "listItem",
-      content: [paragraph(text(item))],
+      content: [{ type: "paragraph", content }],
     })),
   };
 }
 
-function doc(...content: unknown[]) {
-  return { type: "doc", content };
+function codeBlock(code: string, language?: string) {
+  return {
+    type: "codeBlock",
+    attrs: { language: language || null },
+    content: [textNode(code)],
+  };
 }
 
 function divider() {
   return { type: "horizontalRule" };
 }
 
-// ─── Experiment Content ───────────────────────────────────────────────────
+function tableNode(rows: string[][]) {
+  return {
+    type: "table",
+    content: rows.map((cells, rowIdx) => ({
+      type: "tableRow",
+      content: cells.map((cell) => ({
+        type: rowIdx === 0 ? "tableHeader" : "tableCell",
+        content: [paragraph(textNode(cell))],
+      })),
+    })),
+  };
+}
 
-const experiment1Content = doc(
-  heading(1, "EXP-CUP-001: Cup Manipulation — Experiment 1"),
-  paragraph(text("A structured cup manipulation task on a 3×3 grid. Participant follows 12 sequential steps involving cup placement, swaps, stacking, and object tracking.")),
+/**
+ * Parse a markdown string into a TipTap JSON document.
+ * Handles: headings, bullet lists, ordered lists, paragraphs,
+ * horizontal rules, code blocks, and simple tables.
+ */
+function markdownToTiptap(md: string) {
+  const lines = md.split("\n");
+  const content: unknown[] = [];
+  let i = 0;
 
-  heading(2, "Starting Position"),
-  bulletList(
-    "Cup 3 → A1",
-    "Cup 5 → A3",
-    "Cup 1 → B2",
-    "Cup 4 → C1",
-    "Cup 2 → C3"
-  ),
+  while (i < lines.length) {
+    const line = lines[i];
 
-  heading(2, "Procedures"),
-  orderedList(
-    "Place the ring under Cup 1 at B2. Don't look under any cup from now on.",
-    "Move Cup 5 from A3 to B1.",
-    "Swap Cup 3 with Cup 4. Find both on the grid.",
-    "Move the cup at C3 to A3.",
-    "Stack Cup 2 on Cup 1. Find Cup 2, place it upside-down on Cup 1.",
-    "Place the red die on Cup 5. Find Cup 5 first.",
-    "Move the stack at B2 to C3. Both cups together.",
-    "Swap the cup at A1 with the cup at C1.",
-    "Remove the top cup from C3, place it at A2.",
-    "Swap Cup 1 with Cup 3. Find both on the grid.",
-    "Move the cup at B1 to B2.",
-    "Swap Cup 4 with Cup 2. Find both on the grid."
-  ),
+    // Blank line
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
 
-  heading(2, "Materials"),
-  bulletList(
-    "5 numbered cups (Cup 1–5)",
-    "1 ring (hidden object)",
-    "1 red die",
-    "3×3 grid (Rows: A/B/C, Columns: 1/2/3)"
-  ),
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      content.push(divider());
+      i++;
+      continue;
+    }
 
-  heading(2, "Best Practices"),
-  bulletList(
-    "Read one step at a time and wait for confirmation before proceeding",
-    "Never reveal the ring location during the experiment",
-    "Never reorder or skip steps",
-    "If participant asks about cup location, answer from internal grid state",
-    "Allow participant to request pace changes (e.g., two steps at a time)"
-  ),
+    // Code block
+    if (line.trim().startsWith("```")) {
+      const lang = line.trim().slice(3).trim() || undefined;
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      content.push(codeBlock(codeLines.join("\n"), lang));
+      i++; // skip closing ```
+      continue;
+    }
 
-  heading(2, "Common Pitfalls"),
-  bulletList(
-    "Participants may lose track of stacked cups during step 5 and 7",
-    "Swaps (steps 3, 8, 10, 12) are the most error-prone — participant may confuse cup numbers with grid positions",
-    "Participants sometimes try to look under cups after step 1"
-  ),
+    // Table
+    if (line.includes("|") && line.trim().startsWith("|")) {
+      const tableRows: string[][] = [];
+      while (i < lines.length && lines[i].includes("|") && lines[i].trim().startsWith("|")) {
+        const row = lines[i]
+          .trim()
+          .replace(/^\|/, "")
+          .replace(/\|$/, "")
+          .split("|")
+          .map((c) => c.trim());
+        // Skip separator rows like |---|---|
+        if (!row.every((c) => /^[-:]+$/.test(c))) {
+          tableRows.push(row);
+        }
+        i++;
+      }
+      if (tableRows.length > 0) {
+        content.push(tableNode(tableRows));
+      }
+      continue;
+    }
 
-  divider(),
-  paragraph(text("Grid: Rows A(top) B(mid) C(bottom), Columns 1(left) 2(center) 3(right)."))
-);
+    // Heading
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      content.push(heading(headingMatch[1].length, headingMatch[2]));
+      i++;
+      continue;
+    }
 
-const experiment2Content = doc(
-  heading(1, "EXP-CUP-002: Cup Manipulation — Experiment 2"),
-  paragraph(text("A structured cup manipulation task on a 3×3 grid. Variant 2 with different starting positions and step sequence.")),
+    // Ordered list
+    if (/^\d+\.\s/.test(line.trim())) {
+      const items: unknown[][] = [];
+      while (i < lines.length && /^\d+\.\s/.test(lines[i].trim())) {
+        const itemText = lines[i].trim().replace(/^\d+\.\s+/, "");
+        items.push(parseInlineText(itemText));
+        i++;
+      }
+      content.push(orderedList(...items));
+      continue;
+    }
 
-  heading(2, "Starting Position"),
-  bulletList(
-    "Cup 2 → A2",
-    "Cup 4 → A3",
-    "Cup 5 → B1",
-    "Cup 1 → C1",
-    "Cup 3 → C2"
-  ),
+    // Bullet list (- or *)
+    if (/^[-*]\s/.test(line.trim())) {
+      const items: unknown[][] = [];
+      while (i < lines.length && /^[-*]\s/.test(lines[i].trim())) {
+        const itemText = lines[i].trim().replace(/^[-*]\s+/, "");
+        items.push(parseInlineText(itemText));
+        i++;
+      }
+      content.push(bulletList(...items));
+      continue;
+    }
 
-  heading(2, "Procedures"),
-  orderedList(
-    "Place the ring under Cup 5 at B1. Don't look under any cup from now on.",
-    "Move Cup 4 from A3 to B3.",
-    "Swap Cup 2 with Cup 1. Find both on the grid.",
-    "Move the cup at C2 to A1.",
-    "Stack Cup 3 on Cup 5. Find Cup 3, place it upside-down on Cup 5.",
-    "Place the red die on Cup 4. Find Cup 4 first.",
-    "Move the stack at B1 to C3. Both cups together.",
-    "Swap the cup at A2 with the cup at C1.",
-    "Remove the top cup from C3, place it at A3.",
-    "Swap Cup 5 with Cup 2. Find both on the grid.",
-    "Move the cup at B3 to B2.",
-    "Swap Cup 1 with Cup 3. Find both on the grid."
-  ),
+    // Regular paragraph
+    content.push(paragraph(...parseInlineText(line)));
+    i++;
+  }
 
-  heading(2, "Materials"),
-  bulletList(
-    "5 numbered cups (Cup 1–5)",
-    "1 ring (hidden object)",
-    "1 red die",
-    "3×3 grid (Rows: A/B/C, Columns: 1/2/3)"
-  ),
+  return { type: "doc", content };
+}
 
-  heading(2, "Best Practices"),
-  bulletList(
-    "Read one step at a time and wait for confirmation before proceeding",
-    "Never reveal the ring location during the experiment",
-    "Never reorder or skip steps",
-    "If participant asks about cup location, answer from internal grid state",
-    "Allow participant to request pace changes (e.g., two steps at a time)"
-  ),
+/**
+ * Parse inline markdown: **bold** segments.
+ */
+function parseInlineText(text: string): unknown[] {
+  const parts: unknown[] = [];
+  const regex = /\*\*(.+?)\*\*/g;
+  let lastIndex = 0;
+  let match;
 
-  heading(2, "Common Pitfalls"),
-  bulletList(
-    "Participants may lose track of stacked cups during step 5 and 7",
-    "Swaps (steps 3, 8, 10, 12) are the most error-prone — participant may confuse cup numbers with grid positions",
-    "Participants sometimes try to look under cups after step 1"
-  ),
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(textNode(text.slice(lastIndex, match.index)));
+    }
+    parts.push(boldText(match[1]));
+    lastIndex = match.index + match[0].length;
+  }
 
-  divider(),
-  paragraph(text("Grid: Rows A(top) B(mid) C(bottom), Columns 1(left) 2(center) 3(right)."))
-);
+  if (lastIndex < text.length) {
+    parts.push(textNode(text.slice(lastIndex)));
+  }
 
-// ─── Plain text for search indexing ───────────────────────────────────────
+  if (parts.length === 0) {
+    parts.push(textNode(text));
+  }
 
-const experiment1PlainText = `EXP-CUP-001: Cup Manipulation — Experiment 1
-A structured cup manipulation task on a 3×3 grid. Participant follows 12 sequential steps involving cup placement, swaps, stacking, and object tracking.
+  return parts;
+}
 
-Starting Position:
-Cup 3 → A1, Cup 5 → A3, Cup 1 → B2, Cup 4 → C1, Cup 2 → C3
+// ─── Load files ──────────────────────────────────────────────────────────
 
-Procedures:
-1. Place the ring under Cup 1 at B2. Don't look under any cup from now on.
-2. Move Cup 5 from A3 to B1.
-3. Swap Cup 3 with Cup 4. Find both on the grid.
-4. Move the cup at C3 to A3.
-5. Stack Cup 2 on Cup 1. Find Cup 2, place it upside-down on Cup 1.
-6. Place the red die on Cup 5. Find Cup 5 first.
-7. Move the stack at B2 to C3. Both cups together.
-8. Swap the cup at A1 with the cup at C1.
-9. Remove the top cup from C3, place it at A2.
-10. Swap Cup 1 with Cup 3. Find both on the grid.
-11. Move the cup at B1 to B2.
-12. Swap Cup 4 with Cup 2. Find both on the grid.
+function loadFile(filename: string): string {
+  return readFileSync(join(DATA_DIR, filename), "utf-8");
+}
 
-Materials: 5 numbered cups, 1 ring, 1 red die, 3×3 grid.
-
-Best Practices:
-- Read one step at a time and wait for confirmation before proceeding
-- Never reveal the ring location during the experiment
-- Never reorder or skip steps
-
-Common Pitfalls:
-- Participants may lose track of stacked cups during step 5 and 7
-- Swaps are the most error-prone`;
-
-const experiment2PlainText = `EXP-CUP-002: Cup Manipulation — Experiment 2
-A structured cup manipulation task on a 3×3 grid. Variant 2 with different starting positions and step sequence.
-
-Starting Position:
-Cup 2 → A2, Cup 4 → A3, Cup 5 → B1, Cup 1 → C1, Cup 3 → C2
-
-Procedures:
-1. Place the ring under Cup 5 at B1. Don't look under any cup from now on.
-2. Move Cup 4 from A3 to B3.
-3. Swap Cup 2 with Cup 1. Find both on the grid.
-4. Move the cup at C2 to A1.
-5. Stack Cup 3 on Cup 5. Find Cup 3, place it upside-down on Cup 5.
-6. Place the red die on Cup 4. Find Cup 4 first.
-7. Move the stack at B1 to C3. Both cups together.
-8. Swap the cup at A2 with the cup at C1.
-9. Remove the top cup from C3, place it at A3.
-10. Swap Cup 5 with Cup 2. Find both on the grid.
-11. Move the cup at B3 to B2.
-12. Swap Cup 1 with Cup 3. Find both on the grid.
-
-Materials: 5 numbered cups, 1 ring, 1 red die, 3×3 grid.
-
-Best Practices:
-- Read one step at a time and wait for confirmation before proceeding
-- Never reveal the ring location during the experiment
-- Never reorder or skip steps
-
-Common Pitfalls:
-- Participants may lose track of stacked cups during step 5 and 7
-- Swaps are the most error-prone`;
-
-// ─── Main ─────────────────────────────────────────────────────────────────
+// ─── Main ────────────────────────────────────────────────────────────────
 
 async function main() {
   console.log(DRY_RUN ? "DRY RUN — no changes will be written\n" : "");
-  console.log("Seeding demo cup experiments...\n");
+  console.log("Seeding demo cup experiments (v2 — 6 pages)...\n");
 
-  // 1. Find or create an "Experiments" category page
-  //    Check if one already exists (from Chemistry KB setup)
+  // Load markdown files
+  const files = {
+    exp1_en: loadFile("EXP-CUP-001_Experiment1.md"),
+    exp1_de: loadFile("EXP-CUP-001_Experiment1_DE.md"),
+    exp2_en: loadFile("EXP-CUP-002_Experiment2.md"),
+    exp2_de: loadFile("EXP-CUP-002_Experiment2_DE.md"),
+    prompt_en: loadFile("voice_agent_prompt_v5.md"),
+    prompt_de: loadFile("voice_agent_prompt_v5_DE.md"),
+  };
+  console.log("  Loaded 6 markdown files from data/DEMO_EXPERIMENTS/\n");
+
+  // 1. Find or create "Demo Experiments" category
+  const teamspace = await prisma.teamspace.findFirst({
+    where: { tenantId: TENANT_ID, name: "Chemistry KB" },
+    select: { id: true },
+  });
+  const teamspaceId = teamspace?.id || null;
+  if (teamspaceId) {
+    console.log(`  Found Chemistry KB teamspace: ${teamspaceId}`);
+  } else {
+    console.log(`  Warning: Chemistry KB teamspace not found — pages will be TEAM but unassigned`);
+  }
+
   let experimentsCategoryId = PAGE_IDS.experimentsCategory;
-
   const existingCategory = await prisma.page.findFirst({
     where: {
       tenantId: TENANT_ID,
@@ -300,8 +309,9 @@ async function main() {
           tenantId: TENANT_ID,
           title: "Demo Experiments",
           icon: "🧪",
-          oneLiner: "Demo experiment protocols for voice agent testing",
+          oneLiner: "Demo experiment protocols and voice agent prompts (EN + DE)",
           spaceType: SpaceType.TEAM,
+          teamspaceId,
           position: 0,
         },
       });
@@ -309,112 +319,157 @@ async function main() {
     console.log(`  Created "Demo Experiments" category: ${experimentsCategoryId}`);
   }
 
-  // 2. Create experiment pages
-  const experiments = [
+  // 2. Define all 6 pages
+  const pages = [
     {
-      id: PAGE_IDS.experiment1,
-      blockId: BLOCK_IDS.experiment1,
+      id: PAGE_IDS.experiment1_en,
+      blockId: BLOCK_IDS.experiment1_en,
       title: "EXP-CUP-001: Cup Manipulation — Experiment 1",
-      oneLiner: "12-step cup manipulation task on 3×3 grid — starting config A",
+      oneLiner: "15-step cup manipulation on 3×3 grid — config A, two ninjas, mixed references (EN)",
       icon: "🥤",
-      content: experiment1Content,
-      plainText: experiment1PlainText,
+      markdown: files.exp1_en,
     },
     {
-      id: PAGE_IDS.experiment2,
-      blockId: BLOCK_IDS.experiment2,
-      title: "EXP-CUP-002: Cup Manipulation — Experiment 2",
-      oneLiner: "12-step cup manipulation task on 3×3 grid — starting config B",
+      id: PAGE_IDS.experiment1_de,
+      blockId: BLOCK_IDS.experiment1_de,
+      title: "EXP-CUP-001: Bechermanipulation — Experiment 1 (DE)",
+      oneLiner: "15-Schritt Bechermanipulation auf 3×3-Raster — Konfiguration A, zwei Ninjas (DE)",
       icon: "🥤",
-      content: experiment2Content,
-      plainText: experiment2PlainText,
+      markdown: files.exp1_de,
+    },
+    {
+      id: PAGE_IDS.experiment2_en,
+      blockId: BLOCK_IDS.experiment2_en,
+      title: "EXP-CUP-002: Cup Manipulation — Experiment 2",
+      oneLiner: "15-step cup manipulation on 3×3 grid — config B, two ninjas, mixed references (EN)",
+      icon: "🥤",
+      markdown: files.exp2_en,
+    },
+    {
+      id: PAGE_IDS.experiment2_de,
+      blockId: BLOCK_IDS.experiment2_de,
+      title: "EXP-CUP-002: Bechermanipulation — Experiment 2 (DE)",
+      oneLiner: "15-Schritt Bechermanipulation auf 3×3-Raster — Konfiguration B, zwei Ninjas (DE)",
+      icon: "🥤",
+      markdown: files.exp2_de,
+    },
+    {
+      id: PAGE_IDS.voicePrompt_en,
+      blockId: BLOCK_IDS.voicePrompt_en,
+      title: "Voice Agent Prompt v5.1 — Cup Experiments (EN)",
+      oneLiner: "System prompt for SymBio voice agent — both experiments, mixed references (EN)",
+      icon: "🤖",
+      markdown: files.prompt_en,
+      asCodeBlock: true,
+    },
+    {
+      id: PAGE_IDS.voicePrompt_de,
+      blockId: BLOCK_IDS.voicePrompt_de,
+      title: "Sprachagent-Prompt v5.1 — Becherexperimente (DE)",
+      oneLiner: "Systemprompt für SymBio Sprachagent — beide Experimente, gemischte Referenzen (DE)",
+      icon: "🤖",
+      markdown: files.prompt_de,
+      asCodeBlock: true,
     },
   ];
 
-  for (const exp of experiments) {
-    console.log(`\n  Creating: ${exp.title}`);
+  // 3. Upsert each page + block
+  for (const page of pages) {
+    console.log(`\n  Seeding: ${page.title}`);
+
+    const isPrompt = "asCodeBlock" in page && page.asCodeBlock;
+    const tiptapContent = isPrompt
+      ? {
+          type: "doc",
+          content: [
+            heading(1, page.title),
+            paragraph(textNode(page.oneLiner)),
+            divider(),
+            heading(2, isPrompt && page.markdown.includes("Deutsch") ? "Vollständiger Systemprompt" : "Full System Prompt"),
+            paragraph(
+              textNode(
+                isPrompt && page.markdown.includes("Deutsch")
+                  ? "Der folgende Prompt kann direkt als Systemprompt für den Sprachagenten verwendet werden:"
+                  : "The following prompt can be used directly as a system prompt for the voice agent:"
+              )
+            ),
+            codeBlock(page.markdown, "markdown"),
+          ],
+        }
+      : markdownToTiptap(page.markdown);
+    const plainText = page.markdown;
 
     if (!DRY_RUN) {
-      // Upsert page
       await prisma.page.upsert({
-        where: { id: exp.id },
+        where: { id: page.id },
         update: {
-          title: exp.title,
-          oneLiner: exp.oneLiner,
-          icon: exp.icon,
+          title: page.title,
+          oneLiner: page.oneLiner,
+          icon: page.icon,
         },
         create: {
-          id: exp.id,
+          id: page.id,
           tenantId: TENANT_ID,
-          title: exp.title,
-          icon: exp.icon,
-          oneLiner: exp.oneLiner,
+          title: page.title,
+          icon: page.icon,
+          oneLiner: page.oneLiner,
           parentId: experimentsCategoryId,
           spaceType: SpaceType.TEAM,
-          position: experiments.indexOf(exp),
+          teamspaceId,
+          position: pages.indexOf(page),
         },
       });
 
-      // Upsert DOCUMENT block with content
       await prisma.block.upsert({
-        where: { id: exp.blockId },
+        where: { id: page.blockId },
         update: {
-          content: exp.content as object,
-          plainText: exp.plainText,
+          content: tiptapContent as object,
+          plainText,
         },
         create: {
-          id: exp.blockId,
-          pageId: exp.id,
+          id: page.blockId,
+          pageId: page.id,
           tenantId: TENANT_ID,
           type: BlockType.DOCUMENT,
-          content: exp.content as object,
+          content: tiptapContent as object,
           position: 0,
-          plainText: exp.plainText,
+          plainText,
         },
       });
     }
 
-    console.log(`    Page: ${exp.id}`);
-    console.log(`    Block: ${exp.blockId}`);
-    console.log(`    Plain text: ${exp.plainText.length} chars`);
+    console.log(`    Page:  ${page.id}`);
+    console.log(`    Block: ${page.blockId}`);
+    console.log(`    Text:  ${plainText.length} chars`);
   }
 
-  // 3. Create a PageLink between the two experiments (they're related)
-  const linkId = "d2200000-0000-4000-a000-000000000001";
+  // 4. Create PageLinks between related pages
+  const links = [
+    { id: "d2200000-0000-4000-a000-000000000001", source: PAGE_IDS.experiment1_en, target: PAGE_IDS.experiment2_en },
+    { id: "d2200000-0000-4000-a000-000000000002", source: PAGE_IDS.experiment1_en, target: PAGE_IDS.experiment1_de },
+    { id: "d2200000-0000-4000-a000-000000000003", source: PAGE_IDS.experiment2_en, target: PAGE_IDS.experiment2_de },
+    { id: "d2200000-0000-4000-a000-000000000004", source: PAGE_IDS.voicePrompt_en, target: PAGE_IDS.voicePrompt_de },
+    { id: "d2200000-0000-4000-a000-000000000005", source: PAGE_IDS.voicePrompt_en, target: PAGE_IDS.experiment1_en },
+    { id: "d2200000-0000-4000-a000-000000000006", source: PAGE_IDS.voicePrompt_en, target: PAGE_IDS.experiment2_en },
+  ];
+
   if (!DRY_RUN) {
-    await prisma.pageLink.upsert({
-      where: { id: linkId },
-      update: {},
-      create: {
-        id: linkId,
-        tenantId: TENANT_ID,
-        sourcePageId: PAGE_IDS.experiment1,
-        targetPageId: PAGE_IDS.experiment2,
-      },
-    });
+    for (const link of links) {
+      await prisma.pageLink.upsert({
+        where: { id: link.id },
+        update: {},
+        create: {
+          id: link.id,
+          tenantId: TENANT_ID,
+          sourcePageId: link.source,
+          targetPageId: link.target,
+        },
+      });
+    }
   }
-  console.log(`\n  Created link: EXP-CUP-001 → EXP-CUP-002`);
+  console.log(`\n  Created ${links.length} page links (EN↔DE, experiments↔prompt)`);
 
-  console.log("\n✅ Done! Experiments seeded.\n");
-
-  // 4. Print test commands
-  console.log("Test the API with:");
-  console.log("  # Experiment context (default depth — titles only)");
-  console.log('  curl -H "Authorization: Bearer skb_test" \\');
-  console.log('    "http://localhost:3000/api/agent/pages/experiment-context?experimentId=EXP-CUP-001&depth=default"');
-  console.log("");
-  console.log("  # Experiment context (medium depth — full procedures + best practices)");
-  console.log('  curl -H "Authorization: Bearer skb_test" \\');
-  console.log('    "http://localhost:3000/api/agent/pages/experiment-context?experimentId=EXP-CUP-001&depth=medium"');
-  console.log("");
-  console.log("  # Search for cup experiments");
-  console.log('  curl -H "Authorization: Bearer skb_test" \\');
-  console.log('    "http://localhost:3000/api/agent/search?q=cup+manipulation&depth=medium&scope=team"');
-  console.log("");
-  console.log("  # Bulk context for both experiments");
-  console.log('  curl -X POST -H "Authorization: Bearer skb_test" -H "Content-Type: application/json" \\');
-  console.log('    -d \'{"experiments":[{"experimentId":"EXP-CUP-001","depth":"medium"},{"experimentId":"EXP-CUP-002","depth":"default"}],"maxTotalSize":45000}\' \\');
-  console.log('    "http://localhost:3000/api/agent/pages/experiment-context/bulk"');
+  console.log("\n✅ Done! 6 pages seeded under Demo Experiments.\n");
 }
 
 main()

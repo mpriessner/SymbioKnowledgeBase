@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { TipTapDocument, TipTapNode } from "@/lib/wikilinks/types";
+import { invalidateCache } from "./queryCache";
 
 /**
  * Extracts plain text from a TipTap JSON document.
@@ -75,6 +76,9 @@ export async function updateSearchIndex(
     where: { id: blockId },
     data: { plainText },
   });
+
+  // Invalidate query cache since content changed
+  invalidateCache();
 }
 
 /**
@@ -109,6 +113,9 @@ export async function updateSearchIndexForPage(
       data: { plainText },
     });
   }
+
+  // Invalidate query cache since content changed
+  invalidateCache();
 }
 
 /**

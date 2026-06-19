@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Editor } from "@tiptap/react";
 import { BlockEditor } from "@/components/editor/BlockEditor";
 import { PageCreationMenu } from "@/components/page/PageCreationMenu";
 import { DatabaseViewContainer } from "@/components/database/DatabaseViewContainer";
+import { ErrorBoundary, EditorErrorFallback } from "@/components/ErrorBoundary";
 import { usePageBlocks } from "@/hooks/useBlockEditor";
 import type { DatabaseSchema, DatabaseViewType, ViewConfig } from "@/types/database";
 
@@ -29,6 +30,42 @@ interface DatabaseListResponse {
 
 export function PageContent({ pageId, onEditorReady }: PageContentProps) {
   const queryClient = useQueryClient();
+
+  // Track the live editor instance so the error-boundary fallback can offer a
+  // copy-to-clipboard escape hatch for unsaved content if the editor crashes.
+  const editorRef = useRef<Editor | null>(null);
+  const handleEditorReady = useCallback(
+    (editor: Editor) => {
+      editorRef.current = editor;
+      onEditorReady?.(editor);
+    },
+    [onEditorReady]
+  );
+
+  // Render the editor with a per-page `key` so client-side navigation
+  // A → B fully remounts it. Without the key the editor instance (and its
+  // in-memory document) is reused across pages, while autosave retargets the
+  // new pageId — so page A's content gets written into page B. The error
+  // boundary keeps an editor crash from white-screening the page and lets the
+  // user rescue unsaved work.
+  const renderEditor = () => (
+    <ErrorBoundary
+      key={pageId}
+      fallback={(error, reset) => (
+        <EditorErrorFallback
+          error={error}
+          reset={reset}
+          getContent={() =>
+            editorRef.current && !editorRef.current.isDestroyed
+              ? editorRef.current.getJSON()
+              : null
+          }
+        />
+      )}
+    >
+      <BlockEditor key={pageId} pageId={pageId} onEditorReady={handleEditorReady} />
+    </ErrorBoundary>
+  );
 
   // Fetch blocks for this page
   const { data: blocks, isLoading: blocksLoading } = usePageBlocks(pageId);
@@ -68,9 +105,7 @@ export function PageContent({ pageId, onEditorReady }: PageContentProps) {
           />
         </div>
         {/* Also show editor below database for additional page content */}
-        <div className="w-full">
-          <BlockEditor pageId={pageId} onEditorReady={onEditorReady} />
-        </div>
+        <div className="w-full">{renderEditor()}</div>
       </>
     );
   }
@@ -83,9 +118,7 @@ export function PageContent({ pageId, onEditorReady }: PageContentProps) {
       {isEmptyPage && (
         <PageCreationMenu pageId={pageId} onAction={handleCreationAction} />
       )}
-      <div className="w-full">
-        <BlockEditor pageId={pageId} onEditorReady={onEditorReady} />
-      </div>
+      <div className="w-full">{renderEditor()}</div>
     </>
   );
 }
