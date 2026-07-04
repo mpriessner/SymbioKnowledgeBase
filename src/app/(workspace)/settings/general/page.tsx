@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { WorkspaceGeneralSettings } from "@/components/settings/WorkspaceGeneralSettings";
 
 export const metadata: Metadata = {
   title: "Workspace Settings",
@@ -17,9 +18,7 @@ export default function GeneralPage() {
       </div>
 
       <div className="rounded-lg border border-[var(--border-default)] p-6">
-        <p className="text-sm text-[var(--text-tertiary)]">
-          Workspace settings coming soon. This will include workspace name, default permissions, and regional settings.
-        </p>
+        <WorkspaceGeneralSettings showMeta />
       </div>
     </div>
   );

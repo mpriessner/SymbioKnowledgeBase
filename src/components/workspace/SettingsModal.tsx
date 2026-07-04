@@ -10,6 +10,7 @@ import { ApiKeysSection } from "@/components/settings/ApiKeysSection";
 import { AccountProfileSection } from "@/components/settings/AccountProfileSection";
 import { AccountSecuritySection } from "@/components/settings/AccountSecuritySection";
 import { AIConfigSection } from "@/components/settings/AIConfigSection";
+import { WorkspaceGeneralSettings } from "@/components/settings/WorkspaceGeneralSettings";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -342,26 +343,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <h2 className="text-sm font-medium text-[var(--text-secondary)] mb-3">
                   General
                 </h2>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-[var(--text-primary)] block mb-2">
-                      Workspace Name
-                    </label>
-                    <div className="max-w-md">
-                      <input
-                        type="text"
-                        value="SymbioKnowledgeBase"
-                        disabled
-                        className="w-full px-3 py-2 rounded-md border border-[var(--border-default)]
-                          bg-[var(--bg-secondary)] text-[var(--text-primary)]
-                          opacity-60 cursor-not-allowed text-sm"
-                      />
-                      <p className="text-xs text-[var(--text-secondary)] mt-2">
-                        Workspace name customization coming soon
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <WorkspaceGeneralSettings />
               </div>
             </div>
           )}

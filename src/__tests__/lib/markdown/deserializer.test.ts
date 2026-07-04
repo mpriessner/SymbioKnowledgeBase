@@ -175,4 +175,28 @@ describe("markdownToTiptap", () => {
     expect(result.content.type).toBe("doc");
     expect(result.content.content).toEqual([]);
   });
+
+  it("should convert a file-attachment marker into a fileAttachment node", () => {
+    const md =
+      '<file-attachment data-id="att-7" data-name="spec%20sheet.pdf" ' +
+      'data-size="4096" data-mime="application%2Fpdf" />';
+    const result = markdownToTiptap(md);
+    const fa = result.content.content!.find(
+      (n) => n.type === "fileAttachment"
+    );
+    expect(fa).toBeDefined();
+    expect(fa!.attrs?.attachmentId).toBe("att-7");
+    expect(fa!.attrs?.name).toBe("spec sheet.pdf");
+    expect(fa!.attrs?.size).toBe(4096);
+    expect(fa!.attrs?.mimeType).toBe("application/pdf");
+  });
+
+  it("should ignore a file-attachment marker with no id", () => {
+    const md = '<file-attachment data-name="orphan.pdf" data-size="10" />';
+    const result = markdownToTiptap(md);
+    const fa = result.content.content!.find(
+      (n) => n.type === "fileAttachment"
+    );
+    expect(fa).toBeUndefined();
+  });
 });

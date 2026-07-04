@@ -480,4 +480,31 @@ describe("tiptapToMarkdown", () => {
     expect(md).toContain("| --- | --- |");
     expect(md).toContain("| A | 1 |");
   });
+
+  it("should serialize a fileAttachment node as a self-closing marker (not drop it)", () => {
+    const json: JSONContent = {
+      type: "doc",
+      content: [
+        {
+          type: "fileAttachment",
+          attrs: {
+            attachmentId: "att-9",
+            name: "notes.txt",
+            size: 128,
+            mimeType: "text/plain",
+          },
+        },
+      ],
+    };
+
+    const md = tiptapToMarkdown(json, { includeFrontmatter: false });
+    expect(md).toContain("<file-attachment");
+    expect(md).toContain('data-id="att-9"');
+    expect(md).toContain('data-size="128"');
+    // Name and mime are URL-encoded to keep the marker single-line/quote-safe.
+    expect(md).toContain('data-name="notes.txt"');
+    expect(md).toContain('data-mime="text%2Fplain"');
+    // Self-closing so it parses back as an HTML block.
+    expect(md).toContain("/>");
+  });
 });

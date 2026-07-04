@@ -25,7 +25,9 @@ export async function buildGraphData(
 async function buildGlobalGraph(tenantId: string): Promise<GraphData> {
   const [pages, links, blockLengths] = await Promise.all([
     prisma.page.findMany({
-      where: { tenantId },
+      // Exclude soft-deleted pages — a trashed page must not appear as a graph
+      // node (edges to it are dropped by the pageIds membership filter below).
+      where: { tenantId, deletedAt: null },
       select: {
         id: true,
         title: true,
@@ -41,9 +43,10 @@ async function buildGlobalGraph(tenantId: string): Promise<GraphData> {
         targetPageId: true,
       },
     }),
-    // Aggregate plainText length per page for content-based sizing
+    // Aggregate plainText length per page for content-based sizing. Skip blocks
+    // belonging to soft-deleted pages so their content can't size a node.
     prisma.block.findMany({
-      where: { tenantId },
+      where: { tenantId, page: { deletedAt: null } },
       select: { pageId: true, plainText: true },
     }),
   ]);
@@ -156,6 +159,8 @@ async function buildLocalGraph(
       where: {
         id: { in: discoveredIds },
         tenantId,
+        // Exclude soft-deleted pages from the local graph node set.
+        deletedAt: null,
       },
       select: {
         id: true,
@@ -169,6 +174,8 @@ async function buildLocalGraph(
       where: {
         pageId: { in: discoveredIds },
         tenantId,
+        // Skip blocks of soft-deleted pages when sizing nodes.
+        page: { deletedAt: null },
       },
       select: { pageId: true, plainText: true },
     }),
@@ -213,12 +220,13 @@ async function buildLocalGraph(
     contentLength: contentLengths.get(page.id) || 0,
   }));
 
-  // Build edges (only between discovered pages)
+  // Build edges only between surviving nodes. Using pageIdSet (not the raw
+  // discovered set) drops edges pointing at a soft-deleted page that BFS
+  // reached but which was filtered out of the node list above.
   const edges: GraphEdge[] = allLinks
     .filter(
       (link) =>
-        discoveredPageIds.has(link.sourcePageId) &&
-        discoveredPageIds.has(link.targetPageId)
+        pageIdSet.has(link.sourcePageId) && pageIdSet.has(link.targetPageId)
     )
     .map((link) => ({
       source: link.sourcePageId,

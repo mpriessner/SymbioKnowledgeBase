@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/react";
 import { useSaveDocument } from "@/hooks/useBlockEditor";
+import type { AutosaveController } from "@/components/page/EditorCoordinationContext";
 import type { SaveStatus } from "@/types/editor";
 
 const DEFAULT_DEBOUNCE_MS = 1000;
@@ -40,6 +41,21 @@ export function useAutoSave({
   // last edit on unmount even after TipTap has destroyed the editor instance
   // (e.g. an A → B page switch remounts the editor via key={pageId}).
   const latestContentRef = useRef<JSONContent | null>(null);
+  // When true, autosave is paused: no new saves start and no content is parked.
+  // Used by the version-restore protocol so a parked pre-restore edit can't
+  // flush over the restored content once the restore lands.
+  const suspendedRef = useRef(false);
+
+  // Stable refs so the imperative controller (below) can read the live editor
+  // and the save hook's external-update setter without changing identity.
+  const editorRef = useRef(editor);
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
+  const applyExternalUpdateRef = useRef(saveDocument.applyExternalUpdate);
+  useEffect(() => {
+    applyExternalUpdateRef.current = saveDocument.applyExternalUpdate;
+  }, [saveDocument.applyExternalUpdate]);
 
   // Keep stable refs to callbacks so the save loop doesn't churn. Assigned in
   // effects (not during render) so they always reflect the latest props.
@@ -75,6 +91,11 @@ export function useAutoSave({
   const flushSaveRef = useRef<(content: JSONContent) => void>(() => {});
   useEffect(() => {
     flushSaveRef.current = (content: JSONContent) => {
+      // Autosave is suspended (e.g. a restore is in progress). Drop the content
+      // rather than starting or parking a save — the restore protocol clears
+      // pending content deliberately so a stale pre-restore edit can't win.
+      if (suspendedRef.current) return;
+
       // A save is already running — park the latest content and let the
       // completion handler pick it up. This supersedes any older pending
       // snapshot so only the newest content is written next.
@@ -232,8 +253,60 @@ export function useAutoSave({
     };
   }, [editor, pageId]);
 
+  // Imperative controller for the version-restore protocol. The history panel
+  // (a separate component subtree) drives this via the editor-coordination
+  // registry: BEFORE restore it suspends autosave, clears any parked content,
+  // and waits for the in-flight save to settle; AFTER restore it applies the
+  // restored content and re-aligns the concurrency token, then resumes.
+  const controller = useMemo<AutosaveController>(() => {
+    const clearTimer = () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+    return {
+      suspend: () => {
+        suspendedRef.current = true;
+        clearTimer();
+      },
+      resume: () => {
+        suspendedRef.current = false;
+      },
+      clearPending: () => {
+        pendingRef.current = null;
+        latestContentRef.current = null;
+        clearTimer();
+      },
+      waitForInFlight: () =>
+        new Promise<void>((resolve) => {
+          if (!inFlightRef.current) {
+            resolve();
+            return;
+          }
+          const poll = () => {
+            if (!inFlightRef.current) resolve();
+            else setTimeout(poll, 30);
+          };
+          setTimeout(poll, 30);
+        }),
+      applyRestoredContent: (content, blockVersion) => {
+        const ed = editorRef.current;
+        if (ed && !ed.isDestroyed) {
+          ed.commands.setContent(content);
+        }
+        // Keep the last-captured content consistent and drop any parked edit so
+        // the resume below doesn't immediately re-save stale content.
+        latestContentRef.current = content;
+        pendingRef.current = null;
+        applyExternalUpdateRef.current?.(content, blockVersion);
+      },
+    };
+  }, []);
+
   return {
     saveNow,
+    controller,
     isSaving: saveDocument.isPending,
     isError: saveDocument.isError,
     isConflict: saveDocument.isConflict,

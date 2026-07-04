@@ -264,6 +264,12 @@ function convertNode(node: MdastNode): JSONContent | null {
       return convertTable(node);
 
     case "html": {
+      // Handle our file-attachment markers (serialized as a self-closing
+      // custom-element tag). Inverse of the serializer's fileAttachment case.
+      if (node.value?.includes("<file-attachment")) {
+        const fileNode = parseFileAttachmentHtml(node.value);
+        if (fileNode) return fileNode;
+      }
       // Handle our wikilink placeholders
       const wikilinkMatch = node.value?.match(
         /<wikilink data-page="([^"]*)" data-display="([^"]*)">/
@@ -324,6 +330,28 @@ function convertNode(node: MdastNode): JSONContent | null {
     default:
       return null;
   }
+}
+
+/**
+ * Parse a `<file-attachment ... />` marker back into a fileAttachment node.
+ * Returns null if the required attachment id is absent.
+ */
+function parseFileAttachmentHtml(value: string): JSONContent | null {
+  const attr = (name: string): string => {
+    const m = value.match(new RegExp(`data-${name}="([^"]*)"`));
+    return m ? m[1] : "";
+  };
+  const attachmentId = decodeURIComponent(attr("id"));
+  if (!attachmentId) return null;
+  return {
+    type: "fileAttachment",
+    attrs: {
+      attachmentId,
+      name: decodeURIComponent(attr("name")),
+      size: Number(attr("size")) || 0,
+      mimeType: decodeURIComponent(attr("mime")),
+    },
+  };
 }
 
 /**

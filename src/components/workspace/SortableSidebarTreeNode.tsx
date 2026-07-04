@@ -4,7 +4,10 @@ import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useRouter, usePathname } from "next/navigation";
-import { useCreatePage, useUpdatePage } from "@/hooks/usePages";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCreatePage, useUpdatePage, pageKeys } from "@/hooks/usePages";
+import { useToast } from "@/hooks/useToast";
+import { ToastContainer } from "@/components/ui/Toast";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { MoreHorizontal, Check, ArrowUpDown } from "lucide-react";
 import {
@@ -52,8 +55,10 @@ export function SortableSidebarTreeNode({
 }: SortableSidebarTreeNodeProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const createPage = useCreatePage();
   const updatePage = useUpdatePage();
+  const { toasts, addToast, removeToast } = useToast();
   const [isHovered, setIsHovered] = useState(false);
   const [isTruncated, setIsTruncated] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
@@ -218,20 +223,31 @@ export function SortableSidebarTreeNode({
     [handleFinishRename, node.title]
   );
 
-  const handleDuplicate = useCallback(() => {
-    createPage.mutate(
-      {
-        title: `${node.title} (copy)`,
-        parentId: node.parentId || undefined,
-        icon: node.icon || undefined,
-      },
-      {
-        onSuccess: (data) => {
-          router.push(`/pages/${data.data.id}`);
-        },
+  const handleDuplicate = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/pages/${node.id}/duplicate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ includeChildren: true }),
+      });
+      if (!res.ok) {
+        addToast("Failed to duplicate page", "error");
+        return;
       }
-    );
-  }, [createPage, node.title, node.parentId, node.icon, router]);
+      const body = await res.json();
+      if (body.data?.databaseSkipped) {
+        addToast("Page duplicated — database not copied", "info");
+      }
+      // Refresh the sidebar tree so the copy appears, then open it.
+      await queryClient.invalidateQueries({ queryKey: pageKeys.lists() });
+      await queryClient.invalidateQueries({ queryKey: pageKeys.tree() });
+      if (body.data?.id) {
+        router.push(`/pages/${body.data.id}`);
+      }
+    } catch {
+      addToast("Failed to duplicate page", "error");
+    }
+  }, [node.id, queryClient, router, addToast]);
 
   // Row background: selected > active > drop-target > default
   const rowBg = (() => {
@@ -557,6 +573,10 @@ export function SortableSidebarTreeNode({
           isArchived={isInsideArchive}
         />
       )}
+
+      {/* Transient notices (e.g. "database not copied" after a duplicate).
+          ToastContainer is fixed-position and renders nothing when empty. */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

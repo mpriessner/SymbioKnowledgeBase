@@ -4,7 +4,8 @@ import { withTenant } from "@/lib/auth/withTenant";
 import { saveDocumentSchema } from "@/lib/validation/blocks";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { updatePageLinks } from "@/lib/wikilinks/indexer";
-import { updateSearchIndex } from "@/lib/search/indexer";
+import { updateSearchIndex, extractPlainText } from "@/lib/search/indexer";
+import { snapshotOnSave } from "@/lib/livingDocs/versioning";
 import {
   triggerPageUpdateNotifications,
   triggerPageMentionNotifications,
@@ -98,11 +99,13 @@ export const PUT = withTenant(
           ? rawExpectedVersion
           : undefined;
 
-      // Verify page exists and belongs to tenant
+      // Verify page exists, belongs to tenant, and is not trashed. Rejecting
+      // writes to a soft-deleted page stops an open editor from resurrecting it.
       const page = await prisma.page.findFirst({
         where: {
           id: pageId,
           tenantId: ctx.tenantId,
+          deletedAt: null,
         },
       });
 
@@ -124,6 +127,9 @@ export const PUT = withTenant(
 
       // Capture old plainText for summary change detection
       const oldPlainText = existing?.plainText ?? "";
+      // Capture pre-edit content for the version-history first-edit baseline.
+      const previousContent =
+        (existing?.content as Prisma.InputJsonValue | undefined) ?? null;
 
       let block;
       if (existing) {
@@ -203,6 +209,28 @@ export const PUT = withTenant(
       // Sync page to filesystem mirror (fire-and-forget)
       syncPageToFilesystem(ctx.tenantId, pageId).catch((err) =>
         console.error("Sync after block save failed:", err)
+      );
+
+      // Snapshot a version-history entry for this save (coalesced, race-safe).
+      // Fire-and-forget: a snapshot failure must never fail the save. PlainText
+      // is derived from the SAVED content because the route writes content+version
+      // only and `block.plainText` is stale.
+      const savedPlainText = extractPlainText(
+        content as unknown as Parameters<typeof extractPlainText>[0]
+      );
+      const previousPlainText = extractPlainText(
+        previousContent as unknown as Parameters<typeof extractPlainText>[0]
+      );
+      snapshotOnSave({
+        pageId,
+        tenantId: ctx.tenantId,
+        content,
+        plainText: savedPlainText,
+        userId: ctx.userId,
+        previousContent,
+        previousPlainText,
+      }).catch((err) =>
+        console.error("Version snapshot after save failed:", err)
       );
 
       // Trigger summary regeneration if content changed substantially (fire-and-forget)

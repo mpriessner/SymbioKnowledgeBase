@@ -116,13 +116,17 @@ export const POST = withTenant(
         );
       }
 
+      const { snapshot, blockVersion } = restored;
       return successResponse(
         {
-          id: restored.id,
-          version: restored.version,
-          change_type: restored.changeType,
-          change_notes: restored.changeNotes,
-          created_at: restored.createdAt.toISOString(),
+          // Existing fields (DocumentVersion of the restore snapshot) unchanged.
+          id: snapshot.id,
+          version: snapshot.version,
+          change_type: snapshot.changeType,
+          change_notes: snapshot.changeNotes,
+          created_at: snapshot.createdAt.toISOString(),
+          // Additive: the editor's optimistic-concurrency token after write-back.
+          block_version: blockVersion,
         },
         undefined,
         201

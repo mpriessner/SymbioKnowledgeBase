@@ -141,10 +141,19 @@ export const blockTypeRegistry: BlockTypeItem[] = [
     icon: "IM",
     keywords: ["image", "photo", "picture", "img", "upload"],
     command: (editor) => {
-      const url = window.prompt("Enter image URL:");
-      if (url) {
-        editor.chain().focus().setImage({ src: url }).run();
-      }
+      // Opens the image dialog (upload from computer, or embed by URL).
+      editor.storage.attachmentUpload?.openImageDialog?.();
+    },
+  },
+  {
+    id: "file",
+    name: "File",
+    description: "Upload a file attachment",
+    icon: "FL",
+    keywords: ["file", "attachment", "upload", "document", "pdf", "attach"],
+    command: (editor) => {
+      // Opens a native file picker; uploaded files render as file cards.
+      editor.storage.attachmentUpload?.openFilePicker?.();
     },
   },
   {

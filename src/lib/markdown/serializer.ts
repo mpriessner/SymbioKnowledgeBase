@@ -148,6 +148,23 @@ function serializeNode(
       return `![${alt}](${src})\n\n`;
     }
 
+    case "fileAttachment": {
+      // Serialized as a self-closing custom-element tag so it round-trips as
+      // an HTML block (CommonMark HTML-block rule 7) and is NOT dropped by the
+      // default case on every filesystem-mirror write. All node attrs are
+      // URL-encoded to keep the marker on a single line and quote-safe.
+      const attachmentId = encodeURIComponent(
+        (attrs?.attachmentId as string) || ""
+      );
+      const name = encodeURIComponent((attrs?.name as string) || "");
+      const size = Number(attrs?.size) || 0;
+      const mimeType = encodeURIComponent((attrs?.mimeType as string) || "");
+      return (
+        `<file-attachment data-id="${attachmentId}" data-name="${name}" ` +
+        `data-size="${size}" data-mime="${mimeType}" />\n\n`
+      );
+    }
+
     case "wikilink": {
       const pageName = (attrs?.pageName as string) || "";
       const displayText = (attrs?.displayText as string) || null;

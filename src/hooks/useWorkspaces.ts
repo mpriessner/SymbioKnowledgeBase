@@ -21,6 +21,7 @@ interface Workspace {
   memberCount: number;
   isCurrent: boolean;
   role: string;
+  createdAt: string;
 }
 
 interface WorkspaceListResponse {
@@ -58,6 +59,52 @@ export function useWorkspaces() {
     },
   });
 
+  const renameMutation = useMutation<
+    WorkspaceListResponse | unknown,
+    Error,
+    string,
+    { previous?: WorkspaceListResponse }
+  >({
+    mutationFn: async (name: string) => {
+      const res = await fetch("/api/workspaces/current", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Failed to rename workspace");
+      }
+      return res.json();
+    },
+    // Optimistically update the cached workspaces list so the sidebar
+    // dropdown (which reads this query) reflects the new name immediately.
+    onMutate: async (name: string) => {
+      await queryClient.cancelQueries({ queryKey: ["workspaces"] });
+      const previous = queryClient.getQueryData<WorkspaceListResponse>([
+        "workspaces",
+      ]);
+      queryClient.setQueryData<WorkspaceListResponse>(["workspaces"], (old) =>
+        old
+          ? {
+              data: old.data.map((w) =>
+                w.isCurrent ? { ...w, name } : w
+              ),
+            }
+          : old
+      );
+      return { previous };
+    },
+    onError: (_err, _name, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["workspaces"], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspaces"] });
+    },
+  });
+
   const switchMutation = useMutation({
     mutationFn: async (workspaceId: string) => {
       const res = await fetch("/api/workspaces/switch", {
@@ -85,5 +132,7 @@ export function useWorkspaces() {
     createError: createMutation.error,
     switchWorkspace: switchMutation.mutate,
     isSwitching: switchMutation.isPending,
+    renameWorkspace: renameMutation.mutateAsync,
+    isRenaming: renameMutation.isPending,
   };
 }

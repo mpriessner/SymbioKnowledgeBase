@@ -45,6 +45,7 @@ export const GET = withTenant(async (req, ctx) => {
     memberCount: m.tenant._count.members,
     isCurrent: m.tenant.id === activeId,
     role: m.role,
+    createdAt: m.tenant.createdAt,
   }));
 
   return NextResponse.json({ data });

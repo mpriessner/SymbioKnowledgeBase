@@ -100,6 +100,40 @@ export async function storeAttachment(
 }
 
 /**
+ * Adjust a tenant's `storageUsed` counter by a signed byte delta.
+ *
+ * This is the SINGLE owner of `storageUsed` mutations — every attachment
+ * create/delete path (upload here, trash-purge, future GC) must route through
+ * it so the counter cannot drift. Uses Prisma's atomic `{ increment }` so
+ * concurrent uploads/deletes compose correctly; pass a negative delta to
+ * decrement. Values are BigInt to match the schema's BigInt columns.
+ */
+export async function adjustStorageUsed(
+  tenantId: string,
+  deltaBytes: bigint
+): Promise<void> {
+  if (deltaBytes === BigInt(0)) return;
+  await prisma.tenant.update({
+    where: { id: tenantId },
+    data: { storageUsed: { increment: deltaBytes } },
+  });
+}
+
+/**
+ * Decide whether adding `addBytes` would push a tenant over its quota.
+ *
+ * All arithmetic is BigInt so it stays exact for multi-gigabyte quotas that
+ * exceed Number.MAX_SAFE_INTEGER.
+ */
+export function wouldExceedQuota(
+  storageUsed: bigint,
+  storageQuota: bigint,
+  addBytes: bigint
+): boolean {
+  return storageUsed + addBytes > storageQuota;
+}
+
+/**
  * List attachments for a page.
  */
 export async function listAttachments(
