@@ -195,6 +195,100 @@ export async function markWikilinksAsDeleted(
 }
 
 /**
+ * Best-effort re-link of incoming wikilinks when a trashed page is restored.
+ *
+ * At trash time `markWikilinksAsDeleted` DELETED the incoming `pageLink` rows
+ * and nulled the `pageId` attr on every wikilink node that pointed at the page
+ * (while KEEPING the `pageName` attr). Because the rows are gone, the
+ * `pageLink.targetPageId`-driven discovery used by `updateWikilinksOnRename`
+ * cannot find those sources on restore. The only remaining signal is the
+ * content itself, so this does a TENANT-WIDE scan for wikilink nodes whose
+ * `pageId` is null and whose `pageName` still matches the restored title, and
+ * re-points them at the restored page.
+ *
+ * Returns the ids of source pages whose blocks changed so the caller can
+ * rebuild their `pageLink` rows (kept out of this module to avoid a circular
+ * import on the link indexer).
+ *
+ * Documented limitation: mentions whose text was edited away from the exact
+ * title, or a colliding title shared by another page, are not re-linked.
+ */
+export async function relinkIncomingWikilinks(
+  restoredPageId: string,
+  title: string,
+  tenantId: string
+): Promise<{ relinkedBlockCount: number; affectedPageIds: string[] }> {
+  const blocks = await prisma.block.findMany({
+    where: { tenantId },
+    select: {
+      id: true,
+      pageId: true,
+      content: true,
+    },
+  });
+
+  const affected = new Set<string>();
+  let relinkedBlockCount = 0;
+
+  for (const block of blocks) {
+    const content = block.content as unknown as TipTapDocument;
+    if (!content || !content.content) continue;
+
+    const wasUpdated = relinkNodesByPageName(
+      content.content,
+      title,
+      restoredPageId
+    );
+
+    if (wasUpdated) {
+      await prisma.block.update({
+        where: { id: block.id },
+        data: { content: JSON.parse(JSON.stringify(content)) },
+      });
+      relinkedBlockCount++;
+      affected.add(block.pageId);
+    }
+  }
+
+  return { relinkedBlockCount, affectedPageIds: Array.from(affected) };
+}
+
+/**
+ * Re-points broken (pageId null) wikilink nodes whose pageName matches the
+ * restored title back at the restored page id.
+ */
+function relinkNodesByPageName(
+  nodes: TipTapNode[],
+  title: string,
+  restoredPageId: string
+): boolean {
+  let updated = false;
+
+  for (const node of nodes) {
+    if (
+      node.type === "wikilink" &&
+      node.attrs &&
+      node.attrs["pageId"] == null &&
+      node.attrs["pageName"] === title
+    ) {
+      node.attrs["pageId"] = restoredPageId;
+      updated = true;
+    }
+
+    if (node.content) {
+      const childUpdated = relinkNodesByPageName(
+        node.content,
+        title,
+        restoredPageId
+      );
+      if (childUpdated) updated = true;
+    }
+  }
+
+  return updated;
+}
+
+/**
  * Sets pageId to null on wikilink nodes referencing a deleted page.
  */
 function nullifyPageIdInNodes(

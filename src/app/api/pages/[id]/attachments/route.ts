@@ -2,7 +2,12 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { withTenant } from "@/lib/auth/withTenant";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
-import { storeAttachment, listAttachments } from "@/lib/sync/attachments";
+import {
+  storeAttachment,
+  listAttachments,
+  adjustStorageUsed,
+  wouldExceedQuota,
+} from "@/lib/sync/attachments";
 import type { TenantContext } from "@/types/auth";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -84,7 +89,30 @@ export const POST = withTenant(
       );
     }
 
+    // Reject if storing this file would exceed the tenant's storage quota.
+    // BigInt arithmetic keeps this exact for multi-GB quotas.
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: ctx.tenantId },
+      select: { storageQuota: true, storageUsed: true },
+    });
+    if (
+      tenant &&
+      wouldExceedQuota(
+        tenant.storageUsed,
+        tenant.storageQuota,
+        BigInt(file.size)
+      )
+    ) {
+      return errorResponse(
+        "QUOTA_EXCEEDED",
+        "Storage quota exceeded",
+        undefined,
+        413
+      );
+    }
+
     const buffer = Buffer.from(await file.arrayBuffer());
+    const mimeType = file.type || "application/octet-stream";
 
     try {
       const result = await storeAttachment(
@@ -93,13 +121,24 @@ export const POST = withTenant(
         ctx.userId,
         file.name,
         buffer,
-        file.type || "application/octet-stream"
+        mimeType
       );
+
+      // Account for the newly stored bytes through the single shared owner.
+      await adjustStorageUsed(ctx.tenantId, BigInt(buffer.length));
 
       return successResponse(
         {
           attachmentId: result.attachmentId,
           relativePath: result.relativePath,
+          // Browser-facing serving URL — every editor node references this,
+          // never the mirror-relative path.
+          url: `/api/attachments/${result.attachmentId}`,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType,
+          // Kept for backward compatibility; the UI keys off mimeType, not
+          // this field (it renders image syntax for every file type).
           markdown: `![${file.name}](${result.relativePath})`,
         },
         undefined,

@@ -9,6 +9,8 @@ import { Toggle } from "@/components/editor/extensions/toggle";
 import { Callout } from "@/components/editor/extensions/callout";
 import { ConfiguredCodeBlock } from "@/components/editor/extensions/codeBlock";
 import { ConfiguredImage } from "@/components/editor/extensions/imageBlock";
+import { FileAttachment } from "@/components/editor/extensions/fileAttachment";
+import { AttachmentUpload } from "@/components/editor/extensions/attachmentUpload";
 import { Bookmark } from "@/components/editor/extensions/bookmark";
 import { WikilinkExtension } from "@/components/editor/extensions/WikilinkExtension";
 import { createWikilinkSuggestion } from "@/components/editor/extensions/wikilinkSuggestionPlugin";
@@ -93,6 +95,8 @@ export function getBaseExtensions(
     Callout,
     ConfiguredCodeBlock,
     ConfiguredImage,
+    FileAttachment,
+    AttachmentUpload,
     Bookmark,
     WikilinkExtension.configure({
       suggestion: createWikilinkSuggestion(),

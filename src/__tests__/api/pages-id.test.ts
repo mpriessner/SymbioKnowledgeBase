@@ -165,6 +165,29 @@ describe("PUT /api/pages/[id]", () => {
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
+  it("rejects metadata writes to a trashed page (resurrection guard)", async () => {
+    // A trashed page never matches the deletedAt:null lookup → findFirst null.
+    vi.mocked(prisma.page.findFirst).mockResolvedValueOnce(null as never);
+
+    const req = new NextRequest(`http://localhost/api/pages/${PAGE_ID}`, {
+      method: "PUT",
+      body: JSON.stringify({ title: "Resurrect me" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const response = await PUT(req, makeRouteContext(PAGE_ID) as never);
+
+    expect(response.status).toBe(404);
+    // The existence check must carry the deletedAt:null guard.
+    expect(
+      vi.mocked(prisma.page.findFirst).mock.calls[0][0]!.where
+    ).toMatchObject({
+      id: PAGE_ID,
+      tenantId: TENANT_ID,
+      deletedAt: null,
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("should return 400 for invalid body", async () => {
     const req = new NextRequest(`http://localhost/api/pages/${PAGE_ID}`, {
       method: "PUT",

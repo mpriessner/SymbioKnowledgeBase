@@ -20,11 +20,13 @@ export const GET = withTenant(
     const { id: pageId } = await routeContext.params;
 
     try {
-      // Verify the target page exists and belongs to this tenant
+      // Verify the target page exists, belongs to this tenant, and is not
+      // trashed — a soft-deleted page has no backlinks surface.
       const page = await prisma.page.findFirst({
         where: {
           id: pageId,
           tenantId: ctx.tenantId,
+          deletedAt: null,
         },
         select: { id: true },
       });
@@ -33,11 +35,13 @@ export const GET = withTenant(
         return errorResponse("NOT_FOUND", "Page not found", undefined, 404);
       }
 
-      // Query backlinks: pages that link TO this page
+      // Query backlinks: pages that link TO this page. Exclude links whose
+      // source page is soft-deleted so a trashed page can't show as a backlink.
       const backlinks = await prisma.pageLink.findMany({
         where: {
           targetPageId: pageId,
           tenantId: ctx.tenantId,
+          sourcePage: { deletedAt: null },
         },
         include: {
           sourcePage: {

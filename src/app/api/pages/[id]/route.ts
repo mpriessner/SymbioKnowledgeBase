@@ -111,7 +111,12 @@ export const PUT = withTenant(
         }
 
         const existingPageMd = await prisma.page.findFirst({
-          where: { id: idParsed.data, tenantId: context.tenantId },
+          where: {
+            id: idParsed.data,
+            tenantId: context.tenantId,
+            // Trashed pages are not writable — block markdown resurrection.
+            deletedAt: null,
+          },
         });
         if (!existingPageMd) {
           return errorResponse("NOT_FOUND", "Page not found", undefined, 404);
@@ -153,9 +158,16 @@ export const PUT = withTenant(
         );
       }
 
-      // Verify the page exists and belongs to this tenant (not trashed)
+      // Verify the page exists and belongs to this tenant (not trashed). The
+      // deletedAt filter rejects rename/re-parent/cover writes to a trashed
+      // page, which would otherwise resurrect it via updateWikilinksOnRename,
+      // the tree, and the filesystem mirror.
       const existingPage = await prisma.page.findFirst({
-        where: { id: idParsed.data, tenantId: context.tenantId },
+        where: {
+          id: idParsed.data,
+          tenantId: context.tenantId,
+          deletedAt: null,
+        },
         select: { id: true, title: true, spaceType: true },
       });
       if (!existingPage) {

@@ -6,9 +6,13 @@ import type { JSONContent, Editor } from "@tiptap/react";
 import { getBaseExtensions } from "@/lib/editor/editorConfig";
 import { usePageBlocks } from "@/hooks/useBlockEditor";
 import { useAutoSave } from "@/hooks/useAutoSave";
+import { useEditorCoordination } from "@/components/page/EditorCoordinationContext";
 import { SaveStatusIndicator } from "@/components/editor/SaveStatusIndicator";
 import { FormattingToolbar } from "@/components/editor/FormattingToolbar";
 import { BlockActionMenu } from "@/components/editor/BlockActionMenu";
+import { ImageInsertDialog } from "@/components/editor/ImageInsertDialog";
+import { ToastContainer } from "@/components/ui/Toast";
+import { useAttachmentUpload } from "@/hooks/useAttachmentUpload";
 import type { SaveStatus } from "@/types/editor";
 import "@/components/editor/editor.css";
 
@@ -107,17 +111,37 @@ export function BlockEditor({ pageId, editable = true, onEditorReady }: BlockEdi
     }
   }, [editor]);
 
+  // Attachment upload orchestration (drag-drop, paste, slash-menu Image/File)
+  const {
+    toasts,
+    removeToast,
+    uploads,
+    imageDialogOpen,
+    setImageDialogOpen,
+    pickImageFile,
+    embedImageUrl,
+  } = useAttachmentUpload(editor, pageId);
+
   // Auto-save hook
   const handleStatusChange = useCallback((status: SaveStatus) => {
     setSaveStatus(status);
   }, []);
 
-  useAutoSave({
+  const { controller } = useAutoSave({
     editor,
     pageId,
     debounceMs: 1000,
     onStatusChange: handleStatusChange,
   });
+
+  // Register the autosave controller so the page history panel (a separate
+  // subtree) can coordinate a restore against live autosave.
+  const coordination = useEditorCoordination();
+  useEffect(() => {
+    if (!coordination) return;
+    coordination.register(pageId, controller);
+    return () => coordination.unregister(pageId);
+  }, [coordination, pageId, controller]);
 
   // Loading state
   if (isLoading) {
@@ -162,6 +186,37 @@ export function BlockEditor({ pageId, editable = true, onEditorReady }: BlockEdi
           onClose={handleMenuClose}
         />
       )}
+
+      {/* Slash-menu Image dialog (upload or embed by URL) */}
+      <ImageInsertDialog
+        isOpen={imageDialogOpen}
+        onClose={() => setImageDialogOpen(false)}
+        onUploadClick={pickImageFile}
+        onEmbedUrl={embedImageUrl}
+      />
+
+      {/* Transient upload progress overlay (no placeholder nodes) */}
+      {uploads.length > 0 && (
+        <div
+          className="fixed bottom-4 left-4 z-40 flex flex-col gap-2"
+          data-testid="attachment-upload-overlay"
+        >
+          {uploads.map((u) => (
+            <div
+              key={u.id}
+              className="flex items-center gap-3 rounded-md border border-[var(--border-default)] bg-[var(--bg-primary)] px-4 py-3 shadow-lg"
+            >
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--border-default)] border-t-[var(--accent-primary)]" />
+              <span className="max-w-[16rem] truncate text-sm text-[var(--text-primary)]">
+                Uploading {u.name}…
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Upload failure toasts */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

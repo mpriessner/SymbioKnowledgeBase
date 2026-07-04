@@ -124,7 +124,8 @@ export function BulkActionBar({
           }
         >
           <p className="text-sm text-[var(--text-secondary)] mb-2">
-            The following pages will be permanently deleted:
+            The following pages will be moved to Trash (you can restore them
+            later):
           </p>
           <ul className="text-sm space-y-0.5 max-h-40 overflow-y-auto">
             {Array.from(selectedIds).map((id) => (

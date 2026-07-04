@@ -91,6 +91,13 @@ export interface SaveDocumentResult {
     content: JSONContent,
     options?: { onSuccess?: () => void; onError?: (error: Error) => void }
   ) => void;
+  /**
+   * Align local concurrency state with an out-of-band write (e.g. a version
+   * restore that wrote content back to the DOCUMENT block on the server).
+   * Sets the tracked `version` token and reconciles the blocks cache so the
+   * next autosave is checked against the post-restore version.
+   */
+  applyExternalUpdate: (content: JSONContent, version: number) => void;
   isPending: boolean;
   isError: boolean;
   isConflict: boolean;
@@ -229,8 +236,32 @@ export function useSaveDocument(pageId: string): SaveDocumentResult {
     []
   );
 
+  const applyExternalUpdate = useCallback(
+    (content: JSONContent, version: number) => {
+      versionRef.current = version;
+      queryClient.setQueryData<VersionedBlock[]>(
+        blockKeys.byPage(pageId),
+        (current) => {
+          const list = current ?? [];
+          return list.map((b) =>
+            b.type === "DOCUMENT"
+              ? {
+                  ...b,
+                  content,
+                  version,
+                  updatedAt: new Date().toISOString(),
+                }
+              : b
+          );
+        }
+      );
+    },
+    [queryClient, pageId]
+  );
+
   return {
     saveNow,
+    applyExternalUpdate,
     isPending: mutation.isPending,
     isError: mutation.isError,
     isConflict: mutation.error instanceof SaveConflictError,

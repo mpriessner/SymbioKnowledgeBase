@@ -5,8 +5,8 @@ import {
 } from "@/lib/editor/blockTypeRegistry";
 
 describe("blockTypeRegistry", () => {
-  it("should contain all 14 block types", () => {
-    expect(blockTypeRegistry).toHaveLength(14);
+  it("should contain all 15 block types", () => {
+    expect(blockTypeRegistry).toHaveLength(15);
   });
 
   it("should have unique IDs for all block types", () => {
@@ -40,14 +40,15 @@ describe("blockTypeRegistry", () => {
     expect(names).toContain("Callout");
     expect(names).toContain("Code Block");
     expect(names).toContain("Image");
+    expect(names).toContain("File");
     expect(names).toContain("Bookmark");
   });
 });
 
 describe("filterBlockTypes", () => {
   it("should return all items when query is empty", () => {
-    expect(filterBlockTypes("")).toHaveLength(14);
-    expect(filterBlockTypes("  ")).toHaveLength(14);
+    expect(filterBlockTypes("")).toHaveLength(15);
+    expect(filterBlockTypes("  ")).toHaveLength(15);
   });
 
   it("should filter by name (case-insensitive)", () => {

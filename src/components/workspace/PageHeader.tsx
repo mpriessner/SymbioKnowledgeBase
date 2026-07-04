@@ -1,16 +1,18 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { Download } from "lucide-react";
+import { Download, History } from "lucide-react";
 import { useUpdatePage } from "@/hooks/usePages";
 import { EmojiPicker } from "@/components/workspace/EmojiPicker";
 import { CoverImageManager } from "@/components/workspace/CoverImageManager";
 import { FavoriteButton } from "@/components/page/FavoriteButton";
 import { ShareButton } from "@/components/page/ShareButton";
+import { PageHistoryPanel } from "@/components/page/PageHistoryPanel";
 import type { Page } from "@/types/page";
 
-/** Standalone action buttons for the page (export, favorite, share). Designed to be rendered inside the breadcrumb bar. */
+/** Standalone action buttons for the page (history, export, favorite, share). Designed to be rendered inside the breadcrumb bar. */
 export function PageActions({ pageId, pageTitle }: { pageId: string; pageTitle: string }) {
+  const [showHistory, setShowHistory] = useState(false);
   const handleExportMarkdown = useCallback(async () => {
     try {
       const res = await fetch(`/api/pages/${pageId}/export`);
@@ -39,6 +41,14 @@ export function PageActions({ pageId, pageTitle }: { pageId: string; pageTitle: 
   return (
     <div className="flex items-center gap-1">
       <button
+        onClick={() => setShowHistory(true)}
+        className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
+        title="Page history"
+        aria-label="Page history"
+      >
+        <History className="h-4 w-4" />
+      </button>
+      <button
         onClick={handleExportMarkdown}
         className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
         title="Export as Markdown"
@@ -48,6 +58,11 @@ export function PageActions({ pageId, pageTitle }: { pageId: string; pageTitle: 
       </button>
       <FavoriteButton pageId={pageId} />
       <ShareButton pageId={pageId} pageTitle={pageTitle} />
+      <PageHistoryPanel
+        pageId={pageId}
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+      />
     </div>
   );
 }

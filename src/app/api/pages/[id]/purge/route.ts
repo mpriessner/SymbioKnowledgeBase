@@ -62,7 +62,7 @@ export const DELETE = withTenant(
     await prisma.$transaction(async (tx) => {
       if (docBlock) {
         const latest = await tx.documentVersion.findFirst({
-          where: { pageId: page.id },
+          where: { pageId: page.id, tenantId },
           orderBy: { version: "desc" },
           select: { version: true },
         });

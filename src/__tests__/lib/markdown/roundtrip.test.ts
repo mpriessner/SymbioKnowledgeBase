@@ -443,6 +443,86 @@ describe("Round-trip fidelity: JSON → Markdown → JSON", () => {
     });
   });
 
+  describe("file attachment", () => {
+    it("fileAttachment node round-trips preserving all attrs", () => {
+      const input: JSONContent = {
+        type: "doc",
+        content: [
+          {
+            type: "fileAttachment",
+            attrs: {
+              attachmentId: "att-123",
+              name: "Report v2.pdf",
+              size: 20480,
+              mimeType: "application/pdf",
+            },
+          },
+        ],
+      };
+      const output = roundTrip(input);
+      const fa = output.content!.find((n) => n.type === "fileAttachment");
+      expect(fa).toBeDefined();
+      expect(fa!.attrs?.attachmentId).toBe("att-123");
+      expect(fa!.attrs?.name).toBe("Report v2.pdf");
+      expect(fa!.attrs?.size).toBe(20480);
+      expect(fa!.attrs?.mimeType).toBe("application/pdf");
+    });
+
+    it("AC5: an image AND a file attachment both survive a mirror write (regression)", () => {
+      // Regression guard for the serializer default-case data-loss trap: a
+      // leaf fileAttachment must not be silently dropped on a filesystem-mirror
+      // write. Serialize (what the mirror writes to disk), then read back.
+      const input: JSONContent = {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: { src: "/api/attachments/img-1", alt: "diagram.png" },
+          },
+          {
+            type: "fileAttachment",
+            attrs: {
+              attachmentId: "att-1",
+              name: "data.csv",
+              size: 512,
+              mimeType: "text/csv",
+            },
+          },
+        ],
+      };
+
+      const md = tiptapToMarkdown(input, { includeFrontmatter: false });
+      // The written mirror file must contain markers for BOTH — not an empty
+      // string where the attachment was.
+      expect(md).toContain("/api/attachments/img-1");
+      expect(md).toContain("<file-attachment");
+      expect(md).toContain('data-id="att-1"');
+
+      const output = markdownToTiptap(md);
+      const findByType = (
+        nodes: JSONContent[],
+        type: string
+      ): JSONContent | undefined => {
+        for (const n of nodes) {
+          if (n.type === type) return n;
+          if (n.content) {
+            const found = findByType(n.content, type);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+      const img = findByType(output.content.content || [], "image");
+      const fa = findByType(output.content.content || [], "fileAttachment");
+      expect(img).toBeDefined();
+      expect(img!.attrs?.src).toBe("/api/attachments/img-1");
+      expect(fa).toBeDefined();
+      expect(fa!.attrs?.attachmentId).toBe("att-1");
+      expect(fa!.attrs?.name).toBe("data.csv");
+      expect(fa!.attrs?.mimeType).toBe("text/csv");
+    });
+  });
+
   describe("table", () => {
     it("table round-trips", () => {
       const input: JSONContent = {
