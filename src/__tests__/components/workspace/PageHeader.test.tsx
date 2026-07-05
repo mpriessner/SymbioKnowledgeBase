@@ -22,6 +22,7 @@ const mockPage: Page = {
   parentId: null,
   teamspaceId: null,
   spaceType: "PRIVATE",
+  generalAccess: "INVITED_ONLY",
   title: "Test Page Title",
   icon: null,
   coverUrl: null,

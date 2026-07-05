@@ -8,6 +8,7 @@ import {
   useUpdatePublishOptions,
 } from "@/hooks/usePublish";
 import { ToggleSwitch } from "./ToggleSwitch";
+import { QrPanel } from "./QrPanel";
 
 interface ShareDialogPublishProps {
   pageId: string;
@@ -132,6 +133,8 @@ export function ShareDialogPublish({ pageId }: ShareDialogPublishProps) {
           )}
         </>
       )}
+
+      <QrPanel pageId={pageId} />
     </div>
   );
 }

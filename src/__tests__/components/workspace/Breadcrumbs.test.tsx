@@ -21,6 +21,7 @@ function mockTreeNode(overrides: Partial<PageTreeNode> = {}): PageTreeNode {
     parentId: null,
     teamspaceId: null,
     spaceType: "PRIVATE",
+    generalAccess: "INVITED_ONLY",
     title: "Untitled",
     icon: null,
     coverUrl: null,

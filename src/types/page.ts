@@ -1,4 +1,5 @@
 export type SpaceType = "PRIVATE" | "TEAM" | "AGENT";
+export type GeneralAccess = "INVITED_ONLY" | "ANYONE_WITH_LINK";
 
 export interface Page {
   id: string;
@@ -6,6 +7,7 @@ export interface Page {
   parentId: string | null;
   teamspaceId: string | null;
   spaceType: SpaceType;
+  generalAccess: GeneralAccess;
   title: string;
   icon: string | null;
   coverUrl: string | null;

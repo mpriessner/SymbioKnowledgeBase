@@ -91,6 +91,15 @@ function validateNodeEnv(
 requireInProduction("NEXT_PUBLIC_SUPABASE_URL");
 requireInProduction("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
+// a71-09: canonical public base URL used to build QR-code share links
+// (`${NEXT_PUBLIC_PUBLIC_BASE_URL}/shared/${token}`). Must be `NEXT_PUBLIC_`
+// prefixed so it's readable from the client component that renders the QR
+// (`QrPanel`) — a bare `PUBLIC_BASE_URL` is stripped at build time and reads
+// as `undefined` in the browser. Missing/placeholder in production would mean
+// every QR link resolves to a proxy-dependent or localhost host a phone
+// camera can't reach, so it's fail-fast the same way as the Supabase vars.
+requireInProduction("NEXT_PUBLIC_PUBLIC_BASE_URL");
+
 /**
  * Validated environment configuration.
  *

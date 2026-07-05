@@ -1,4 +1,4 @@
-import type { Page, SpaceType } from "@/types/page";
+import type { Page, SpaceType, GeneralAccess } from "@/types/page";
 
 /**
  * Serializes a Prisma Page record to the API response format.
@@ -10,6 +10,11 @@ export function serializePage(page: {
   parentId: string | null;
   teamspaceId?: string | null;
   spaceType?: string;
+  // a71-09: surfaced so client code (QrPanel/print route) can decide whether
+  // a page is an open, shared teamspace page or a "restricted teamspace"
+  // page that needs the private-page publish confirmation (AC8/AC11).
+  // Additive/optional — existing consumers of `serializePage` are unaffected.
+  generalAccess?: string;
   title: string;
   icon: string | null;
   coverUrl: string | null;
@@ -27,6 +32,7 @@ export function serializePage(page: {
     parentId: page.parentId,
     teamspaceId: page.teamspaceId ?? null,
     spaceType: (page.spaceType as SpaceType) ?? "PRIVATE",
+    generalAccess: (page.generalAccess as GeneralAccess) ?? "INVITED_ONLY",
     title: page.title,
     icon: page.icon,
     coverUrl: page.coverUrl,

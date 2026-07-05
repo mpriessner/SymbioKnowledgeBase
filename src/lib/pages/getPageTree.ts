@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import type { PageTreeNode } from "@/types/page";
+import type { PageTreeNode, GeneralAccess } from "@/types/page";
 
 interface PageRow {
   id: string;
@@ -7,6 +7,7 @@ interface PageRow {
   parentId: string | null;
   teamspaceId?: string | null;
   spaceType?: string;
+  generalAccess?: string;
   title: string;
   icon: string | null;
   coverUrl: string | null;
@@ -35,6 +36,7 @@ export function buildPageTree(pages: PageRow[]): PageTreeNode[] {
       parentId: page.parentId,
       teamspaceId: page.teamspaceId ?? null,
       spaceType: (page.spaceType as "PRIVATE" | "TEAM" | "AGENT") ?? "PRIVATE",
+      generalAccess: (page.generalAccess as GeneralAccess) ?? "INVITED_ONLY",
       title: page.title,
       icon: page.icon,
       coverUrl: page.coverUrl,
