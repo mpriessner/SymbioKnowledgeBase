@@ -1,37 +1,10 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { prisma } from "@/lib/db";
 import { SharedPageContent } from "@/components/shared/SharedPageContent";
+import { getShareLink } from "@/lib/pages/shareLink";
 
 interface SharedPageProps {
   params: Promise<{ token: string }>;
-}
-
-async function getShareLink(token: string) {
-  const shareLink = await prisma.publicShareLink.findUnique({
-    where: { token },
-    include: {
-      page: {
-        include: {
-          blocks: {
-            orderBy: { position: "asc" },
-          },
-          teamspace: { select: { name: true } },
-        },
-      },
-      createdByUser: { select: { name: true } },
-    },
-  });
-
-  if (
-    !shareLink ||
-    shareLink.revokedAt !== null ||
-    shareLink.expiresAt < new Date()
-  ) {
-    return null;
-  }
-
-  return shareLink;
 }
 
 export async function generateMetadata({
