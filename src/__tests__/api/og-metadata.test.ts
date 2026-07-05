@@ -12,18 +12,12 @@ vi.mock("@/lib/tenantContext", async (orig) => {
   };
 });
 
-// Mock the SSRF guard so we test the route wiring, not DNS.
-const mockAssert = vi.fn();
-vi.mock("@/lib/security/ssrfGuard", async (orig) => {
-  const actual = (await orig()) as Record<string, unknown>;
-  return {
-    ...actual,
-    assertUrlIsFetchable: (...a: unknown[]) => mockAssert(...a),
-  };
-});
-
+// NOTE: the route does its OWN inline DNS/net SSRF validation (isPublicHttpUrl
+// below it) rather than calling `@/lib/security/ssrfGuard` — that module is
+// currently unused by any route (dead code, tracked separately; out of scope
+// for this fix). So the SSRF checks below exercise the route's real guard via
+// a literal blocked IP, not a mock.
 const { POST } = await import("@/app/api/og-metadata/route");
-const { BlockedUrlError } = await import("@/lib/security/ssrfGuard");
 
 function post(body: unknown, headers: Record<string, string> = {}): NextRequest {
   const h = new Headers({ "Content-Type": "application/json", ...headers });
@@ -50,20 +44,22 @@ describe("POST /api/og-metadata — auth (audit S5)", () => {
     const res = await POST(post({ url: "https://example.com" }, { authorization: "Bearer junk" }));
 
     expect(res.status).toBe(401);
-    expect(mockAssert).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 });
 
 describe("POST /api/og-metadata — SSRF guard (audit S5)", () => {
-  test("blocked URL => 422, no outbound fetch", async () => {
-    mockAssert.mockRejectedValue(new BlockedUrlError("blocked"));
+  test("blocked URL => 502, no outbound fetch", async () => {
+    // A literal blocked IP is rejected by the route's own inline validation
+    // before any fetch is attempted — no DNS lookup needed for a literal IP.
+    // The route returns a generic 502 (not the blocked reason) so it never
+    // reveals to the caller why a host was rejected.
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     const res = await POST(post({ url: "http://169.254.169.254/" }));
 
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(502);
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
@@ -73,8 +69,7 @@ describe("POST /api/og-metadata — SSRF guard (audit S5)", () => {
     expect(res.status).toBe(400);
   });
 
-  test("public URL passes the guard and fetches with redirect:error", async () => {
-    mockAssert.mockResolvedValue(new URL("https://example.com/"));
+  test("public URL passes the guard and fetches with redirect:manual", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("<html><head><title>Hi</title></head></html>", {
         status: 200,
@@ -87,7 +82,9 @@ describe("POST /api/og-metadata — SSRF guard (audit S5)", () => {
     expect(res.status).toBe(200);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    expect(init.redirect).toBe("error");
+    // The route follows redirects manually, re-validating each hop, rather
+    // than letting fetch auto-follow to a possibly-internal host.
+    expect(init.redirect).toBe("manual");
     fetchSpy.mockRestore();
   });
 });

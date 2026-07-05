@@ -4,10 +4,14 @@ import { prisma } from "@/lib/db";
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
 // These tests need a live Postgres (via prisma) AND a running Next.js server.
-// Skip the whole suite cleanly when no database is configured.
+// Skip cleanly unless BOTH are configured: CI provides Postgres but never
+// starts a server, so gating on DATABASE_URL alone made every fetch here
+// fail instantly in CI. Set TEST_BASE_URL to run against a live server.
+// See docs/stories/2026-07-05-fix-red-main-ci-triage.md.
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+const HAS_SERVER = Boolean(process.env.TEST_BASE_URL);
 
-describe.skipIf(!HAS_DB)("POST /api/auth/register", () => {
+describe.skipIf(!HAS_DB || !HAS_SERVER)("POST /api/auth/register", () => {
   afterAll(async () => {
     // Clean up test users
     await prisma.user.deleteMany({
@@ -112,7 +116,7 @@ describe.skipIf(!HAS_DB)("POST /api/auth/register", () => {
   });
 });
 
-describe.skipIf(!HAS_DB)("POST /api/auth/callback/credentials (login)", () => {
+describe.skipIf(!HAS_DB || !HAS_SERVER)("POST /api/auth/callback/credentials (login)", () => {
   beforeAll(async () => {
     // Register a user for login tests
     await fetch(`${BASE_URL}/api/auth/register`, {
@@ -186,7 +190,7 @@ describe.skipIf(!HAS_DB)("POST /api/auth/callback/credentials (login)", () => {
   });
 });
 
-describe.skipIf(!HAS_DB)("Middleware: protected routes", () => {
+describe.skipIf(!HAS_DB || !HAS_SERVER)("Middleware: protected routes", () => {
   it("redirects unauthenticated users to /login", async () => {
     const response = await fetch(`${BASE_URL}/pages`, {
       redirect: "manual",

@@ -5,12 +5,16 @@ import { describe, test, expect, vi, beforeEach } from "vitest";
 // swallowed with a bare console.error.
 
 const mockApiKeyFindFirst = vi.fn();
+const mockApiKeyFindMany = vi.fn();
 const mockApiKeyUpdate = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   prisma: {
     apiKey: {
       findFirst: (...a: unknown[]) => mockApiKeyFindFirst(...a),
+      // resolveApiKey falls back to a bcrypt scan when the SHA-256 lookup
+      // misses; a key not matched by findFirst below drives that fallback.
+      findMany: (...a: unknown[]) => mockApiKeyFindMany(...a),
       update: (...a: unknown[]) => mockApiKeyUpdate(...a),
     },
   },
@@ -25,6 +29,7 @@ const { resolveApiKey } = await import("@/lib/apiAuth");
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockApiKeyFindMany.mockResolvedValue([]);
 });
 
 describe("resolveApiKey lastUsedAt failure (audit S15)", () => {

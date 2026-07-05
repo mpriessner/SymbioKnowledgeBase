@@ -58,6 +58,12 @@ jobs:
       - name: Apply migrations to test database
         run: npx prisma migrate deploy
 
+      # tests/api/schema.test.ts asserts the seeded baseline (default tenant,
+      # admin@symbio.local, welcome page) — migrate alone leaves it red.
+      # See docs/stories/2026-07-05-fix-red-main-ci-triage.md.
+      - name: Seed test database
+        run: npx prisma db seed
+
       # ── Blocking gates ───────────────────────────────────────────────
       - name: Typecheck (tsc --noEmit)
         run: npx tsc --noEmit
