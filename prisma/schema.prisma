@@ -226,6 +226,8 @@ model Tenant {
   pageFavorites         PageFavorite[]
   pageShares            PageShare[]
   sweepSessions         SweepSession[]
+  googleDriveConnections GoogleDriveConnection[]
+  oauthStates            OAuthState[]
   ingestLedgerEntries   IngestLedgerEntry[]
   sources               Source[]
   claims                Claim[]
@@ -288,6 +290,8 @@ model User {
   sentNotifications     Notification[]    @relation("NotificationSource")
   auditLogs             AuditLog[]
   fileAttachments       FileAttachment[]
+  googleDriveConnections GoogleDriveConnection[]
+  oauthStates            OAuthState[]
 
   // Indexes
   @@unique([tenantId, email], map: "uq_users_email_tenant_id")
@@ -1181,6 +1185,40 @@ model TriageDigest {
   @@unique([tenantId, periodKey], map: "uq_triage_digests_tenant_period")
   @@index([tenantId, notifiedAt], map: "idx_triage_digests_tenant_notified")
   @@map("triage_digests")
+}
+
+// ─── Google Drive connector (A71-12) ────────────────────────────────
+
+model GoogleDriveConnection {
+  id                    String    @id @default(uuid())
+  tenantId              String    @map("tenant_id")
+  userId                String    @map("user_id")
+  encryptedRefreshToken String    @map("encrypted_refresh_token")
+  scopes                String[]
+  connectedAt           DateTime  @default(now()) @map("connected_at")
+  revokedAt             DateTime? @map("revoked_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId], map: "uq_google_drive_connections_tenant_user")
+  @@index([tenantId], map: "idx_google_drive_connections_tenant_id")
+  @@map("google_drive_connections")
+}
+
+model OAuthState {
+  id        String   @id @default(uuid())
+  state     String   @unique
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt], map: "idx_oauth_states_expires_at")
+  @@map("oauth_states")
 }
 
 // ─── Anchored-Object Knowledge (AOK-01) ─────────────────────────────

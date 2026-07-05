@@ -4,8 +4,8 @@
 - **Project owner:** Martin Priessner (martin.priessner@scisymbio.ai)
 - **Created by:** Agent 70
 - **Created:** 2026-07-04
-- **Status:** draft
-- **Assigned to / currently owned by:** unassigned
+- **Status:** in-progress (Phase 1 connect/search/import/disconnect + Phase 2 upload backend implemented + unit-tested on `feat/a71-batch`, commit pending; Phase 3 voice surface and the frontend "From Google Drive" tab / settings UI NOT built — see implementation notes appended below)
+- **Assigned to / currently owned by:** Sonnet implementation session, 2026-07-05
 - **Related / parallel work:** Phase 1 (import) reuses the URL-link document-intake path from [a71-08 Document intake](2026-07-04-a71-08-document-intake-upload-or-link.md) — implement a71-08 first. Phase 3 (agent/voice Drive search) should reuse the private/mine-scoping conventions established in [a71-11 Private-document search & listing](2026-07-04-a71-11-private-doc-search-voice.md). No overlap with Epic A sync stories (`2026-07-04-a71-01..07-*.md`).
 
 ## Owner constraint (non-negotiable, restated prominently)
@@ -205,3 +205,73 @@ Reviewer note: Claude Opus standing in for the non-functional Codex CLI reviewer
 - Acceptance criteria: added AC10 (startup env validation, mirroring `src/lib/env.ts`).
 - Regression risks: added a right-sized Drive API request-handling bullet (timeout + 429, no circuit breaker) and a right-sized observability bullet (basic structured logging only, no metrics/alerting stack).
 - Findings adjudicated as already covered or right-sized down, no body change beyond notes above: Drive-client scope enforcement at runtime (mostly covered by Round 1 finding 5), token-refresh-failure handling (already a Regression-risks bullet; circuit breaker declined as over-scoped), redirect-URI exact-match validation (already covered by Round 1 finding 2 + existing text), full OAuth-callback rate limiting (reuse existing `rateLimit.ts` pattern, not a new mechanism).
+
+## Implementation notes (2026-07-05, backend pass)
+
+**No `googleapis` npm dependency added.** `node_modules` in this worktree is a
+read-only symlink into the main checkout and has no Google API client
+installed; per the task's setup constraint, the connector talks to the
+Drive v3 and OAuth2 REST endpoints directly via the built-in `fetch` — zero
+new dependencies.
+
+**Implemented:** Phase 1 (OAuth connect/callback with CSRF `state` bound to a
+Postgres-backed `OAuthState` table, AES-256-GCM refresh-token encryption via
+`DRIVE_TOKEN_ENC_KEY`, search, authenticated import into a `kind='DOCUMENT'`
+page + `FileAttachment` via the existing `storeAttachment` path, disconnect
+with best-effort Google-side revocation) and Phase 2 (export an existing SKB
+attachment to Drive as a brand-new file via `files.create`). Unit tests cover
+config-gating, token encryption round-trip/tamper/decrypt-failure, Drive
+client request shaping, the no-delete/no-modify static-analysis guard, and
+the search/callback routes' config-gating + error-handling paths (37 new
+tests, all green; full suite 2393 passed / 0 failed / 38 pre-existing skips;
+`tsc --noEmit` 0 errors; `eslint` 0 errors/warnings on touched files).
+
+**Not implemented (explicit deviation, flagged rather than gold-plated):**
+the frontend "From Google Drive" tab in the document-intake dialog, the
+settings/revocation UI page, and Phase 3 (voice search tool). This story's
+own verification plan is backend-only (`tsc`/`vitest`/`prisma validate`, plus
+manual OAuth tests requiring a real Google Cloud OAuth client this pass had
+no way to provision or click through); the frontend surfaces need a real dev
+server + visual verification this worktree cannot run (no `DATABASE_URL`).
+Recommend a follow-up story once the owner has registered the Google Cloud
+OAuth client and can smoke-test the redirect end to end.
+
+**No-delete/no-modify enforcement (code-level, per AC5):** `client.ts`
+exposes exactly six Drive/OAuth operations (token exchange, refresh, revoke,
+`files.list` search, `files.get` metadata + `alt=media` download,
+`files.create` multipart upload) — there is no generic
+`request(method, path)` escape hatch a caller could redirect to a mutating
+endpoint, and no code path ever assigns HTTP method `DELETE`/`PATCH`/`PUT`
+against a Drive files endpoint. A dedicated static-analysis test
+(`src/__tests__/lib/googleDrive/client.test.ts`) greps the compiled source
+for `.files.delete(`, `.files.update(`, `.files.emptyTrash(`, and the banned
+HTTP-method literals, and separately asserts no exported function name
+matches `/delete|trash|^update/i` — this is the regression guard the
+verification plan asked for.
+
+**Config gating:** the four required env vars
+(`GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`,
+`GOOGLE_DRIVE_REDIRECT_URI`, `DRIVE_TOKEN_ENC_KEY`) are read lazily by
+`src/lib/integrations/googleDrive/config.ts`, which is NOT imported from the
+root layout / `src/lib/env.ts` boot chain — importing it there would force
+every SKB deployment to configure Drive just to boot, violating the task's
+"never crash when unconfigured" constraint. Instead: none set → feature is
+silently absent (no throw, no warn, in any environment); some-but-not-all
+set → misconfiguration, throws in production / warns in development;
+all four set but `DRIVE_TOKEN_ENC_KEY` isn't a valid 32-byte key → throws in
+every environment (a broken key is never "just off"). This is a deliberate,
+narrower reading of AC10's "fails fast in production if missing" — scoped to
+this optional feature rather than the whole app — flagged here as an owner
+decision point, not silently assumed.
+
+**Owner setup needed to actually use this:** register a Google Cloud OAuth
+2.0 **web application** client restricted to exactly the `drive.readonly` +
+`drive.file` scopes (never the broad `drive` scope), then set:
+`GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`,
+`GOOGLE_DRIVE_REDIRECT_URI` (must exactly match a URI allowlisted in the
+Cloud Console client, e.g. `https://<host>/api/integrations/google-drive/callback`),
+and `DRIVE_TOKEN_ENC_KEY` (64 hex chars or 32-byte base64 — e.g.
+`openssl rand -hex 32`). No `.env.example` entry was added in this pass since
+this worktree has no write access to a shared `.env` file; add these four
+names to whatever `.env.example`/secrets-doc convention the repo uses when
+wiring real credentials.
