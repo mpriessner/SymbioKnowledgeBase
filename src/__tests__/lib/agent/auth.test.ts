@@ -25,18 +25,6 @@ vi.mock("@/lib/agent/ratelimit", () => ({
   })),
 }));
 
-const mockGetUser = vi.fn();
-vi.mock("@supabase/ssr", () => ({
-  createServerClient: vi.fn(() => ({
-    auth: { getUser: (...a: unknown[]) => mockGetUser(...a) },
-  })),
-}));
-
-const mockEnsureUserExists = vi.fn();
-vi.mock("@/lib/auth/ensureUserExists", () => ({
-  ensureUserExists: (...a: unknown[]) => mockEnsureUserExists(...a),
-}));
-
 // Audit logger: spy so we can assert key-usage failures are routed through the
 // structured logger (audit S15), not swallowed silently.
 const mockLogAuthEvent = vi.fn(async (..._a: unknown[]) => {});
@@ -73,19 +61,27 @@ async function call(method: string, authHeader?: string): Promise<Response> {
   return withAgentAuth(okHandler)(req(method, authHeader));
 }
 
+// The canonical verifier (`@/lib/apiAuth`) resolves an api_keys row with the
+// owning user attached via a Prisma `include`; mock rows below mirror that
+// shape so this suite exercises the same contract as `resolveApiKey.test.ts`.
+function apiKeyRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "key-1",
+    scopes: ["read", "write"],
+    revokedAt: null,
+    user: { id: "user-1", tenantId: "tenant-1", role: "USER" },
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   bcryptCompareResult = false;
-  process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54341";
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key-not-placeholder";
-  delete process.env.SUPABASE_INTERNAL_URL;
+  mockApiKeyFindMany.mockResolvedValue([]);
 });
 
 describe("withAgentAuth — mock branch removed (audit S1/S7)", () => {
   test("a non-skb_ garbage bearer is no longer accepted (401, not 200)", async () => {
-    // No Supabase user for this token => invalid.
-    mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: "bad" } });
-
     const res = await call("GET", "Bearer x");
 
     expect(res.status).toBe(401);
@@ -109,14 +105,13 @@ describe("withAgentAuth — mock branch removed (audit S1/S7)", () => {
   });
 });
 
+// NOTE: the agent path is API-key-only by design (see CLAUDE.md "Agent API");
+// there is no Supabase-JWT fallback here to test. A prior revision of this
+// suite exercised a JWT code path that no longer exists on `withAgentAuth` —
+// removed rather than re-pointed, since there is nothing left to point at.
 describe("withAgentAuth — skb_ API key path (audit S11 scopes)", () => {
   test("valid skb_ key authenticates and runs the handler", async () => {
-    mockApiKeyFindFirst.mockResolvedValue({
-      id: "key-1",
-      tenantId: "tenant-1",
-      userId: "user-1",
-      scopes: ["read", "write"],
-    });
+    mockApiKeyFindFirst.mockResolvedValue(apiKeyRow());
     mockApiKeyUpdate.mockResolvedValue({});
 
     const res = await call("GET", "Bearer skb_live_validkey");
@@ -133,12 +128,13 @@ describe("withAgentAuth — skb_ API key path (audit S11 scopes)", () => {
   });
 
   test("read-only key is blocked (403) on a write (POST)", async () => {
-    mockApiKeyFindFirst.mockResolvedValue({
-      id: "key-ro",
-      tenantId: "t",
-      userId: "u",
-      scopes: ["read"],
-    });
+    mockApiKeyFindFirst.mockResolvedValue(
+      apiKeyRow({
+        id: "key-ro",
+        scopes: ["read"],
+        user: { id: "u", tenantId: "t", role: "USER" },
+      })
+    );
 
     const res = await call("POST", "Bearer skb_live_readonly");
 
@@ -147,24 +143,26 @@ describe("withAgentAuth — skb_ API key path (audit S11 scopes)", () => {
   });
 
   test("read-only key is allowed (200) on a read (GET)", async () => {
-    mockApiKeyFindFirst.mockResolvedValue({
-      id: "key-ro",
-      tenantId: "t",
-      userId: "u",
-      scopes: ["read"],
-    });
+    mockApiKeyFindFirst.mockResolvedValue(
+      apiKeyRow({
+        id: "key-ro",
+        scopes: ["read"],
+        user: { id: "u", tenantId: "t", role: "USER" },
+      })
+    );
 
     const res = await call("GET", "Bearer skb_live_readonly");
     expect(res.status).toBe(200);
   });
 
   test("legacy key with empty scopes falls back to read+write (no lockout pre-migration)", async () => {
-    mockApiKeyFindFirst.mockResolvedValue({
-      id: "key-legacy",
-      tenantId: "t",
-      userId: "u",
-      scopes: [],
-    });
+    mockApiKeyFindFirst.mockResolvedValue(
+      apiKeyRow({
+        id: "key-legacy",
+        scopes: [],
+        user: { id: "u", tenantId: "t", role: "USER" },
+      })
+    );
 
     const res = await call("POST", "Bearer skb_live_legacy");
     expect(res.status).toBe(200);
@@ -179,12 +177,7 @@ describe("withAgentAuth — skb_ API key path (audit S11 scopes)", () => {
   });
 
   test("SHA key lastUsedAt failure is routed through the structured logger, not swallowed (audit S15)", async () => {
-    mockApiKeyFindFirst.mockResolvedValue({
-      id: "key-1",
-      tenantId: "tenant-1",
-      userId: "user-1",
-      scopes: ["read", "write"],
-    });
+    mockApiKeyFindFirst.mockResolvedValue(apiKeyRow());
     // lastUsedAt update fails — must NOT fail the request, but must be logged.
     mockApiKeyUpdate.mockRejectedValue(new Error("db write failed"));
 
@@ -205,7 +198,7 @@ describe("withAgentAuth — skb_ API key path (audit S11 scopes)", () => {
   test("bcrypt key lastUsedAt failure is also routed through the structured logger (audit S15)", async () => {
     mockApiKeyFindFirst.mockResolvedValue(null);
     mockApiKeyFindMany.mockResolvedValue([
-      { id: "key-bc", tenantId: "t", userId: "u", scopes: ["read", "write"], keyHash: "hashed" },
+      apiKeyRow({ id: "key-bc", user: { id: "u", tenantId: "t", role: "USER" } }),
     ]);
     bcryptCompareResult = true;
     mockApiKeyUpdate.mockRejectedValue(new Error("bcrypt path db fail"));
@@ -221,46 +214,5 @@ describe("withAgentAuth — skb_ API key path (audit S11 scopes)", () => {
       expect.objectContaining({ apiKeyId: "key-bc" }),
       expect.objectContaining({ reason: "bcrypt path db fail" })
     );
-  });
-});
-
-describe("withAgentAuth — Supabase JWT path (audit S1/S7 replacement)", () => {
-  test("valid JWT is verified and mapped via ensureUserExists", async () => {
-    mockGetUser.mockResolvedValue({
-      data: { user: { id: "sub-123", email: "u@x.io" } },
-      error: null,
-    });
-    mockEnsureUserExists.mockResolvedValue({
-      id: "sub-123",
-      tenantId: "tenant-x",
-      role: "USER",
-    });
-
-    const res = await call("GET", "Bearer eyJ.real.jwt");
-
-    expect(res.status).toBe(200);
-    expect(mockGetUser).toHaveBeenCalledWith("eyJ.real.jwt");
-    const [, ctx] = okHandler.mock.calls[0];
-    expect(ctx).toMatchObject({ tenantId: "tenant-x", userId: "sub-123" });
-  });
-
-  test("expired/forged JWT (user null + error) => 401, handler not run", async () => {
-    mockGetUser.mockResolvedValue({
-      data: { user: null },
-      error: { message: "jwt expired" },
-    });
-
-    const res = await call("GET", "Bearer eyJ.expired.jwt");
-    expect(res.status).toBe(401);
-    expect(okHandler).not.toHaveBeenCalled();
-  });
-
-  test("Supabase unconfigured => JWT cannot be verified => 401", async () => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
-    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    const res = await call("GET", "Bearer eyJ.some.jwt");
-    expect(res.status).toBe(401);
-    expect(mockGetUser).not.toHaveBeenCalled();
   });
 });

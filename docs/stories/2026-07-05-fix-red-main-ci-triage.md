@@ -4,8 +4,8 @@
 - **Project owner:** Martin Priessner (martin.priessner@scisymbio.ai)
 - **Created by:** Agent 68 (session 68_Agent_Test_implementation) — follow-up finding from the cross-stack test-coverage audit
 - **Created:** 2026-07-05
-- **Status:** ready — reviewed (Codex + GLM, Gemini skipped per owner pref, 2026-07-05)
-- **Assigned to / currently owned by:** unassigned
+- **Status:** done — implemented 2026-07-05 (session 68_Agent_Test_implementation)
+- **Assigned to / currently owned by:** session 68_Agent_Test_implementation (implementation complete)
 - **Related / parallel work:** Cross-stack audit report `~/windsurf_repos/diligence-reports/test-coverage-audit-2026-07-03-agent68.md` (§NEW FINDINGS 2026-07-05). Sibling: `ExpTube/docs/stories/2026-07-05-fix-red-main-ci-triage.md` (same failure date, same treatment). Model precedent: chatbot-notebook's `2026-07-03-fix-16-known-red-tests.md`. Coordinate with Agent 70's A70/A71 SKB work (their finish-track commit is on main; their A71 batch is planning-only).
 
 ## Problem / context
@@ -57,6 +57,123 @@ CI log (`gh run list --branch main` → every run since PR #1 is `failure`, late
 5. No changes to the agent-route tests added by PR #3 (`tests/unit/api/agent/{kb-query,search,pages-write-routes}.test.ts`) — confirmed they do not touch the failing auth/audit files, so no collision.
 6. All work done on a branch off `origin/main`; the fix does NOT get based on `feat/a70-finish-track` (which is diverged and pre-regression).
 
+## Implementation verdicts (2026-07-05, session 68_Agent_Test_implementation)
+
+Implemented on `fix/red-main-ci-triage` off `origin/main` `e72e8d9` (confirmed
+ancestor, per AC6). Per-cluster verdict:
+
+1. **`src/lib/agent/audit.ts` — RECOVERED.** Added back `logAuthEvent` and
+   `clientIpFromHeaders` (lost at merge `d6896fd`), adapted to the CURRENT
+   file's conventions (the structured `logger` from `@/lib/logger`, not the
+   historical `console.log` — `logAgentAction` was left untouched since its
+   tests already passed against the current style). Fixes 2 of the 3 tsc
+   errors directly, the 3rd (`auth/callback/route.ts`) transitively (its
+   import now resolves), and 5 of the 18 red tests in `audit.test.ts`.
+2. **`src/lib/apiAuth.ts` (`touchLastUsed`) — RECOVERED.** The lastUsedAt
+   fire-and-forget `.catch` on both the SHA-256 and bcrypt key paths now
+   routes through `logAuthEvent("key.last_used_update_failed", ...)` instead
+   of a bare `console.error`, matching what `apiAuthLastUsed.test.ts` and
+   `agent/auth.test.ts` pin. Also fixed a latent gap in
+   `apiAuthLastUsed.test.ts` itself: its `@/lib/db` mock never stubbed
+   `apiKey.findMany`, so the bcrypt-fallback branch threw a `TypeError`
+   whenever the SHA-256 lookup missed — added the missing mock (test-only
+   fix, no production behavior change here).
+3. **`src/__tests__/lib/agent/auth.test.ts` — SPLIT, as the review directed.**
+   Independent re-verification during implementation found this went deeper
+   than "mechanism drift": the file's `skb_` API-key mocks used a FLAT
+   `{tenantId, userId}` shape left over from a since-superseded inline
+   dual-path implementation of `agent/auth.ts` (present at commit `0d0399c`,
+   a divergent branch — `git merge-base --is-ancestor` confirms neither
+   `0d0399c` nor the hardening commit `6599994` is an ancestor of the other).
+   The CURRENT `agent/auth.ts` delegates entirely to the canonical
+   `apiAuth.resolveApiKey`, which resolves the owning user via a nested
+   Prisma `include` (`{ user: { id, tenantId, role } }}`) — confirmed against
+   `src/__tests__/lib/auth/resolveApiKey.test.ts` and
+   `src/__tests__/lib/auth/agentAuth.test.ts` (both already green,
+   uninvolved in this story, and already targeting the nested shape). Fixed:
+   re-pointed every mock in this file to the nested shape; **removed** the
+   "Supabase JWT path" describe block (3 tests) — that mechanism does not
+   exist anywhere on the current agent path (API-key-only per CLAUDE.md
+   "Agent API"), and its coverage was not recoverable because there is
+   nothing current to point it at. Recovered (kept, now passing) both
+   lastUsedAt-failure logAuthEvent assertions — this is coverage
+   `resolveApiKey.test.ts`/`agentAuth.test.ts` do NOT provide (they don't
+   exercise the bcrypt-path failure-logging branch). Net: 10 tests now (was
+   13; -3 stale JWT tests, 0 coverage lost elsewhere since the removed
+   mechanism doesn't exist to test).
+4. **`src/lib/auth/ensureUserExists.ts` — RECOVERED.** Restored from commit
+   `f3f86a1`, adapted to the current file (which already had the `USER`-not-
+   `ADMIN` fix for the shared-tenant path — the regression was narrower than
+   the original diagnosis: only the **personal-tenant fallback** path still
+   set `role: "ADMIN"`). Recovered: `SKB_PERSONAL_TENANT_BY_DEFAULT=1` opt-in
+   env handling, `$transaction`-wrapped `user.create` + `tenantMember.upsert`
+   (atomic — no partial-provision window), and `role: "USER"` on ALL
+   provisioning paths including both personal-tenant cases (opt-in and
+   shared-tenant-missing fallback), with `TenantMember.role` (`"owner"` vs
+   `"member"`) carrying the ownership distinction instead. P2002
+   email-collision recovery preserved unchanged. **Caller-impact check**:
+   grepped all production callers (`src/lib/tenantContext.ts`,
+   `src/app/auth/callback/route.ts`) — both only consume the unchanged
+   `{id, tenantId, role}` return shape; `tenantContext.ts`'s own suite
+   (`tests/unit/auth/tenantContext.test.ts`, 8 tests) re-run clean.
+   `SKB_PERSONAL_TENANT_BY_DEFAULT` is not set anywhere in CI or `.env`
+   templates, so default (shared-tenant) behavior in CI is unaffected.
+5. **`src/__tests__/api/og-metadata.test.ts` — RE-POINTED (stale test).**
+   Independent re-verification found the mismatch was one level deeper than
+   the review's framing: the route does not call `@/lib/security/ssrfGuard`
+   at all — it has its own duplicate inline DNS/net SSRF check
+   (`isPublicHttpUrl`). `ssrfGuard.ts`'s `assertUrlIsFetchable`/
+   `BlockedUrlError` are referenced ONLY by test files, never by any route
+   (confirmed via repo-wide grep) — i.e. that module is dead code, unrelated
+   to this story's scope, not touched. Removed the now-fictitious
+   `ssrfGuard` mock and re-pointed the two failing assertions at the route's
+   real, already-correct behavior: blocked URLs get a generic `502` (not
+   `422`, and not the specific block reason — intentional, per the route's
+   own comment, to avoid revealing why a host was rejected), and redirects
+   are followed with `redirect: "manual"` (not `"error"`) so each hop can be
+   re-validated. The `getTenantContext`/`AuthenticationError` auth mock was
+   already correct (matches `withTenant`) and is unchanged. SSRF checks
+   themselves were NOT weakened — same literal blocked IP
+   (`169.254.169.254`) is still rejected pre-fetch.
+6. No cluster needed the skip-with-story-link fallback; all five were
+   recovered/re-pointed at source.
+
+**New test added**: `src/__tests__/api/auth-callback.test.ts` (2 tests) — no
+prior coverage existed for `auth/callback/route.ts`'s OAuth-exchange-failure
+path (grepped, confirmed absent). Pins that a failed `exchangeCodeForSession`
+calls `logAuthEvent("oauth.exchange_failed", "auth/callback", {}, {reason})`
+with an anonymous principal and still redirects to `/login?error=oauth_failed`
+(does not throw); a companion test pins that a successful exchange does NOT
+log a failure event.
+
+**Before/after**:
+- `npx tsc --noEmit`: 3 errors → **0 errors**.
+- `npx vitest run`: 18 failed / 2419 passed / 38 skipped (2475 total) →
+  **0 failed / 2436 passed / 38 skipped (2474 total)**. Total count nets to
+  -1 (-3 removed stale JWT tests, +2 new callback tests) with zero coverage
+  regression (the removed tests covered a mechanism that no longer exists).
+- `npx prisma validate`: green (schema unchanged by this story — the nullable
+  `AuditLog.tenantId`/`userId` columns needed by `logAuthEvent` were already
+  migrated in a prior commit).
+- `npx eslint` on all changed/added files: clean, no new findings.
+
+**Files changed** — production (3): `src/lib/agent/audit.ts`,
+`src/lib/apiAuth.ts`, `src/lib/auth/ensureUserExists.ts`. Test-only (4 modified
++ 1 new): `src/__tests__/lib/agent/auth.test.ts`,
+`src/__tests__/lib/apiAuthLastUsed.test.ts`,
+`src/__tests__/api/og-metadata.test.ts`,
+`src/__tests__/api/auth-callback.test.ts` (new). `auth/callback/route.ts`
+itself needed NO changes — its `logAuthEvent` call already matched the
+recovered signature; the tsc error there was purely a consequence of the
+missing export in `audit.ts`.
+
+No deviations from the story's plan beyond the two "went one level deeper"
+findings noted in clusters 3 and 5 above (both independently re-verified
+before acting on them, per the story's own standing instruction to verify
+rather than trust blindly).
+
+**Status: done — implemented 2026-07-05 (session 68_Agent_Test_implementation).**
+
 ## Verification
 
 `gh run list --branch main` green after PR 1; final PR: `npx vitest run` + `npx tsc --noEmit` fully clean locally and in CI.
@@ -102,6 +219,20 @@ New coverage (PR #3 delivered the agent-route layer); Kong port questions (:5434
 *Independent verification (before folding in): confirmed on `origin/main` that all 5 files use `vi.mock("@/lib/db", …)` with no `describe.skipIf(!DATABASE_URL)` (`apiAuthLastUsed.test.ts:10`, `agent/audit.test.ts:4`, `agent/auth.test.ts:9`, `ensureUserExists.test.ts:19`, `og-metadata.test.ts:17`), and that `src/lib/apiAuth.ts:164` uses `console.error` inside `touchLastUsed`. GLM's load-bearing correction — **no local-vs-CI divergence; CI Postgres is a red herring for all 18** — folded into Plan step 1. Its confirmation of the **tsc-before-vitest gate ordering** (3 tsc errors keep CI red even if every test is skipped) and **no coverage/threshold gate** folded into Plan step 3.*
 
 ## Revision History
+- 2026-07-05 — Implemented (session 68_Agent_Test_implementation) on
+  `fix/red-main-ci-triage` off `origin/main` `e72e8d9`. All five clusters
+  recovered/re-pointed at source (see "Implementation verdicts" above); zero
+  skip-with-story-link fallbacks needed. `npx tsc --noEmit`: 3→0 errors.
+  `npx vitest run`: 18 failed→0 failed (2436 passed/38 skipped). Added a new
+  regression test for the previously-uncovered `auth/callback/route.ts`
+  OAuth-failure path. Two findings went one level deeper than the review's
+  framing during independent re-verification: (a) `agent/auth.test.ts`'s
+  stale mocks stemmed from a divergent-branch inline auth implementation, not
+  just an intentional mechanism change, and (b) `og-metadata.test.ts`'s
+  target module (`ssrfGuard.ts`) is dead code never called by the route at
+  all — both are called out in detail in "Implementation verdicts" and
+  neither changed the outcome (recover/re-point, not delete). Not committed —
+  left for the owner/team lead to review the diff first. Status → done.
 - 2026-07-05 — Initial draft (Agent 68).
 - 2026-07-05 — Codex round-1 review (ran live, `codex exec -s read-only`, gpt-5.5). Corrected the story's biggest error: the red state is on `origin/main`, not the locally checked-out (diverged, green) `feat/a70-finish-track`. Reframed root cause from "stale tests" to a **lost-implementation regression at merge `d6896fd`** (recover, don't delete). Recorded the `auth/callback/route.ts` verdict = **latent production bug**. Documented that vitest deselection cannot clear the tsc gate. Added og-metadata as a separate stale-SSRF-contract cluster. Reviewer feedback pasted verbatim. (Reviser: Agent — subagent of team lead.)
 - 2026-07-05 — GLM round-2 review (ran live, `glm -m glm-5.2`, exit 0; only final message captured — see note above the quote). Load-bearing correction: the 18 failures are DB-mocking `vi.mock` unit tests, so there is **no local-vs-CI divergence** and CI's Postgres-18 service is irrelevant to them (removed the story's step-1 hedge about DB-dependent tests). Confirmed the **tsc-before-vitest ordering** keeps CI red on the 3 tsc errors alone even if all tests are skipped, and that there is **no coverage/threshold gate** (folded into step 3). Nothing rejected. Gemini review skipped per owner preference. Status → ready — reviewed. (Reviser: Agent — subagent of team lead.)

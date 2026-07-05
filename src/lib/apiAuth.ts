@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import type { TenantContext } from "@/types/auth";
+import { logAuthEvent } from "@/lib/agent/audit";
 
 const API_KEY_PREFIX = "skb_live_";
 
@@ -97,7 +98,10 @@ export async function resolveApiKey(
   });
 
   if (sha256Match?.user) {
-    touchLastUsed(sha256Match.id);
+    touchLastUsed(sha256Match.id, {
+      tenantId: sha256Match.user.tenantId,
+      userId: sha256Match.user.id,
+    });
     return {
       tenantId: sha256Match.user.tenantId,
       userId: sha256Match.user.id,
@@ -125,7 +129,10 @@ export async function resolveApiKey(
     }
     const matches = await bcrypt.compare(rawKey, candidate.keyHash);
     if (matches) {
-      touchLastUsed(candidate.id);
+      touchLastUsed(candidate.id, {
+        tenantId: candidate.user.tenantId,
+        userId: candidate.user.id,
+      });
       return {
         tenantId: candidate.user.tenantId,
         userId: candidate.user.id,
@@ -152,15 +159,26 @@ function extractBearerToken(authHeader: string | null): string | null {
 }
 
 /**
- * Update an API key's last-used timestamp (fire-and-forget).
+ * Update an API key's last-used timestamp (fire-and-forget). A failure here
+ * must never fail the request that's authenticating, but it must not be
+ * silently swallowed either — route it through the structured audit logger
+ * (audit S15) so key-usage failures on this hot path are queryable.
  */
-function touchLastUsed(apiKeyId: string): void {
+function touchLastUsed(
+  apiKeyId: string,
+  principal: { tenantId: string; userId: string }
+): void {
   prisma.apiKey
     .update({
       where: { id: apiKeyId },
       data: { lastUsedAt: new Date() },
     })
-    .catch(() => {
-      console.error(`Failed to update lastUsedAt for API key ${apiKeyId}`);
+    .catch((err: unknown) => {
+      logAuthEvent(
+        "key.last_used_update_failed",
+        "apiKey.lastUsedAt",
+        { apiKeyId, tenantId: principal.tenantId, userId: principal.userId },
+        { reason: err instanceof Error ? err.message : String(err) }
+      );
     });
 }

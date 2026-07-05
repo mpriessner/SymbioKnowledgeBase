@@ -59,6 +59,72 @@ export async function logAgentAction(
   }
 }
 
+interface AuditPrincipal {
+  tenantId?: string | null;
+  userId?: string | null;
+  apiKeyId?: string | null;
+}
+
+/**
+ * Log an authentication outcome (success / reject) — including ANONYMOUS
+ * rejections where no AgentContext exists yet (e.g. a 401 before any principal
+ * is known). All principal fields are optional; an anonymous rejection
+ * persists with a NULL principal instead of being dropped, since AuditLog's
+ * tenantId/userId columns are nullable for exactly this case.
+ */
+export async function logAuthEvent(
+  action: string,
+  resource: string,
+  principal: AuditPrincipal = {},
+  details?: Record<string, unknown>
+): Promise<void> {
+  const sanitized = details ? sanitizeDetails(details) : undefined;
+
+  logger.info("agent.audit.auth", {
+    tenantId: principal.tenantId ?? null,
+    userId: principal.userId ?? null,
+    apiKeyId: principal.apiKeyId ?? null,
+    action,
+    resource,
+    details: sanitized,
+  });
+
+  // Persist to the audit log. Fire-and-forget: never let an audit write failure
+  // surface to the caller or reject the request.
+  try {
+    await prisma.auditLog.create({
+      data: {
+        tenantId: principal.tenantId ?? null,
+        userId: principal.userId ?? null,
+        apiKeyId: principal.apiKeyId ?? null,
+        action,
+        resource,
+        resourceId: null,
+        details: (sanitized ?? undefined) as
+          | Prisma.InputJsonValue
+          | undefined,
+      },
+    });
+  } catch (error) {
+    logger.error("agent.audit.persist_failed", {
+      action,
+      resource,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Best-effort client IP from forwarding headers (left-most XFF hop, falling
+ * back to x-real-ip). Used to enrich auth-event details; not authoritative
+ * (headers are client-supplied and only trustworthy behind a controlled proxy).
+ */
+export function clientIpFromHeaders(headers: Headers): string | undefined {
+  const xff = headers.get("x-forwarded-for");
+  if (xff) return xff.split(",")[0]?.trim();
+  return headers.get("x-real-ip") ?? undefined;
+}
+
 /**
  * Redact sensitive fields from audit log details.
  */
