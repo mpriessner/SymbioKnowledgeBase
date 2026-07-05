@@ -46,10 +46,13 @@ describe.skipIf(!HAS_DB)("Database Schema Validation", () => {
   });
 });
 
+// Seed IDs are v4-shaped (…-4000-a000-…) per prisma/seed.ts — the old
+// all-zeros IDs here predated that change and made every lookup null in CI.
+// See docs/stories/2026-07-05-fix-red-main-ci-triage.md.
 describe.skipIf(!HAS_DB)("Seed Data Validation", () => {
   test("default tenant exists", async () => {
     const tenant = await prisma.tenant.findUnique({
-      where: { id: "00000000-0000-0000-0000-000000000001" },
+      where: { id: "00000000-0000-4000-a000-000000000001" },
     });
     expect(tenant).not.toBeNull();
     expect(tenant?.name).toBe("Default Workspace");
@@ -58,7 +61,7 @@ describe.skipIf(!HAS_DB)("Seed Data Validation", () => {
   test("admin user exists with correct email and role", async () => {
     const admin = await prisma.user.findFirst({
       where: {
-        tenantId: "00000000-0000-0000-0000-000000000001",
+        tenantId: "00000000-0000-4000-a000-000000000001",
         email: "admin@symbio.local",
       },
     });
@@ -70,19 +73,19 @@ describe.skipIf(!HAS_DB)("Seed Data Validation", () => {
 
   test("welcome page exists with correct title", async () => {
     const page = await prisma.page.findUnique({
-      where: { id: "00000000-0000-0000-0000-000000000010" },
+      where: { id: "00000000-0000-4000-a000-000000000010" },
     });
     expect(page).not.toBeNull();
     expect(page?.title).toBe("Welcome to SymbioKnowledgeBase");
-    expect(page?.tenantId).toBe("00000000-0000-0000-0000-000000000001");
+    expect(page?.tenantId).toBe("00000000-0000-4000-a000-000000000001");
     expect(page?.icon).toBe("\u{1F44B}");
   });
 
   test("welcome page has blocks with various types", async () => {
     const blocks = await prisma.block.findMany({
       where: {
-        pageId: "00000000-0000-0000-0000-000000000010",
-        tenantId: "00000000-0000-0000-0000-000000000001",
+        pageId: "00000000-0000-4000-a000-000000000010",
+        tenantId: "00000000-0000-4000-a000-000000000001",
       },
       orderBy: { position: "asc" },
     });
@@ -107,10 +110,10 @@ describe.skipIf(!HAS_DB)("Tenant Isolation", () => {
 
   test("page has tenantId matching the default tenant", async () => {
     const page = await prisma.page.findFirst({
-      where: { tenantId: "00000000-0000-0000-0000-000000000001" },
+      where: { tenantId: "00000000-0000-4000-a000-000000000001" },
     });
     expect(page).not.toBeNull();
-    expect(page?.tenantId).toBe("00000000-0000-0000-0000-000000000001");
+    expect(page?.tenantId).toBe("00000000-0000-4000-a000-000000000001");
   });
 
   test("unique constraint prevents duplicate email within same tenant", async () => {
@@ -118,7 +121,7 @@ describe.skipIf(!HAS_DB)("Tenant Isolation", () => {
       prisma.user.create({
         data: {
           id: crypto.randomUUID(),
-          tenantId: "00000000-0000-0000-0000-000000000001",
+          tenantId: "00000000-0000-4000-a000-000000000001",
           email: "admin@symbio.local",
           passwordHash: "duplicate",
           role: Role.USER,
@@ -133,15 +136,15 @@ describe.skipIf(!HAS_DB)("Relationship Integrity", () => {
     // Create a child page under the welcome page
     const childPage = await prisma.page.create({
       data: {
-        tenantId: "00000000-0000-0000-0000-000000000001",
-        parentId: "00000000-0000-0000-0000-000000000010",
+        tenantId: "00000000-0000-4000-a000-000000000001",
+        parentId: "00000000-0000-4000-a000-000000000010",
         title: "Test Child Page",
         position: 1,
       },
     });
 
     const parent = await prisma.page.findUnique({
-      where: { id: "00000000-0000-0000-0000-000000000010" },
+      where: { id: "00000000-0000-4000-a000-000000000010" },
       include: { children: true },
     });
 
@@ -155,14 +158,14 @@ describe.skipIf(!HAS_DB)("Relationship Integrity", () => {
     // Create a temporary page with a block
     const tempPage = await prisma.page.create({
       data: {
-        tenantId: "00000000-0000-0000-0000-000000000001",
+        tenantId: "00000000-0000-4000-a000-000000000001",
         title: "Temp Page for Cascade Test",
       },
     });
     await prisma.block.create({
       data: {
         pageId: tempPage.id,
-        tenantId: "00000000-0000-0000-0000-000000000001",
+        tenantId: "00000000-0000-4000-a000-000000000001",
         type: BlockType.PARAGRAPH,
         content: { text: "This will be cascade deleted" },
       },
@@ -186,8 +189,8 @@ describe.skipIf(!HAS_DB)("Relationship Integrity", () => {
 
     const block = await prisma.block.create({
       data: {
-        pageId: "00000000-0000-0000-0000-000000000010",
-        tenantId: "00000000-0000-0000-0000-000000000001",
+        pageId: "00000000-0000-4000-a000-000000000010",
+        tenantId: "00000000-0000-4000-a000-000000000001",
         type: BlockType.HEADING_1,
         content: complexContent,
       },
