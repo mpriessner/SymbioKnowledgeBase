@@ -4,8 +4,8 @@
 - **Project owner:** Martin Priessner (martin.priessner@scisymbio.ai)
 - **Created by:** Agent 70
 - **Created:** 2026-07-04
-- **Status:** draft
-- **Assigned to / currently owned by:** unassigned
+- **Status:** in-progress (backend implemented; UI dialog deferred — see implementation notes below)
+- **Assigned to / currently owned by:** implementing agent (this session), 2026-07-05
 - **Related / parallel work:** Feeds [a71-09 QR generation + printable sheet](2026-07-04-a71-09-qr-generation-printable-sheet.md) (every intaken document becomes a QR target) and [a71-10 QR recognition on scanning surfaces](2026-07-04-a71-10-qr-recognition-scanning-surfaces.md) (the resolve-side of what this story creates). [a71-11 Private-document search & listing](2026-07-04-a71-11-private-doc-search-voice.md) depends on documents created here being indexed and scope-tagged correctly. [a71-12 Google Drive connector](2026-07-04-a71-12-google-drive-connector.md) adds a second intake source (Drive) that reuses the link-import path defined here — implement this story first. Epic A siblings (agent wiki + sync, `2026-07-04-a71-01..07-*.md`) are unrelated but share the same sprint; no file overlap expected.
 
 ## Problem / motivation
@@ -185,3 +185,60 @@ Reviewer note: this pass was performed by Claude Opus standing in for the Codex 
 - Acceptance criteria: AC4 extended to require the attachment is actually referenced in the body (not just stored); AC5 extended to require a content-term FTS match backed by populated `plainText`; added AC8 (teamspace tenant validation), AC9 (snapshot fetch timeout + size cap), AC10 (kind backfill, pre-migration pages excluded from `category=documents`).
 - Regression risks: added a note that the pre-existing quota-check TOCTOU is widened by this story's agent-driven bulk-intake path.
 - Round 2 supersedes no Round 1 finding — all Round 1 fixes remain valid; Round 2 adds runtime-level gaps Round 1 didn't reach (search indexing, body-linking, tenant validation, fetch DoS, enum backfill, field-name correctness).
+
+## Implementation notes (2026-07-05)
+
+**Scope decision — backend implemented, UI dialog deferred.** This pass ships
+the full agent-API-facing backend (schema, create endpoint, agent attachment
+endpoint, SSRF-guarded snapshot fetch, `depthSearch` category support, serving
+route) plus unit tests. It deliberately does **not** build the "Add document"
+UI dialog (AC1/AC2's UI half) — that requires locating and safely extending
+the existing page-tree "New page" context menu (`Sidebar.tsx`/
+`DndSidebarTree.tsx`) with new tab UI, and the story's own verification plan
+already treats the UI as a manual/browser check, not an automated one. Building
+it needed more exploration + browser verification than this pass covered, and
+risked an unreviewed regression in existing page-tree UX. Flagging this
+explicitly rather than silently skipping it — the owner should decide whether
+a follow-up story covers the dialog, or whether an agent-API-only intake path
+is sufficient for now (a71-09/a71-12 both only need the API surface, not the
+dialog, to proceed).
+
+**Reality-check on the story's Section 1 "existing building blocks" claim:**
+`GET /api/attachments/[id]/route.ts` did **not** exist in this branch before
+this story (verified by search) — the session-auth `POST
+/api/pages/[id]/attachments` route only ever returned `{attachmentId,
+relativePath, markdown}`, with no `url` field and no serving route to resolve
+it against. This story adds that serving route (`src/app/api/attachments/[id]/route.ts`,
+tenant-scoped via `withTenant`, path-traversal-guarded) since a resolvable
+`url` is required for AC4. Also worth noting: `withTenant`'s `getTenantContext`
+already resolves `skb_` API keys (with precedence over session cookies) —
+so the story's "agent keys can't hit the session route at all" framing is not
+quite right. The real gap is that `withTenant` doesn't enforce read/write
+*scopes* and has no `page.kind` restriction, which is why this story still
+builds the separate `withAgentAuth`-gated route rather than patching the
+shared session route (per the story's own regression-risk mitigation).
+Similarly, the story's regression-risk section references a `wouldExceedQuota`/
+tenant-quota check on the attachments path that does not exist in this
+branch's `src/lib/sync/attachments.ts` — only the 50MB/file cap is real today.
+AC6 is satisfied by reusing that cap; building tenant-quota enforcement from
+scratch would be scope creep for a different story.
+
+**What a71-09 (QR) and a71-12 (Drive) build on:**
+- Document pages are `Page` rows with `kind: 'DOCUMENT'`, `sourceUrl`,
+  `docSource` (`'upload' | 'url' | 'drive'`) — `'drive'` is reserved,
+  unused by this story, ready for a71-12 to set.
+- The identifier to encode into a QR (a71-09) is the page id (`page.id`,
+  returned as `data.id` from `POST /api/agent/documents`); the existing
+  page-resolution/share-link machinery already resolves a page id to a route,
+  so a71-09 doesn't need a new resolution path — just a QR encoding of
+  `<base-url>/page/<id>` or similar, TBD by that story.
+- a71-12 (Drive) reuses `POST /api/agent/documents` with `source: "url"` and
+  a Drive share URL — `fetchUrlSnapshot`'s SSRF guard, timeout, and size cap
+  apply unchanged; Drive's own auth for private files is a separate concern
+  a71-12 will need to handle (this story's snapshot fetch has no
+  authentication, so private Drive URLs will simply fail to fetch and fall
+  back to link-only, which is the existing non-fatal behavior).
+- Search: `GET /api/agent/search?depth=default&category=documents` (or
+  `medium`/`deep`) returns document pages via the new `kind`-aware
+  `depthSearch` branch; unscoped FTS (`GET /api/agent/search?q=...`, no
+  `depth`) also finds them since `plainText` is populated at creation time.

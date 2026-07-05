@@ -38,7 +38,7 @@ export const GET = withTenant(
     }
 
     const attachment = await prisma.fileAttachment.findFirst({
-      where: { id, tenantId: ctx.tenantId },
+      where: { id, tenantId: ctx.tenantId, status: "READY" },
     });
 
     if (!attachment) {

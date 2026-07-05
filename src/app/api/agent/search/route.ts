@@ -19,6 +19,11 @@ const VALID_CATEGORIES = new Set([
   "reactionTypes",
   "researchers",
   "substrateClasses",
+  // a71-08: kind='DOCUMENT' pages. Filtered directly on Page.kind by
+  // depthSearch's kind-aware branch rather than the parent-title heuristic
+  // every other category uses, since a document page's parent title never
+  // matches one of the category root titles.
+  "documents",
 ]);
 
 const searchQuerySchema = z.object({
@@ -104,7 +109,7 @@ export const GET = withAgentAuth(
         if (category && !VALID_CATEGORIES.has(category)) {
           return errorResponse(
             "VALIDATION_ERROR",
-            `Invalid category "${category}". Must be one of: experiments, chemicals, reactionTypes, researchers, substrateClasses`,
+            `Invalid category "${category}". Must be one of: experiments, chemicals, reactionTypes, researchers, substrateClasses, documents`,
             undefined,
             400
           );

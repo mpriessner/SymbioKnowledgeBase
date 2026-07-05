@@ -64,6 +64,13 @@ enum SpaceType {
   AGENT
 }
 
+// Discriminates first-class document pages from ordinary editable pages.
+// Existing rows remain ordinary pages through the required PAGE default.
+enum PageKind {
+  PAGE
+  DOCUMENT
+}
+
 enum ChangeType {
   MANUAL
   AUTO_SYNC
@@ -303,6 +310,9 @@ model Page {
   position         Int           @default(0)
   spaceType        SpaceType     @default(PRIVATE) @map("space_type")
   generalAccess    GeneralAccess @default(INVITED_ONLY) @map("general_access")
+  kind             PageKind      @default(PAGE)
+  sourceUrl        String?       @map("source_url")
+  docSource        String?       @map("doc_source")
   oneLiner         String?       @map("one_liner")
   summary          String?       @map("summary")
   // Additive, nullable JSON bag for structured page metadata (a71-13 OKF
@@ -347,6 +357,7 @@ model Page {
   @@index([tenantId, teamspaceId], map: "idx_pages_tenant_id_teamspace_id")
   @@index([tenantId, spaceType], map: "idx_pages_tenant_id_space_type")
   @@index([tenantId, deletedAt], map: "idx_pages_tenant_id_deleted_at")
+  @@index([tenantId, kind], map: "idx_pages_tenant_id_kind")
   @@map("pages")
 }
 

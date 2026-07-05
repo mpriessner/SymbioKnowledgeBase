@@ -179,6 +179,7 @@ export async function depthSearch(
       oneLiner: true,
       spaceType: true,
       parentId: true,
+      kind: true,
     },
     take: limit,
     orderBy: { updatedAt: "desc" },
@@ -191,6 +192,7 @@ export async function depthSearch(
     page_one_liner: string | null;
     space_type: string;
     parent_id: string | null;
+    kind: string;
     fts_rank: number;
     fts_snippet: string | null;
   };
@@ -211,6 +213,7 @@ export async function depthSearch(
             p.one_liner AS page_one_liner,
             p.space_type,
             p.parent_id,
+            p.kind::text AS kind,
             ts_rank(b.search_vector, plainto_tsquery('english', $1)) AS fts_rank,
             ts_headline(
               'english',
@@ -243,6 +246,7 @@ export async function depthSearch(
     oneLiner: string | null;
     spaceType: string;
     parentId: string | null;
+    kind: string;
     score: number;
     ftsSnippet?: string | null;
   }> = [];
@@ -264,6 +268,7 @@ export async function depthSearch(
         oneLiner: match.page_one_liner,
         spaceType: match.space_type,
         parentId: match.parent_id,
+        kind: match.kind,
         score: Math.min(match.fts_rank, 0.9),
         ftsSnippet: match.fts_snippet,
       });
@@ -274,9 +279,24 @@ export async function depthSearch(
   allMatches.sort((a, b) => b.score - a.score);
 
   // Step 3: Determine categories and filter
+  //
+  // a71-08: `category=documents` cannot use the parent-title heuristic below
+  // (a document page's parent is a teamspace root or a private-space root,
+  // never one of the Chemistry KB category titles, so it would always
+  // resolve to `null`). Instead, documents are identified directly by
+  // `Page.kind`, bypassing `getPageCategory` entirely for this branch. Every
+  // other category's resolution is unchanged.
+  const isDocumentsCategory = category?.toLowerCase() === "documents";
+
   const categoryCache = new Map<string, string | null>();
   const resultsWithCategory = await Promise.all(
     allMatches.map(async (match) => {
+      if (isDocumentsCategory) {
+        return {
+          ...match,
+          category: match.kind === "DOCUMENT" ? "documents" : null,
+        };
+      }
       const cat = await getPageCategory(
         match.id,
         match.parentId,
@@ -300,7 +320,9 @@ export async function depthSearch(
 
   let filtered = resultsWithCategory;
   if (category) {
-    const normalizedCategory = categoryMap[category.toLowerCase()] ?? category.toLowerCase();
+    const normalizedCategory = isDocumentsCategory
+      ? "documents"
+      : (categoryMap[category.toLowerCase()] ?? category.toLowerCase());
     filtered = resultsWithCategory.filter(
       (r) => r.category === normalizedCategory
     );

@@ -203,6 +203,55 @@ describe("depthSearch", () => {
     expect(experimentResults.length).toBeLessThanOrEqual(result.totalCount);
   });
 
+  test("category=documents filters directly on kind, bypassing the parent-title heuristic (a71-08)", async () => {
+    // A document page's parent is a space root, never a Chemistry KB
+    // category title — getPageCategory would always resolve it to null.
+    // The kind-aware branch must identify it by Page.kind instead and must
+    // never consult getPageCategory (no prisma.page.findFirst call) for this
+    // category.
+    const docPage = {
+      id: "page-doc-1",
+      title: "Safety Data Sheet - Toluene",
+      oneLiner: null,
+      spaceType: "PRIVATE",
+      parentId: null,
+      kind: "DOCUMENT",
+    };
+    mockPageFindMany.mockResolvedValue([...mockPages, docPage]);
+
+    const result = await depthSearch({
+      tenantId: TENANT_ID,
+      query: "toluene",
+      depth: "default",
+      scope: "all",
+      category: "documents",
+    });
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].pageId).toBe("page-doc-1");
+    expect(result.results[0].category).toBe("documents");
+    expect(mockPageFindFirst).not.toHaveBeenCalled();
+  });
+
+  test("category filter for non-document categories is unaffected by the kind-aware branch", async () => {
+    // Regression guard: adding the `documents` branch must not change
+    // resolution for the pre-existing categories (experiments/chemicals/etc).
+    mockPageFindMany.mockResolvedValue(mockPages);
+
+    const result = await depthSearch({
+      tenantId: TENANT_ID,
+      query: "coupling",
+      depth: "default",
+      scope: "all",
+      category: "experiments",
+    });
+
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].pageId).toBe("page-1");
+    expect(result.results[0].category).toBe("experiments");
+    expect(mockPageFindFirst).toHaveBeenCalled();
+  });
+
   test("empty query returns no results", async () => {
     mockPageFindMany.mockResolvedValue([]);
 
