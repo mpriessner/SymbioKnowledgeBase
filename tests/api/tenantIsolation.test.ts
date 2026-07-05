@@ -5,10 +5,12 @@ import bcrypt from "bcryptjs";
 const BASE_URL = process.env.TEST_BASE_URL || "http://localhost:3000";
 
 // These tests need a live Postgres (via prisma) AND a running Next.js server.
-// Skip the whole suite cleanly when no database is configured.
+// Skip cleanly unless BOTH are configured — CI provides Postgres but no
+// server. See docs/stories/2026-07-05-fix-red-main-ci-triage.md.
 const HAS_DB = Boolean(process.env.DATABASE_URL);
+const HAS_SERVER = Boolean(process.env.TEST_BASE_URL);
 
-describe.skipIf(!HAS_DB)("Tenant Isolation", () => {
+describe.skipIf(!HAS_DB || !HAS_SERVER)("Tenant Isolation", () => {
   let userASessionCookie: string;
   let userBSessionCookie: string;
 
