@@ -16,6 +16,7 @@ import {
 import { setupChemistryKbHierarchy, type HierarchyResult } from "./setupHierarchy";
 import { markdownToTiptap } from "@/lib/markdown/deserializer";
 import { processAgentWikilinks } from "@/lib/agent/wikilinks";
+import { FIXED_SECTION_HEADINGS } from "@/lib/sync/contentMerge";
 import type { Prisma } from "@/generated/prisma/client";
 
 /** Postgres unique-constraint violation surfaced by Prisma. */
@@ -164,25 +165,26 @@ function generateExperimentKbMarkdown(
   lines.push("");
   lines.push("---");
   lines.push("");
-  lines.push("## Results & Observations");
+  // a71-02: fixed section scaffold — must stay identical to the create-path
+  // copy in src/app/api/sync/experiments/route.ts, or a page first
+  // materialized via reconcile (this path) gets a different body structure
+  // than one created via the push path, breaking contentMerge's
+  // section-locate step for whichever path didn't run first.
+  lines.push(`## ${FIXED_SECTION_HEADINGS[0]}`);
   lines.push("");
-  lines.push("*Add your observations from this experiment here.*");
+  lines.push("*Awaiting notebook content sync.*");
   lines.push("");
-  lines.push("## What Works Well");
+  lines.push(`## ${FIXED_SECTION_HEADINGS[1]}`);
   lines.push("");
-  lines.push("*Add best practices and tips discovered during this experiment.*");
+  lines.push("*Awaiting notebook content sync.*");
   lines.push("");
-  lines.push("## Common Challenges");
+  lines.push(`## ${FIXED_SECTION_HEADINGS[2]}`);
   lines.push("");
-  lines.push("*Document pitfalls and issues encountered.*");
+  lines.push("*Awaiting ExpTube analysis sync.*");
   lines.push("");
-  lines.push("## Recommendations for Next Time");
+  lines.push(`## ${FIXED_SECTION_HEADINGS[3]}`);
   lines.push("");
-  lines.push("*What would you do differently?*");
-  lines.push("");
-  lines.push("## Related Experiments");
-  lines.push("");
-  lines.push("*Add [[wikilinks]] to related experiments here.*");
+  lines.push("*Add your own notes here — this section is never touched by automated sync.*");
   lines.push("");
 
   return lines.join("\n");

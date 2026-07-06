@@ -12,9 +12,25 @@ import { markdownToTiptap } from "@/lib/markdown/deserializer";
 import { extractPlainText } from "@/lib/search/indexer";
 import { processAgentWikilinks } from "@/lib/agent/wikilinks";
 import { deletePageFile } from "@/lib/sync/SyncService";
+import {
+  applySectionUpdates,
+  isStaleUpdate,
+  FIXED_SECTION_HEADINGS,
+  type SectionUpdate,
+} from "@/lib/sync/contentMerge";
 import type { Prisma } from "@/generated/prisma/client";
+import type { JSONContent } from "@tiptap/core";
 import { z } from "zod";
 import { constantTimeEqual } from "@/lib/auth/constantTimeEqual";
+
+/**
+ * a71-02: content sync. AC5 requires a 413 (not a 400 validation error) for
+ * an oversized `content.markdown`, so the length is NOT capped in the Zod
+ * schema below — it's checked explicitly in `handleContentUpdate`, before
+ * any page mutation, so the correct status code and "before mutation"
+ * ordering are both under our control.
+ */
+const MAX_CONTENT_MARKDOWN_LENGTH = 200_000;
 
 /** Postgres unique-constraint violation surfaced by Prisma. */
 function isUniqueViolation(error: unknown): boolean {
@@ -27,13 +43,50 @@ function isUniqueViolation(error: unknown): boolean {
 
 const SYNC_SERVICE_KEY = process.env.SYNC_SERVICE_KEY;
 
-const syncPayloadSchema = z.object({
-  eln_experiment_id: z.string().min(1),
-  action: z.enum(["create", "delete", "restore", "update", "purge", "archive"]),
-  source: z.string().min(1),
-  correlation_id: z.string().optional(),
-  fields: z.record(z.string(), z.string()).optional(),
+/**
+ * a71-02: `content` payload for the `content_update` action (story §1). Only
+ * `markdown` is size-bounded outside this schema (see
+ * `MAX_CONTENT_MARKDOWN_LENGTH` above); everything else here is a plain
+ * shape/type check.
+ */
+const contentUpdatePayloadSchema = z.object({
+  section: z.enum(["notebook_wiki", "exptube_analysis"]),
+  markdown: z.string(),
+  exec_summary: z.string().max(4_000).optional(),
+  completeness_score: z.number().min(0).max(1).optional(),
+  is_stale: z.boolean().optional(),
+  generated_at: z.string().min(1),
 });
+
+const syncPayloadSchema = z
+  .object({
+    eln_experiment_id: z.string().min(1),
+    action: z.enum([
+      "create",
+      "delete",
+      "restore",
+      "update",
+      "purge",
+      "archive",
+      "content_update",
+    ]),
+    source: z.string().min(1),
+    correlation_id: z.string().optional(),
+    fields: z.record(z.string(), z.string()).optional(),
+    // Only present/validated for action === "content_update" (enforced below
+    // via superRefine, since it's additive to the existing lifecycle actions
+    // which never send `content`).
+    content: contentUpdatePayloadSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.action === "content_update" && !data.content) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "content is required when action is content_update",
+        path: ["content"],
+      });
+    }
+  });
 
 type SyncAction = z.infer<typeof syncPayloadSchema>["action"];
 
@@ -172,6 +225,8 @@ async function handleAction(
       return handleUpdate(elnId, tenantId, payload.fields || {}, logPrefix);
     case "purge":
       return handlePurge(elnId, tenantId, logPrefix);
+    case "content_update":
+      return handleContentUpdate(elnId, tenantId, payload, logPrefix);
   }
 }
 
@@ -227,26 +282,25 @@ function generateExperimentKbMarkdown(
   lines.push("---");
   lines.push("");
 
-  // Scaffolded sections for institutional knowledge
-  lines.push("## Results & Observations");
+  // a71-02: fixed section scaffold so a later `content_update` always has an
+  // anchor heading to locate on its first sync (contentMerge's section-locate
+  // step). Order matches FIXED_SECTION_HEADINGS in src/lib/sync/contentMerge.ts
+  // — keep the two in sync if this ever changes.
+  lines.push(`## ${FIXED_SECTION_HEADINGS[0]}`);
   lines.push("");
-  lines.push("*Add your observations from this experiment here.*");
+  lines.push("*Awaiting notebook content sync.*");
   lines.push("");
-  lines.push("## What Works Well");
+  lines.push(`## ${FIXED_SECTION_HEADINGS[1]}`);
   lines.push("");
-  lines.push("*Add best practices and tips discovered during this experiment.*");
+  lines.push("*Awaiting notebook content sync.*");
   lines.push("");
-  lines.push("## Common Challenges");
+  lines.push(`## ${FIXED_SECTION_HEADINGS[2]}`);
   lines.push("");
-  lines.push("*Document pitfalls and issues encountered.*");
+  lines.push("*Awaiting ExpTube analysis sync.*");
   lines.push("");
-  lines.push("## Recommendations for Next Time");
+  lines.push(`## ${FIXED_SECTION_HEADINGS[3]}`);
   lines.push("");
-  lines.push("*What would you do differently?*");
-  lines.push("");
-  lines.push("## Related Experiments");
-  lines.push("");
-  lines.push("*Add [[wikilinks]] to related experiments here.*");
+  lines.push("*Add your own notes here — this section is never touched by automated sync.*");
   lines.push("");
 
   return lines.join("\n");
@@ -520,4 +574,169 @@ async function handlePurge(
 
   console.log(`${logPrefix} Purged: ${page.title} (${pageId})`);
   return { status: 200, body: { status: "purged", id: pageId } };
+}
+
+/**
+ * a71-02: content sync. Applies a section-owned `content_update` — notebook
+ * (`notebook_wiki`: Executive Summary + Notebook Narrative) or ExpTube
+ * (`exptube_analysis`: ExpTube Analysis) — to the page's single DOCUMENT
+ * block, leaving every other section (incl. a user's `## KB Notes`)
+ * byte-identical (AC1/AC2). See src/lib/sync/contentMerge.ts for the
+ * section-locate-and-replace mechanics.
+ *
+ * Audit trail: this uses the same `console.log(logPrefix, ...)` convention
+ * as every other handler in this file (create/archive/restore/update/purge
+ * above), NOT `logAgentAction`/`AuditLog` — `AuditLog.userId` is a NOT NULL
+ * foreign key to a real `User` row, and this endpoint authenticates via
+ * `SYNC_SERVICE_KEY` (service-to-service), not a user-bound API key, so
+ * there is no real user to attribute the write to. This mirrors the
+ * existing convention for other automated/service-driven mutations in this
+ * codebase (this file's other handlers, plus reconciliationSync.ts and
+ * indexRegeneration.ts), none of which call logAgentAction either.
+ */
+async function handleContentUpdate(
+  elnId: string,
+  tenantId: string,
+  payload: z.infer<typeof syncPayloadSchema>,
+  logPrefix: string
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const content = payload.content;
+  if (!content) {
+    // Unreachable given syncPayloadSchema's superRefine, but keeps this
+    // function total rather than trusting an upstream invariant silently.
+    return {
+      status: 400,
+      body: { error: { code: "BAD_REQUEST", message: "content is required for content_update" } },
+    };
+  }
+
+  // AC5: reject oversized payloads with 413 BEFORE any mutation.
+  if (content.markdown.length > MAX_CONTENT_MARKDOWN_LENGTH) {
+    return {
+      status: 413,
+      body: {
+        error: {
+          code: "PAYLOAD_TOO_LARGE",
+          message: `content.markdown exceeds ${MAX_CONTENT_MARKDOWN_LENGTH} characters`,
+        },
+      },
+    };
+  }
+
+  const page = await findExperimentByElnId(tenantId, elnId);
+  if (!page) {
+    return { status: 404, body: { error: { code: "NOT_FOUND", message: `Experiment ${elnId} not found` } } };
+  }
+
+  const sectionKey = content.section;
+
+  // AC4: staleness guard, keyed by (pageId, sectionKey) — reject (without
+  // mutating) an incoming update whose generated_at is <= the last-applied
+  // timestamp for this exact section.
+  const priorState = await prisma.pageSyncSectionState.findUnique({
+    where: { pageId_sectionKey: { pageId: page.id, sectionKey } },
+  });
+
+  if (isStaleUpdate(content.generated_at, priorState?.lastAppliedAt)) {
+    console.log(`${logPrefix} content_update stale for ${elnId} section=${sectionKey}, skipped`);
+    return { status: 200, body: { applied: false, reason: "stale" } };
+  }
+
+  const docBlock = await prisma.block.findFirst({
+    where: { pageId: page.id, tenantId, type: "DOCUMENT" },
+  });
+  if (!docBlock) {
+    return { status: 404, body: { error: { code: "NOT_FOUND", message: `No document body for ${elnId}` } } };
+  }
+
+  // Section ownership map (story §2): notebook_wiki owns Executive Summary
+  // (exec_summary, only when provided — omitting it must NOT blank out an
+  // existing summary) + Notebook Narrative (markdown); exptube_analysis owns
+  // ExpTube Analysis only.
+  const updates: SectionUpdate[] = [];
+  if (sectionKey === "notebook_wiki") {
+    if (content.exec_summary !== undefined) {
+      updates.push({ heading: "Executive Summary", markdown: content.exec_summary });
+    }
+    updates.push({ heading: "Notebook Narrative", markdown: content.markdown });
+  } else {
+    updates.push({ heading: "ExpTube Analysis", markdown: content.markdown });
+  }
+
+  const { doc, appended } = applySectionUpdates(
+    docBlock.content as unknown as JSONContent,
+    updates
+  );
+  const plainText = extractPlainText(doc as Parameters<typeof extractPlainText>[0]);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.block.update({
+      where: { id: docBlock.id },
+      data: {
+        content: doc as unknown as Prisma.InputJsonValue,
+        plainText,
+      },
+    });
+
+    await tx.pageSyncSectionState.upsert({
+      where: { pageId_sectionKey: { pageId: page.id, sectionKey } },
+      create: {
+        pageId: page.id,
+        tenantId,
+        sectionKey,
+        lastAppliedAt: new Date(content.generated_at),
+        lastCorrelationId: payload.correlation_id ?? null,
+      },
+      update: {
+        lastAppliedAt: new Date(content.generated_at),
+        lastCorrelationId: payload.correlation_id ?? null,
+      },
+    });
+
+    // Regression risk mitigation: if a heading had to be appended (missing —
+    // either a not-yet-synced fresh scaffold (AC3, expected) or a
+    // user-renamed/deleted heading (anomaly)), flag it on the page's
+    // existing `properties.contentSync` JSON subkey so a human can notice.
+    // Patch only that subkey: enrichment and index regeneration also write
+    // their own properties subkeys and must never be overwritten here.
+    if (appended.length > 0) {
+      const structureFlag: Prisma.InputJsonValue = {
+        unsyncedStructure: true,
+        unsyncedStructureHeadings: appended,
+        unsyncedStructureAt: new Date().toISOString(),
+      };
+      await tx.$executeRaw`
+        UPDATE "pages"
+        SET "properties" = jsonb_set(
+          COALESCE("properties", '{}'::jsonb),
+          '{contentSync}',
+          ${JSON.stringify(structureFlag)}::jsonb,
+          true
+        )
+        WHERE "id" = ${page.id} AND "tenant_id" = ${tenantId}
+      `;
+    }
+  });
+
+  // Wikilinks reprocessed outside the transaction (mirrors handleCreate):
+  // link resolution touches many rows and must not roll back the durable
+  // page+block write on a resolution error.
+  processAgentWikilinks(page.id, tenantId, doc).catch((err) =>
+    console.error(`${logPrefix} Wikilink reprocessing failed for ${elnId}:`, err)
+  );
+
+  console.log(
+    `${logPrefix} content_update applied for ${elnId} section=${sectionKey}` +
+      (appended.length > 0 ? ` (appended: ${appended.join(", ")})` : "")
+  );
+
+  return {
+    status: 200,
+    body: {
+      applied: true,
+      id: page.id,
+      section: sectionKey,
+      ...(appended.length > 0 ? { appended } : {}),
+    },
+  };
 }

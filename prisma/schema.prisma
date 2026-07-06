@@ -228,6 +228,7 @@ model Tenant {
   sweepSessions         SweepSession[]
   googleDriveConnections GoogleDriveConnection[]
   oauthStates            OAuthState[]
+  pageSyncSectionStates  PageSyncSectionState[]
   ingestLedgerEntries   IngestLedgerEntry[]
   sources               Source[]
   claims                Claim[]
@@ -352,6 +353,7 @@ model Page {
   favorites             PageFavorite[]
   shares                PageShare[]
   claims                Claim[]
+  syncSectionStates     PageSyncSectionState[]
 
   // Indexes
   @@unique([tenantId, externalId], map: "uq_pages_tenant_id_external_id")
@@ -391,6 +393,27 @@ model Block {
   @@index([pageId], map: "idx_blocks_page_id")
   @@index([tenantId, pageId], map: "idx_blocks_tenant_id_page_id")
   @@map("blocks")
+}
+
+// Tracks the last content update applied to each externally-owned section of
+// an experiment page, allowing duplicate and out-of-order sync events to no-op.
+model PageSyncSectionState {
+  id                String   @id @default(uuid())
+  pageId            String   @map("page_id")
+  tenantId          String   @map("tenant_id")
+  sectionKey        String   @map("section_key")
+  lastAppliedAt     DateTime @map("last_applied_at")
+  lastCorrelationId String?  @map("last_correlation_id")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([pageId, sectionKey], map: "uq_page_sync_section_state_page_section")
+  @@index([tenantId], map: "idx_page_sync_section_state_tenant_id")
+  @@index([tenantId, pageId], map: "idx_page_sync_section_state_tenant_id_page_id")
+  @@map("page_sync_section_state")
 }
 
 // ─── Page Links ──────────────────────────────────────────────────────
