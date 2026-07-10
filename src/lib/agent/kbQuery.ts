@@ -689,6 +689,16 @@ async function buildContextBlocks(
       });
 
       // Get linked pages (1-hop)
+      //
+      // a71-04 note (OKF two-tier contract): the agentic strategy's "grab a
+      // starting page, look at depth, expand to linked/backlinks" pattern gets
+      // measurably cheaper when the starting page for a broad/discovery-style
+      // query is the reworked **Experiments Index** rather than a full
+      // experiment page — the index's one-liners are bounded in size regardless
+      // of how much content any linked experiment holds, so it is now a reliable
+      // cheap first hop. Routing broad queries at `default` depth to the index
+      // page first is a natural future optimization (intentionally NOT wired
+      // here — out of scope for a71-04, documented only).
       const linked = await getLinkedPages(entity.pageId, tenantId);
       graphHops = 1;
 

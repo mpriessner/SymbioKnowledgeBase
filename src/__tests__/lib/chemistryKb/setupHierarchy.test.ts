@@ -3,6 +3,7 @@ import { generateIndexPageContent } from "@/lib/chemistryKb/indexPage";
 
 // Mock Prisma client
 const mockFindFirst = vi.fn();
+const mockFindMany = vi.fn();
 const mockAggregate = vi.fn();
 const mockCreate = vi.fn();
 const mockBlockCreate = vi.fn();
@@ -19,6 +20,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     page: {
       findFirst: (...args: unknown[]) => mockFindFirst(...args),
+      findMany: (...args: unknown[]) => mockFindMany(...args),
       aggregate: (...args: unknown[]) => mockAggregate(...args),
       create: (...args: unknown[]) => mockCreate(...args),
       update: (...args: unknown[]) => mockPageUpdate(...args),
@@ -65,6 +67,8 @@ beforeEach(() => {
 
   // Default: no existing pages found
   mockFindFirst.mockResolvedValue(null);
+  // Index generation (a71-04) queries experiment pages; none exist at setup.
+  mockFindMany.mockResolvedValue([]);
   mockAggregate.mockResolvedValue({ _max: { position: null } });
   mockPageUpdate.mockResolvedValue({ id: "page-updated" });
 
@@ -126,6 +130,7 @@ describe("setupChemistryKbHierarchy", () => {
       result.chemicalsId,
       result.researchersId,
       result.substrateClassesId,
+      result.conceptsId,
     ];
     expect(new Set(allIds).size).toBe(EXPECTED_PAGE_COUNT);
   });
@@ -227,6 +232,7 @@ describe("setupChemistryKbHierarchy", () => {
 
     // Reset for second run: all pages now exist
     vi.clearAllMocks();
+    mockFindMany.mockResolvedValue([]);
     mockAggregate.mockResolvedValue({ _max: { position: null } });
     mockBlockCreate.mockResolvedValue({ id: "block-uuid" });
     mockPageUpdate.mockResolvedValue({ id: "page-updated" });
@@ -245,6 +251,7 @@ describe("setupChemistryKbHierarchy", () => {
       Chemicals: result1.chemicalsId,
       Researchers: result1.researchersId,
       "Substrate Classes": result1.substrateClassesId,
+      Concepts: result1.conceptsId,
       "Chemistry KB Index": result1.indexId,
     };
 
@@ -319,7 +326,8 @@ describe("setupChemistryKbHierarchy", () => {
   });
 
   test("CATEGORY_PAGES has the expected category keys", () => {
-    expect(CATEGORY_PAGES).toHaveLength(6);
+    // a71-13 added the "concepts" sibling category.
+    expect(CATEGORY_PAGES).toHaveLength(7);
     const keys = CATEGORY_PAGES.map((p) => p.key);
     expect(keys).toEqual([
       "experiments",
@@ -328,19 +336,27 @@ describe("setupChemistryKbHierarchy", () => {
       "chemicals",
       "researchers",
       "substrateClasses",
+      "concepts",
     ]);
   });
 });
 
-describe("generateIndexPageContent", () => {
-  test("returns non-empty markdown string", () => {
-    const content = generateIndexPageContent();
+// generateIndexPageContent is now async + DB-driven (a71-04). With no
+// experiment pages (mockFindMany -> []) it renders the preserved "How to read
+// this KB" preamble plus empty Experiments/Archive sections.
+describe("generateIndexPageContent (OKF preamble)", () => {
+  beforeEach(() => {
+    mockFindMany.mockResolvedValue([]);
+  });
+
+  test("returns non-empty markdown string", async () => {
+    const content = await generateIndexPageContent(TEST_TENANT_ID, {});
     expect(typeof content).toBe("string");
     expect(content.length).toBeGreaterThan(100);
   });
 
-  test("includes section headings", () => {
-    const content = generateIndexPageContent();
+  test("includes preserved navigation-guide headings", async () => {
+    const content = await generateIndexPageContent(TEST_TENANT_ID, {});
     expect(content).toContain("# Chemistry KB Index");
     expect(content).toContain("## For Agents: How to Use This KB");
     expect(content).toContain("### 2. Tag-Based Filtering");
@@ -348,8 +364,14 @@ describe("generateIndexPageContent", () => {
     expect(content).toContain("## Entry Points");
   });
 
-  test("includes wikilinks to all category pages", () => {
-    const content = generateIndexPageContent();
+  test("includes the two-tier reading contract preamble", async () => {
+    const content = await generateIndexPageContent(TEST_TENANT_ID, {});
+    expect(content).toContain("How to Read This KB (Two-Tier Contract)");
+    expect(content).toContain("Executive Summary");
+  });
+
+  test("includes wikilinks to all category pages", async () => {
+    const content = await generateIndexPageContent(TEST_TENANT_ID, {});
     expect(content).toContain("[[Chemistry KB]]");
     expect(content).toContain("[[Experiments]]");
     expect(content).toContain("[[Reaction Types]]");
@@ -358,18 +380,12 @@ describe("generateIndexPageContent", () => {
     expect(content).toContain("[[Substrate Classes]]");
   });
 
-  test("includes tag namespace examples", () => {
-    const content = generateIndexPageContent();
+  test("includes tag namespace examples", async () => {
+    const content = await generateIndexPageContent(TEST_TENANT_ID, {});
     expect(content).toContain("`reaction:suzuki-coupling`");
     expect(content).toContain("`researcher:mueller`");
     expect(content).toContain("`cas:14221-01-3`");
     expect(content).toContain("`quality:4`");
     expect(content).toContain("`scale:medium`");
-  });
-
-  test("includes contextual retrieval example", () => {
-    const content = generateIndexPageContent();
-    expect(content).toContain("Contextual Retrieval Example");
-    expect(content).toContain("heteroaryl substrates");
   });
 });

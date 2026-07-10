@@ -25,6 +25,7 @@ export interface HierarchyResult {
   chemicalsId: string;
   researchersId: string;
   substrateClassesId: string;
+  conceptsId: string;
   teamspaceId?: string;
 }
 
@@ -247,6 +248,34 @@ Child pages are organized alphabetically by substrate class name.
 - [[Experiments]]: Browse experiments by substrate class
 - [[Reaction Types]]: See which reactions work with which substrates`,
   },
+  {
+    key: "concepts",
+    title: "Concepts",
+    icon: "\u{1F4A1}",
+    oneLiner:
+      "Atomic, cross-linked concept pages — the default home for institutional knowledge that isn't experiment-specific.",
+    markdown: `# Concepts
+
+> Atomic, cross-linked concept pages — the default home for institutional knowledge that isn't experiment-specific.
+
+## Overview
+
+Each concept page captures ONE atomic idea, decision, process, or person, mined
+from raw notes/documents by the OKF enrichment engine (\`/api/agent/pages/enrich\`).
+An LLM decides per-ingestion whether a new concept page should be created or an
+existing one updated — this is the default bucket for meeting notes and
+cross-cutting knowledge that doesn't fit the chemistry-specific taxonomy.
+
+## Browse
+
+Child pages are one concept each, cross-linked via [[wikilinks]]. Follow the
+Concepts index for a one-line summary of every concept.
+
+## Related Pages
+
+- [[Experiments]]: Experiment-specific knowledge
+- [[Reaction Types]]: Reaction-type learnings`,
+  },
 ];
 
 async function findOrCreatePage(
@@ -395,8 +424,14 @@ export async function setupChemistryKbHierarchy(
     );
   }
 
-  // 3. Create index page under root
-  const indexMarkdown = generateIndexPageContent();
+  // 3. Create index page under root. Content is DB-driven (a71-04): at first
+  // setup there are no experiments yet, so the index renders the preamble plus
+  // empty Experiments/Archive sections; regeneration fills it as experiments
+  // arrive. `tenantId` is passed explicitly (never resolved from ambient state).
+  const indexMarkdown = await generateIndexPageContent(tenantId, {
+    experimentsParentId: categoryIds.experiments,
+    archiveParentId: categoryIds.archive,
+  });
   const index = await findOrCreatePage(
     tenantId,
     "Chemistry KB Index",
@@ -421,6 +456,7 @@ export async function setupChemistryKbHierarchy(
     chemicalsId: categoryIds.chemicals,
     researchersId: categoryIds.researchers,
     substrateClassesId: categoryIds.substrateClasses,
+    conceptsId: categoryIds.concepts,
     teamspaceId,
   };
 }
