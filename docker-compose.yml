@@ -33,8 +33,14 @@ services:
       - symbio-network
 
   # ── PostgreSQL Database ─────────────────────────────────
+  # pgvector/pgvector:pg18 = stock Postgres 18 + the `vector` extension (W81-A1).
+  # Swapped from plain `postgres:18`: the immutable Source store embeds chunks in a
+  # vector(1536) column. NOTE (ops): recreating this container against an existing
+  # `pgdata` volume does NOT re-run init — back up + test a copy of the volume
+  # first, and note that rolling back to `postgres:18` after vector columns exist
+  # is not a safe rollback (the plain image lacks the extension library).
   db:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     ports:
       - "5432:5432"
     environment:

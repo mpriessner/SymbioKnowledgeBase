@@ -78,6 +78,15 @@ enum SourceType {
   MACHINE_PROTOCOL
 }
 
+// Kind of raw artifact captured in the immutable Source store (W81-A1).
+enum SourceKind {
+  DOCUMENT
+  TRANSCRIPT
+  NOTE
+  EXPERIMENT_SYNC
+  URL
+}
+
 enum SubscriptionBehavior {
   MIRROR
   NOTIFY
@@ -126,6 +135,7 @@ model Tenant {
   pageShares             PageShare[]
   sweepSessions          SweepSession[]
   ingestLedgerEntries    IngestLedgerEntry[]
+  sources                Source[]
 
   @@map("tenants")
 }
@@ -541,6 +551,94 @@ model IngestLedgerEntry {
   @@index([tenantId], map: "idx_ingest_ledger_tenant_id")
 
   @@map("ingest_ledger_entries")
+}
+
+// ─── Immutable Source + SourceChunk store (W81-A1) ───────────────────
+//
+// Append-only raw-text corpus that wiki claims cite back to. Immutability is
+// enforced by DB triggers (see the migration), NOT Prisma middleware (Prisma 7
+// removed `$use`). The service exposes create + read only — there is no
+// update/delete path. Corrections = ingest a NEW Source, superseded at the wiki
+// layer (W81-B1). Distinct from `FileAttachment` (raw bytes) — this is the
+// parsed, chunked, hashed text.
+
+// One row per ingested raw artifact. `rawText` is stored VERBATIM (no
+// normalization) so chunk code-point offsets into it are always valid.
+model Source {
+  id             String     @id @default(uuid())
+  tenantId       String     @map("tenant_id")
+  kind           SourceKind
+  title          String
+  contentSha256  String     @map("content_sha256")
+  chunkerVersion String     @map("chunker_version")
+  rawText        String     @map("raw_text")
+  ingestedAt     DateTime   @default(now()) @map("ingested_at")
+  ingestedBy     String?    @map("ingested_by")
+  correlationId  String?    @map("correlation_id")
+
+  // Relations
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chunks  SourceChunk[]
+  origins SourceOrigin[]
+
+  // Dedup key: identical text re-chunked under a NEW chunkerVersion mints a new
+  // Source (Codex R1). Same text + different provenance is preserved as multiple
+  // SourceOrigin rows on ONE Source, never collapsed.
+  @@unique([tenantId, contentSha256, chunkerVersion], map: "uq_sources_tenant_sha_chunker")
+  // REQUIRED by the composite FK below: SourceChunk/SourceOrigin reference
+  // Source(tenant_id, id); Postgres needs an explicit unique on the exact
+  // referenced columns or `prisma validate` fails (GLM R2).
+  @@unique([tenantId, id], map: "uq_sources_tenant_id")
+  @@index([tenantId], map: "idx_sources_tenant_id")
+  @@map("sources")
+}
+
+// Deterministic, append-only segmentation of Source.rawText — the citation
+// anchor. `charStart`/`charEnd` are half-open Unicode CODE-POINT offsets;
+// `text` === rawText's [charStart, charEnd) code-point slice. `textSha256` is a
+// content fingerprint (repeated paragraphs/overlap legitimately collide), NOT an
+// identity — identity is (sourceId, chunkIndex).
+model SourceChunk {
+  id         String                       @id @default(uuid())
+  tenantId   String                       @map("tenant_id")
+  sourceId   String                       @map("source_id")
+  chunkIndex Int                          @map("chunk_index")
+  charStart  Int                          @map("char_start")
+  charEnd    Int                          @map("char_end")
+  text       String
+  textSha256 String                       @map("text_sha256")
+  // pgvector; nullable until the durable embedding backfill sweep fills it. The
+  // typed client omits this column — embedding writes go through raw SQL.
+  embedding  Unsupported("vector(1536)")?
+  createdAt  DateTime                     @default(now()) @map("created_at")
+
+  // Tenant-consistent composite FK (no RLS): a chunk can only ever hang off a
+  // Source of the SAME tenant.
+  source Source @relation(fields: [tenantId, sourceId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([sourceId, chunkIndex], map: "uq_source_chunks_source_chunk_index")
+  @@index([tenantId, sourceId], map: "idx_source_chunks_tenant_source")
+  @@map("source_chunks")
+}
+
+// One Source (immutable content) ← N ingestion occurrences. Same text ingested
+// from different places (a re-upload, a synced experiment) records a distinct
+// provenance row instead of collapsing (Codex R1).
+model SourceOrigin {
+  id         String     @id @default(uuid())
+  tenantId   String     @map("tenant_id")
+  sourceId   String     @map("source_id")
+  originRef  String?    @map("origin_ref")
+  kind       SourceKind
+  title      String
+  ingestedAt DateTime   @default(now()) @map("ingested_at")
+  ingestedBy String?    @map("ingested_by")
+
+  source Source @relation(fields: [tenantId, sourceId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, sourceId, originRef], map: "uq_source_origins_tenant_source_ref")
+  @@index([tenantId, sourceId], map: "idx_source_origins_tenant_source")
+  @@map("source_origins")
 }
 
 // ─── Document Subscriptions ─────────────────────────────────────────
