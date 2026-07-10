@@ -125,6 +125,7 @@ model Tenant {
   pageFavorites          PageFavorite[]
   pageShares             PageShare[]
   sweepSessions          SweepSession[]
+  ingestLedgerEntries    IngestLedgerEntry[]
 
   @@map("tenants")
 }
@@ -194,6 +195,13 @@ model Page {
   generalAccess    GeneralAccess @default(INVITED_ONLY) @map("general_access")
   oneLiner         String?       @map("one_liner")
   summary          String?       @map("summary")
+  // Additive, nullable JSON bag for structured page metadata (a71-13 OKF
+  // enrichment: concept type/tags/aliases/first_seen/last_seen, and the
+  // experiments-index regeneration stamp). INVARIANT: every writer MUST patch
+  // its OWN subkey via `jsonb_set`/`||` in a single `$executeRaw` UPDATE — never
+  // a full-column Prisma JSON write — so concurrent writers to different subkeys
+  // never clobber each other. See docs/stories/2026-07-10-W81-EPIC-INDEX.md.
+  properties       Json?         @map("properties")
   summaryUpdatedAt DateTime?     @map("summary_updated_at")
   lastAgentVisitAt DateTime?     @map("last_agent_visit_at")
   createdAt        DateTime      @default(now()) @map("created_at")
@@ -506,6 +514,33 @@ model DocumentVersion {
   @@index([tenantId, pageId])
 
   @@map("document_versions")
+}
+
+// ─── Ingest Ledger (OKF enrichment idempotency) ──────────────────────
+//
+// Records every raw-text ingestion processed by the enrichment engine
+// (`/api/agent/pages/enrich`), keyed by the sha256 of the raw input. A
+// byte-identical re-submission for the same tenant short-circuits before any
+// LLM call. The unique key is composite `(tenant_id, content_hash)`, so the
+// same hash may exist independently for different tenants (no cross-tenant
+// P2002); a genuine same-tenant re-submit collapses to an idempotent no-op.
+model IngestLedgerEntry {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  contentHash String   @map("content_hash")
+  sourceName  String   @map("source_name")
+  planSummary String?  @map("plan_summary")
+  actionCount Int      @default(0) @map("action_count")
+  ingestedAt  DateTime @default(now()) @map("ingested_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@unique([tenantId, contentHash], map: "uq_ingest_ledger_tenant_content_hash")
+  @@index([tenantId], map: "idx_ingest_ledger_tenant_id")
+
+  @@map("ingest_ledger_entries")
 }
 
 // ─── Document Subscriptions ─────────────────────────────────────────

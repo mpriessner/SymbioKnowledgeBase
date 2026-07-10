@@ -8,7 +8,9 @@ import type { RefreshTrigger } from "@/lib/chemistryKb/aggregationRefresh";
 
 const refreshSchema = z.object({
   pageIds: z.array(z.string().uuid()).min(1),
-  trigger: z.enum(["manual", "promotion", "capture", "sync"]).default("manual"),
+  trigger: z
+    .enum(["manual", "promotion", "capture", "sync", "enrichment"])
+    .default("manual"),
 });
 
 /**

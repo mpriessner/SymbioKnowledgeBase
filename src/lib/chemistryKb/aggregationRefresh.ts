@@ -36,7 +36,12 @@ async function runInTransaction<T>(
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type RefreshTrigger = "promotion" | "capture" | "sync" | "manual";
+export type RefreshTrigger =
+  | "promotion"
+  | "capture"
+  | "sync"
+  | "manual"
+  | "enrichment";
 
 export interface RefreshEvent {
   trigger: RefreshTrigger;
