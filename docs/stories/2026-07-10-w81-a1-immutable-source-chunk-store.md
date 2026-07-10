@@ -4,7 +4,7 @@
 - **Project owner:** Martin Priessner (martin.priessner@scisymbio.ai)
 - **Created by:** Agent 81
 - **Created:** 2026-07-10
-- **Status:** Reviewed (Codex; GLM pending) — awaiting owner approval
+- **Status:** Reviewed — awaiting owner approval (Codex + GLM; Gemini skipped)
 - **Assigned to / currently owned by:** unassigned
 - **Related / parallel work:** Foundation for the whole W81 batch (see `2026-07-10-W81-EPIC-INDEX.md`). Consumes `a71-08` (document intake) and `a71-02` (experiment content sync) as source producers. Distinct from `FileAttachment` (which stores file *bytes* + metadata) — this story adds the *parsed, chunked, immutable text corpus* that citations anchor to. Rebase against current `main` (uncommitted A70 tree); thread `tenantId` (no RLS).
 
@@ -24,14 +24,18 @@ Source {
   title, contentSha256, chunkerVersion, rawText (immutable, stored VERBATIM),
   ingestedAt, ingestedBy, correlationId
 }
-@@unique([tenantId, contentSha256, chunkerVersion])   // Codex R1: version in the key so a
-                                                       // re-chunk mints a NEW Source (impossible if
-                                                       // unique on text alone); id is (tenantId,id)
+@@unique([tenantId, contentSha256, chunkerVersion])   // dedup key (Codex R1)
+@@unique([tenantId, id])   // GLM R2: REQUIRED — the composite FK below references
+                           // Source(tenantId, id); Postgres needs an explicit unique on the
+                           // exact referenced columns or `prisma validate` fails the CI gate
 SourceOrigin {                 // Codex R1: same text, different provenance must NOT collapse
   id, tenantId, sourceId, originRef, kind, title, ingestedAt, ingestedBy
 }                              // one Source (immutable content) ← N ingestion occurrences
 ```
-- **No `updatedAt`, no update path.** The service exposes create + read only. **Immutability is a DB `BEFORE UPDATE OR DELETE` trigger — NOT Prisma middleware (Codex R1: Prisma 7 removed `$use`).** A `$extends` query guard gives friendly app-layer errors (defense-in-depth) but can't cover raw SQL / migrations / FK cascades, and embedding writes need raw SQL anyway (pgvector is `Unsupported("vector")`). **The trigger is scoped to protect `rawText` (Source) and `text`/`charStart`/`charEnd`/`chunkIndex` (SourceChunk) ONLY** — it must NOT block (a) the nullable-`embedding` async backfill `UPDATE`, nor (b) `ON DELETE CASCADE` from tenant deletion (Codex R1: a blanket trigger breaks both). Corrections = ingest a *new* Source, superseded at the wiki layer (W81-B1).
+- **No `updatedAt`, no update path.** The service exposes create + read only. **Immutability is a DB trigger — NOT Prisma middleware (Codex R1: Prisma 7 removed `$use`).** A `$extends` query guard gives friendly app-layer errors (defense-in-depth) but can't cover raw SQL / migrations / FK cascades, and embedding writes need raw SQL anyway (pgvector is `Unsupported("vector")`). **The trigger mechanics are exact (GLM R2 — a blanket trigger silently breaks embedding backfill AND tenant-delete):**
+  - Update guard is **column-scoped**: `BEFORE UPDATE OF rawText` on Source, and `BEFORE UPDATE OF text, char_start, char_end, chunk_index` on SourceChunk. Because the `OF` list excludes `embedding`, the raw-SQL `UPDATE source_chunks SET embedding=… WHERE embedding IS NULL` backfill does **not** fire the guard (a non-`OF` trigger would fire per row and leave every embedding null forever).
+  - Delete guard **can't** be column-scoped, so it uses `WHEN (pg_trigger_depth() = 0)` — a direct app `DELETE` (depth 0) is blocked, but a `DELETE` cascading from `tenants` (depth > 0) passes through, so tenant deletion still works.
+  - Corrections = ingest a *new* Source, superseded at the wiki layer (W81-B1).
 - **`rawText` is stored verbatim, no normalization** (Codex R1) — so char offsets into it are always valid. Any NFC/whitespace normalization happens only at compare-time in A2's quote match, never before storage.
 
 **2. `SourceChunk` (append-only, the citation anchor).** Deterministic segmentation of `Source.rawText`.
@@ -56,7 +60,8 @@ SourceChunk {
 **4. Ingestion entry points + the integration contract with as-built a71-13 (Codex R1).** A `SourceIngestService` (`src/lib/sources/`): `ingestSource(...)` → hash, dedup on `(tenantId, contentSha256, chunkerVersion)`, insert `Source` (+ a `SourceOrigin` occurrence row), chunk, insert `SourceChunk`s, schedule embedding. Wired into `a71-08` intake, `a71-02` sync, and a71-13's `/enrich`. **Critical reconciliation with the CODE AS BUILT:**
 - **`Source` existence must NEVER be an enrichment short-circuit.** `Source` = "raw content preserved"; the a71-13 `IngestLedgerEntry` = "enrichment completed" — different states. The enrichment short-circuit stays the **ledger** check (`enrich.ts:102`). If Source-create succeeds but enrichment fails, a retry **reuses the Source and still runs enrichment** (Codex R1 — using Source as the short-circuit would silently drop the retry).
 - **`dryRun` persists nothing** (Codex R1): a71-13's `dryRun` returns after planning with zero writes (`enrich.ts:160`). A1 must chunk **in memory** for a dry run and persist Source/chunks + schedule embedding **only on a real (non-dry) apply**.
-- **Source is an idempotent PRE-STEP, not inside a71-13's page-apply.** As-built a71-13 apply is **not** atomic (page/block/properties/wikilink/version/audit are separate; ledger written after — `applyPlan.ts:328`). So A1 tolerates the *current* non-atomic behavior: an orphan Source (content preserved, enrichment later) is harmless and GC-able; a page without provenance is the hazard A2's later transactional rewrite addresses. A1 does not assume A2's transaction exists yet.
+- **Source + its `SourceChunk`s commit in ONE transaction (their own atomic unit — GLM R2).** The dedup no-op returns an existing Source by id, so a Source persisted with a *partial* chunk set (chunk 37 of 40 fails on a conn drop) would make the missing chunks **permanent** — a retry short-circuits on the existing Source and never inserts them, and the `embedding IS NULL` sweep can't help (it only fills rows that exist). So `ingestSource` wraps `INSERT Source + all SourceChunks (+ SourceOrigin)` in a single `prisma.$transaction`: a Source exists **iff** its complete chunk set does. This is the atomic unit; it is still a PRE-STEP *outside* a71-13's page-apply.
+- **Idempotent PRE-STEP, not inside a71-13's page-apply.** As-built a71-13 apply is **not** atomic (page/block/properties/wikilink/version/audit separate; ledger after — `applyPlan.ts:328`). A1 tolerates that: an orphan Source (complete content, enrichment later) is harmless GC-able; a page without provenance is the hazard A2's later transactional rewrite addresses. A1 does not assume A2's transaction exists yet.
 - **Legacy ledger-only inputs** (ledger rows written before A1, no Source) need an explicit **backfill/reconciliation sweep** that creates Sources for them, else re-submitting old content never builds the corpus citations need.
 - **Concurrent-ingest race is NOT solved by a unique Source** (Codex R1): two identical requests both miss the ledger, both call the LLM, both mutate pages; the unique Source only makes them share a Source, it doesn't elect one enrichment owner. A1 documents this as inherited from a71-13; the durable claim-before-LLM fix lands with A2's `EnrichJob` serialization (flagged, not silently assumed fixed here).
 - **Validate `originRef` ownership** in the service — a bare polymorphic string could otherwise record another tenant's file/page id even under scoped Source queries.
@@ -124,3 +129,19 @@ Nice-to-have folded: reuse a71-13's exact SHA-256 impl (`ingestLedger.ts:14`) so
 ## Revision History
 - 2026-07-10 — Initial draft (Agent 81).
 - 2026-07-11 — Round 1 (Codex GPT-5.6 high, vs as-built a71-13): 11 criticals folded — chunkerVersion in dedup key + SourceOrigin for provenance, DB-trigger (not Prisma-middleware) immutability scoped to allow embedding backfill + tenant cascade, ledger-stays-short-circuit + legacy backfill, verbatim rawText + code-point offsets, durable embedding sweep, tenant-consistent composite FKs. **Also fixed a contradiction in already-reviewed A2 (Source pre-step vs in-tx).** GLM runtime review pending.
+
+## Reviewer Feedback / GLM (round 3) — glm-5.2, runtime lens (vs as-built a71-13; Gemini skipped)
+GLM found 5 Postgres-mechanism runtime bugs Codex missed; all folded above:
+1. **Composite FK `(tenantId, sourceId) → Source(tenantId, id)` fails `prisma validate`** (blocking CI) without an explicit `@@unique([tenantId, id])` on Source — a unique on `id` alone doesn't satisfy it (PG `ERROR 42890`). Same for `SourceOrigin.sourceId`. → Added `@@unique([tenantId, id])`.
+2. **Blanket `BEFORE UPDATE` trigger fires on the embedding backfill** → embeddings stay null forever, silently killing semantic search. → Column-scoped `BEFORE UPDATE OF <text/boundary cols>` (excludes `embedding`).
+3. **`BEFORE DELETE` can't be column-scoped** → tenant-cascade delete trips the guard and rolls back. → `WHEN (pg_trigger_depth() = 0)` blocks direct deletes but lets cascades through.
+4. **Source+chunks not atomic + dedup no-op makes a partial chunk set PERMANENT** (retry short-circuits on the existing Source). → Source + all its chunks commit in one `$transaction`; a Source exists iff its full chunk set does.
+5. **pgvector `CREATE EXTENSION` in the `prisma migrate dev` shadow DB** needs a privileged role the shadow role often lacks → all future local migrations blocked. → Documented shadow-DB privilege path (see §3 note).
+
+## Shadow-DB migration note (GLM R2)
+`prisma generate`/`validate` accept `Unsupported("vector(1536)")` cleanly and the typed client excludes the column (consistent with raw-SQL embedding writes). But `prisma migrate dev` provisions a shadow DB and replays migrations including `CREATE EXTENSION IF NOT EXISTS vector`, which needs superuser/control-file access the shadow role may lack — blocking *all* subsequent local migrations. Mitigate: pre-provision the `vector` extension in the shadow DB (or use a shadow-DB role/image with it available, e.g. the `pgvector/pgvector:pg18` image for the shadow too), or gate the extension migration appropriately. Flag as an env/CI setup decision for the implementer.
+
+## Revision History
+- 2026-07-10 — Initial draft (Agent 81).
+- 2026-07-11 — Round 1 (Codex GPT-5.6 high, vs as-built a71-13): 11 criticals + A2 contradiction fix.
+- 2026-07-11 — Round 3 (GLM-5.2 runtime, vs as-built a71-13; Gemini skipped): 5 Postgres-mechanism bugs folded (`@@unique([tenantId,id])` for the composite FK, column-scoped `BEFORE UPDATE OF` + `pg_trigger_depth()=0` delete guard, atomic Source+chunks transaction, shadow-DB extension privilege). **Status: Reviewed — awaiting owner approval.** Nothing implemented.
