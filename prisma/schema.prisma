@@ -93,6 +93,40 @@ enum SubscriptionBehavior {
   SUGGEST
 }
 
+// ─── W81-A2: Claim / ClaimEvidence citation model ────────────────────
+// Lifecycle of a wiki assertion. W81-B1 flips ACTIVE → SUPERSEDED when a
+// contradiction supersedes it; this story only ever writes ACTIVE.
+enum ClaimStatus {
+  ACTIVE
+  SUPERSEDED
+}
+
+// The evidence relation between a Claim and a SourceChunk. A SUPPORTS edge
+// attaches to the NEW body claim; a CONTRADICTS edge attaches to the EXISTING
+// claim it refutes (the W81-B1 trigger signal).
+enum EvidenceRelation {
+  SUPPORTS
+  CONTRADICTS
+}
+
+// The machine-checkable trust signal produced by the quote-validation gate.
+// UNVERIFIED is never rendered as a trusted receipt (W81-A3) and never trusted
+// by contradiction logic (W81-B1).
+enum EvidenceValidation {
+  EXACT
+  FUZZY
+  UNVERIFIED
+}
+
+// Durable async-job status for the enrichment+citation pipeline (SKB has no
+// in-process job infra that survives a restart, so this is a real table).
+enum EnrichJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
 enum Permission {
   FULL_ACCESS
   CAN_EDIT
@@ -136,6 +170,9 @@ model Tenant {
   sweepSessions          SweepSession[]
   ingestLedgerEntries    IngestLedgerEntry[]
   sources                Source[]
+  claims                 Claim[]
+  claimEvidence          ClaimEvidence[]
+  enrichJobs             EnrichJob[]
 
   @@map("tenants")
 }
@@ -237,6 +274,7 @@ model Page {
   fileAttachments       FileAttachment[]
   favorites             PageFavorite[]
   shares                PageShare[]
+  claims                Claim[]
 
   // Indexes
   @@unique([tenantId, externalId], map: "uq_pages_tenant_id_external_id")
@@ -515,8 +553,9 @@ model DocumentVersion {
   createdAt    DateTime   @default(now()) @map("created_at")
 
   // Relations
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  claims Claim[]
 
   // Indexes
   @@unique([pageId, version])
@@ -614,7 +653,8 @@ model SourceChunk {
 
   // Tenant-consistent composite FK (no RLS): a chunk can only ever hang off a
   // Source of the SAME tenant.
-  source Source @relation(fields: [tenantId, sourceId], references: [tenantId, id], onDelete: Cascade)
+  source   Source          @relation(fields: [tenantId, sourceId], references: [tenantId, id], onDelete: Cascade)
+  evidence ClaimEvidence[]
 
   @@unique([sourceId, chunkIndex], map: "uq_source_chunks_source_chunk_index")
   @@index([tenantId, sourceId], map: "idx_source_chunks_tenant_source")
@@ -639,6 +679,100 @@ model SourceOrigin {
   @@unique([tenantId, sourceId, originRef], map: "uq_source_origins_tenant_source_ref")
   @@index([tenantId, sourceId], map: "idx_source_origins_tenant_source")
   @@map("source_origins")
+}
+
+// ─── W81-A2: Claim + ClaimEvidence citation layer ────────────────────
+//
+// A `Claim` is one atomic assertion on a wiki/concept page, indexed in parallel
+// to the page body (the body is Tiptap JSON in `Block.content`; there is no
+// persisted markdown string to hold char offsets against). Body anchoring is by
+// `anchorTextSha` (= sha256 of the normalized claim text) re-matched against
+// `Block.plainText` — a durable text anchor, not a fragile char offset. Each
+// Claim pins the `DocumentVersion` it was authored against (a real FK,
+// onDelete: Restrict) so decomposition drift is a per-version snapshot and the
+// version pruner must skip claim-referenced versions.
+model Claim {
+  id                String      @id @default(uuid())
+  tenantId          String      @map("tenant_id")
+  pageId            String      @map("page_id")
+  text              String
+  // Deterministic identity: sha256(pageId + normalize(text) + documentVersionId).
+  // Retries collapse on @@unique([tenantId, claimKey]) instead of minting new ids.
+  claimKey          String      @map("claim_key")
+  // sha256(normalize(text)); the body anchor is a TEXT re-match into
+  // Block.plainText, NOT a char offset into ephemeral markdown.
+  anchorTextSha     String      @map("anchor_text_sha")
+  documentVersionId String      @map("document_version_id")
+  status            ClaimStatus @default(ACTIVE)
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page            Page            @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  // onDelete: Restrict — the per-version snapshot a claim pins must never dangle;
+  // pruneOldVersions() explicitly skips versions referenced here.
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Restrict)
+  evidence        ClaimEvidence[]
+
+  @@unique([tenantId, claimKey], map: "uq_claims_tenant_claim_key")
+  @@index([tenantId, pageId], map: "idx_claims_tenant_page")
+  @@index([tenantId, status], map: "idx_claims_tenant_status")
+  @@index([documentVersionId], map: "idx_claims_document_version")
+  @@map("claims")
+}
+
+// One evidence edge: a Claim ↔ a SourceChunk it cites, tagged with the
+// quote-validation gate's verdict. `matchedText` is the CANONICAL source
+// substring actually found in `SourceChunk.text` (never the model's paraphrase);
+// `quoteSha256` hashes THAT for EXACT/FUZZY, and uses a deterministic sentinel
+// for UNVERIFIED so the retry-idempotency unique index still dedupes (a NULL
+// would be distinct in Postgres and defeat it). `chunkCharStart/End` are
+// WITHIN-chunk code-point offsets (a different coordinate space from A1's
+// within-rawText offsets).
+model ClaimEvidence {
+  id              String             @id @default(uuid())
+  tenantId        String             @map("tenant_id")
+  claimId         String             @map("claim_id")
+  chunkId         String             @map("chunk_id")
+  matchedText     String?            @map("matched_text")
+  quoteSha256     String             @map("quote_sha256")
+  chunkCharStart  Int?               @map("chunk_char_start")
+  chunkCharEnd    Int?               @map("chunk_char_end")
+  relation        EvidenceRelation
+  validationState EvidenceValidation @map("validation_state")
+  confidence      Float              @default(0)
+  createdAt       DateTime           @default(now()) @map("created_at")
+
+  // Relations
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  claim  Claim       @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  chunk  SourceChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  // Idempotent retry key; quoteSha256 is NOT NULL (sentinel for UNVERIFIED).
+  @@unique([claimId, chunkId, quoteSha256], map: "uq_claim_evidence_claim_chunk_quote")
+  @@index([tenantId, claimId], map: "idx_claim_evidence_tenant_claim")
+  @@index([tenantId, chunkId], map: "idx_claim_evidence_tenant_chunk")
+  @@map("claim_evidence")
+}
+
+// Durable async-job row for POST /api/agent/pages/enrich real runs. SKB has no
+// restart-surviving in-process queue, so the job (and its result) live in the DB;
+// GET /api/agent/pages/enrich/[jobId] reads this row.
+model EnrichJob {
+  id        String          @id @default(uuid())
+  tenantId  String          @map("tenant_id")
+  status    EnrichJobStatus @default(QUEUED)
+  request   Json
+  result    Json?
+  error     String?
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status], map: "idx_enrich_jobs_tenant_status")
+  @@index([status, createdAt], map: "idx_enrich_jobs_status_created")
+  @@map("enrich_jobs")
 }
 
 // ─── Document Subscriptions ─────────────────────────────────────────

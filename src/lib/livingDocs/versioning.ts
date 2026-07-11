@@ -55,8 +55,14 @@ interface CreateVersionOptions {
  * Prune versions beyond the retention limit for a page, inside the given
  * transaction. Keeps the newest `RETENTION_LIMIT` versions (highest version
  * numbers) and deletes the rest.
+ *
+ * W81-A2: a `DocumentVersion` referenced by any `Claim.documentVersionId` is a
+ * pinned per-version snapshot and MUST NOT be pruned — the FK is
+ * `onDelete: Restrict`, so a blind delete would FK-violate the whole enclosing
+ * save on re-enrich-heavy pages. Claim-referenced versions are filtered out of
+ * the delete set (they are retained beyond the retention limit deliberately).
  */
-async function pruneOldVersions(
+export async function pruneOldVersions(
   tx: Prisma.TransactionClient,
   pageId: string,
   tenantId: string
@@ -68,9 +74,20 @@ async function pruneOldVersions(
     select: { id: true },
     skip: RETENTION_LIMIT,
   });
-  if (stale.length > 0) {
+  if (stale.length === 0) return;
+
+  const staleIds = stale.map((v) => v.id);
+  // Exclude versions still referenced by a Claim (onDelete: Restrict) — deleting
+  // them would abort the transaction.
+  const referenced = await tx.claim.findMany({
+    where: { tenantId, documentVersionId: { in: staleIds } },
+    select: { documentVersionId: true },
+  });
+  const pinned = new Set(referenced.map((c) => c.documentVersionId));
+  const deletable = staleIds.filter((id) => !pinned.has(id));
+  if (deletable.length > 0) {
     await tx.documentVersion.deleteMany({
-      where: { id: { in: stale.map((v) => v.id) } },
+      where: { id: { in: deletable } },
     });
   }
 }
