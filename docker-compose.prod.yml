@@ -100,6 +100,71 @@ services:
     networks:
       - symbio-prod-network
 
+  # ── W81-C1 Triage Worker (cheap "sleeping updater" tier) ─────────────────
+  # OPT-IN via `--profile triage`. This is NOT a daemon: it repeatedly invokes the
+  # BOUNDED, budgeted per-tenant sweep (scripts/triage-sweep.ts) on a cadence — an
+  # external scheduler around a stateless run (each invocation exits cooperatively
+  # after committing its current batch). A dedicated SMALL pool (connection_limit=3)
+  # so a second worker pool cannot starve the app's 20-conn request path against
+  # the 1GB/2CPU DB (GLM R2). The per-tenant advisory lock prevents overlap.
+  #
+  #   docker compose -f docker-compose.prod.yml --profile triage up -d triage-worker
+  #
+  # Requires: TRIAGE_TENANT_IDS (comma-separated), OLLAMA_BASE_URL, OLLAMA_MODEL.
+  # Runs the repo (tsx) so build with a non-standalone image or mount the source.
+  triage-worker:
+    profiles: ["triage"]
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    environment:
+      # Deliberately SMALL pool — never a second full 20-conn pool.
+      DATABASE_URL: "postgresql://symbio:${DB_PASSWORD}@db:5432/symbio?schema=public&connection_limit=3"
+      NODE_ENV: production
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      # Reach Ollama by SERVICE NAME (not localhost) — the model tier runs beside it.
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://ollama:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-llama3.1:8b}"
+      # Comma-separated tenant ids to sweep each cycle; cadence in seconds.
+      TRIAGE_TENANT_IDS: "${TRIAGE_TENANT_IDS:-}"
+      TRIAGE_INTERVAL_SECONDS: "${TRIAGE_INTERVAL_SECONDS:-900}"
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        while true; do
+          for t in $(echo "$TRIAGE_TENANT_IDS" | tr ',' ' '); do
+            [ -n "$t" ] && (npx tsx scripts/triage-sweep.ts --tenant "$t" || echo "triage run failed for $t");
+          done;
+          sleep "${TRIAGE_INTERVAL_SECONDS:-900}";
+        done
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    networks:
+      - symbio-prod-network
+
+  # ── Ollama (local 7B model server for the triage tier) ───────────────────
+  # OPT-IN via `--profile ollama`. Reached by the worker at http://ollama:11434.
+  # Pull the configured model once: `docker compose exec ollama ollama pull llama3.1:8b`.
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+    networks:
+      - symbio-prod-network
+
   # ── Database Backup (OPTIONAL sidecar — commented out by default) ─────────
   # This repo ships scripts/backup.sh (pg_dump-based) but has NO automated,
   # off-host backup configured. The stanza below runs scheduled dumps INSIDE the
@@ -142,6 +207,9 @@ services:
 
 volumes:
   pgdata-prod:
+    driver: local
+  # W81-C1 triage tier (created only when the `ollama` profile is used).
+  ollama-data:
     driver: local
   # Uncomment alongside the backup sidecar above.
   # backup-data:
