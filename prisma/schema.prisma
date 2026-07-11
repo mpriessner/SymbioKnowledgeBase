@@ -101,6 +101,15 @@ enum ClaimStatus {
   SUPERSEDED
 }
 
+// W81-B1: precision of a Source's / Claim's event date. A bare `DateTime` cannot
+// carry "~approximately June 2026" — the temporal-safety rule treats UNKNOWN as
+// "never auto-supersede" and APPROX conservatively (defer to C1 on close calls).
+enum DatePrecision {
+  EXACT
+  APPROX
+  UNKNOWN
+}
+
 // The evidence relation between a Claim and a SourceChunk. A SUPPORTS edge
 // attaches to the NEW body claim; a CONTRADICTS edge attaches to the EXISTING
 // claim it refutes (the W81-B1 trigger signal).
@@ -172,6 +181,7 @@ model Tenant {
   sources                Source[]
   claims                 Claim[]
   claimEvidence          ClaimEvidence[]
+  claimSupersessions     ClaimSupersession[]
   enrichJobs             EnrichJob[]
 
   @@map("tenants")
@@ -614,6 +624,12 @@ model Source {
   ingestedAt     DateTime   @default(now()) @map("ingested_at")
   ingestedBy     String?    @map("ingested_by")
   correlationId  String?    @map("correlation_id")
+  // W81-B1: when the artifact's content is dated in the world (parsed from the
+  // filename/doc metadata), distinct from `ingestedAt` (when the system saw it).
+  // `Claim.tValid` derives from this → else the claim's `txCreated`. Null +
+  // UNKNOWN precision means "no world date" and blocks auto-supersession.
+  eventDate      DateTime?     @map("event_date")
+  datePrecision  DatePrecision @default(UNKNOWN) @map("date_precision")
 
   // Relations
   tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -704,21 +720,81 @@ model Claim {
   anchorTextSha     String      @map("anchor_text_sha")
   documentVersionId String      @map("document_version_id")
   status            ClaimStatus @default(ACTIVE)
+  // ─── W81-B1 bitemporal timestamps ────────────────────────────────────
+  // tValid   : when the asserted fact became TRUE in the world (from
+  //            Source.eventDate → else txCreated). DB-defaulted to now() so
+  //            legacy/unknown-date claims coincide with their ingest time.
+  // tInvalid : when it stopped being true (null = still valid; a FUTURE value
+  //            means "effective until then" — status stays ACTIVE until it passes).
+  // txCreated: when the SYSTEM recorded it (DB `now()`, not an app clock).
+  // txExpired: when the system marked it superseded (null = live).
+  tValid            DateTime      @default(now()) @map("t_valid")
+  tInvalid          DateTime?     @map("t_invalid")
+  txCreated         DateTime      @default(now()) @map("tx_created")
+  txExpired         DateTime?     @map("tx_expired")
+  // Precision carried from the source so the temporal rule treats UNKNOWN/APPROX
+  // dates conservatively (UNKNOWN never auto-supersedes).
+  datePrecision       DatePrecision @default(UNKNOWN) @map("date_precision")
+  supersededByClaimId String?       @map("superseded_by_claim_id")
+  supersedeReason     String?       @map("supersede_reason")
   createdAt         DateTime    @default(now()) @map("created_at")
 
   // Relations
   tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  page            Page            @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  // onDelete: NoAction — a claim must never be cascade-deleted when its page is
+  // purged (that would erase belief history — W81-B1 invariant). NO ACTION blocks
+  // a direct page delete while claims reference it (a hard-purge must archive
+  // claims first), while still letting a whole-tenant Cascade clean up (claims are
+  // removed via their own tenant FK before the end-of-statement check). See story
+  // "Lifecycle: duplicate / restore / purge".
+  page            Page            @relation(fields: [pageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   // onDelete: Restrict — the per-version snapshot a claim pins must never dangle;
   // pruneOldVersions() explicitly skips versions referenced here.
   documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Restrict)
   evidence        ClaimEvidence[]
+  // Self-relation: the newer claim that superseded this one (belief chain).
+  supersededBy       Claim?              @relation("ClaimSupersedes", fields: [supersededByClaimId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supersedes         Claim[]             @relation("ClaimSupersedes")
+  supersessionsAsOld ClaimSupersession[] @relation("SupersessionOld")
+  supersessionsAsNew ClaimSupersession[] @relation("SupersessionNew")
 
   @@unique([tenantId, claimKey], map: "uq_claims_tenant_claim_key")
   @@index([tenantId, pageId], map: "idx_claims_tenant_page")
   @@index([tenantId, status], map: "idx_claims_tenant_status")
+  // Temporal read path: active-at-time queries filter (tenant, status, tValid).
+  @@index([tenantId, status, tValid], map: "idx_claims_tenant_status_tvalid")
+  // Supersession-chain traversal.
+  @@index([supersededByClaimId], map: "idx_claims_superseded_by")
   @@index([documentVersionId], map: "idx_claims_document_version")
   @@map("claims")
+}
+
+// W81-B1: an append-only audit of every applied supersession — which older claim
+// was invalidated by which newer one, why, and the valid-time set. The unique key
+// makes re-runs idempotent (a retried ingest can't double-write the same edge).
+// oldClaim/newClaim FKs are NoAction (claims are never deleted; tenant Cascade
+// cleans these rows via their own tenant FK).
+model ClaimSupersession {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  oldClaimId      String   @map("old_claim_id")
+  newClaimId      String   @map("new_claim_id")
+  reason          String
+  // The valid-time written onto the older claim's tInvalid.
+  tInvalidApplied DateTime @map("t_invalid_applied")
+  // false = future-effective (older claim kept ACTIVE, flipped later); true =
+  // present-effective (older claim marked SUPERSEDED now).
+  effectiveNow    Boolean  @default(true) @map("effective_now")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  oldClaim Claim  @relation("SupersessionOld", fields: [oldClaimId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  newClaim Claim  @relation("SupersessionNew", fields: [newClaimId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([oldClaimId, newClaimId, reason], map: "uq_claim_supersession_old_new_reason")
+  @@index([tenantId, oldClaimId], map: "idx_claim_supersession_tenant_old")
+  @@index([tenantId, newClaimId], map: "idx_claim_supersession_tenant_new")
+  @@map("claim_supersessions")
 }
 
 // One evidence edge: a Claim ↔ a SourceChunk it cites, tagged with the
