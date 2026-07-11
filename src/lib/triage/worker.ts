@@ -164,8 +164,7 @@ export async function runTriageSweep(
 
     for (const s of scanners) {
       // Drain this pass; each iteration is a bounded, committed batch.
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
+      for (;;) {
         if (budgetHit()) {
           status = "BUDGET_EXHAUSTED";
           break;
