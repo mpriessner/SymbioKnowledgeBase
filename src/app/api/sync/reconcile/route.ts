@@ -6,6 +6,7 @@ import {
   getActiveSyncId,
 } from "@/lib/chemistryKb/reconciliationSync";
 import { corsHeaders } from "@/lib/security/cors";
+import { constantTimeEqual } from "@/lib/auth/constantTimeEqual";
 
 const CORS_METHODS = "GET, POST, OPTIONS";
 const CORS_HEADERS = "Content-Type, Authorization, X-Tenant-ID";
@@ -19,7 +20,7 @@ function authenticateSync(req: NextRequest): boolean {
   }
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return false;
-  return authHeader.substring(7) === SYNC_SERVICE_KEY;
+  return constantTimeEqual(authHeader.substring(7), SYNC_SERVICE_KEY);
 }
 
 function resolveTenantId(req: NextRequest): string | null {
