@@ -36,6 +36,8 @@ import {
 import { applyPlanWithCitations } from "./applyPlanWithCitations";
 import { completeEnrichJob, failEnrichJob, type EnrichJobRequest } from "./enrichJob";
 import type { ConceptAction } from "./schema";
+import { parseEventDate } from "@/lib/knowledge/eventDate";
+import { runInlineSupersession } from "@/lib/knowledge/supersession";
 
 /** Bounded parent-chain walk: is `candidate` within `ancestor`? */
 async function isWithinSubtree(
@@ -96,11 +98,16 @@ export async function runEnrichJob(
     }
 
     // (2) Source + chunks PRE-STEP (idempotent, OUTSIDE the apply tx).
+    // W81-B1: derive the source's world event-date from its name; it seeds the
+    // bitemporal tValid of every claim written from this source.
+    const { eventDate, precision } = parseEventDate(sourceName);
     const ingested = await ingestSource(ctx, {
       kind: "NOTE",
       title: sourceName,
       rawText,
       correlationId: contentHash.slice(0, 12),
+      eventDate,
+      datePrecision: precision,
     });
     const sourceId = ingested.sourceId;
 
@@ -179,10 +186,29 @@ export async function runEnrichJob(
       allowedParentIds,
       correlationId: contentHash.slice(0, 12),
       sourceId,
+      sourceEventDate: eventDate,
+      sourceDatePrecision: precision,
       contentHash,
       sourceName,
       citationsRequired,
     });
+
+    // (5b) W81-B1: inline deterministic supersession — runs AFTER the apply tx
+    // has COMMITTED (claims + CONTRADICTS edges are now visible). Best-effort:
+    // a supersession failure must never fail an otherwise-successful ingest.
+    let supersession:
+      | Awaited<ReturnType<typeof runInlineSupersession>>
+      | undefined;
+    if (result.affectedPageIds.length > 0) {
+      try {
+        supersession = await runInlineSupersession(
+          tenantId,
+          result.affectedPageIds
+        );
+      } catch (err) {
+        console.error("[runEnrichJob] supersession skipped:", err);
+      }
+    }
 
     // Post-commit side effects (index/aggregation) — never part of atomicity.
     if (result.applied.length > 0) {
@@ -199,6 +225,13 @@ export async function runEnrichJob(
       warnings: [...passWarnings, ...result.warnings],
       claimSummaries: result.claimSummaries,
       sourceId,
+      supersession: supersession
+        ? {
+            applied: supersession.applied.length,
+            flagged: supersession.flagged.length,
+            contestedPageIds: supersession.contestedPageIds,
+          }
+        : undefined,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

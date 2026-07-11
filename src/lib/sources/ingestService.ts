@@ -21,7 +21,7 @@ import { prisma } from "@/lib/db";
 import type { AgentContext } from "@/lib/agent/auth";
 import { computeContentHash } from "@/lib/agent/enrichment/ingestLedger";
 import { chunkText, CHUNKER_VERSION, type Chunk } from "./chunker";
-import type { SourceKind } from "@/generated/prisma/client";
+import type { SourceKind, DatePrecision } from "@/generated/prisma/client";
 
 export class IngestError extends Error {
   constructor(
@@ -44,6 +44,10 @@ export interface IngestSourceParams {
   correlationId?: string | null;
   dryRun?: boolean;
   chunkerVersion?: string;
+  /** W81-B1: the artifact's world event-date (parsed from metadata), seeds Claim.tValid. */
+  eventDate?: Date | null;
+  /** W81-B1: precision of eventDate; UNKNOWN (default) blocks auto-supersession. */
+  datePrecision?: DatePrecision;
 }
 
 export interface IngestSourceResult {
@@ -118,6 +122,8 @@ export async function ingestSource(
     correlationId = null,
     dryRun = false,
     chunkerVersion = CHUNKER_VERSION,
+    eventDate = null,
+    datePrecision = "UNKNOWN",
   } = params;
 
   if (!rawText || rawText.length === 0) {
@@ -192,6 +198,8 @@ export async function ingestSource(
           rawText,
           ingestedBy,
           correlationId,
+          eventDate,
+          datePrecision,
         },
         select: { id: true },
       });

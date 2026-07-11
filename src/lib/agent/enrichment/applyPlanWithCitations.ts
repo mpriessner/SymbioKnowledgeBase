@@ -56,6 +56,14 @@ export interface ApplyWithCitationsOptions {
   correlationId?: string | null;
   /** The immutable Source persisted in the pre-step; chunks resolve within it. */
   sourceId: string | null;
+  /**
+   * W81-B1: the Source's world event-date + precision. Each new Claim's `tValid`
+   * derives from this (→ else the DB `now()` default = `txCreated`), carrying the
+   * precision so the supersession temporal rule treats UNKNOWN/APPROX dates
+   * conservatively.
+   */
+  sourceEventDate?: Date | null;
+  sourceDatePrecision?: "EXACT" | "APPROX" | "UNKNOWN";
   /** Ledger idempotency: written INSIDE the tx (AC6). */
   contentHash: string;
   sourceName: string;
@@ -228,7 +236,11 @@ async function persistClaimsOnTx(
   claims: ClaimCitation[],
   chunkByIndex: Map<number, { id: string; text: string }>,
   warnings: string[],
-  summary: AppliedClaimSummary
+  summary: AppliedClaimSummary,
+  temporal: {
+    eventDate?: Date | null;
+    datePrecision: "EXACT" | "APPROX" | "UNKNOWN";
+  }
 ): Promise<void> {
   for (const claim of claims) {
     const claimKey = computeClaimKey(pageId, claim.text, versionId);
@@ -253,6 +265,10 @@ async function persistClaimsOnTx(
             anchorTextSha,
             documentVersionId: versionId,
             status: "ACTIVE",
+            // W81-B1: tValid from the source event-date → else the DB now()
+            // default (== txCreated). datePrecision gates auto-supersession.
+            ...(temporal.eventDate ? { tValid: temporal.eventDate } : {}),
+            datePrecision: temporal.datePrecision,
           },
           select: { id: true },
         });
@@ -481,7 +497,11 @@ export async function applyPlanWithCitationsTx(
         action.claims,
         chunkByIndex,
         warnings,
-        summary
+        summary,
+        {
+          eventDate: options.sourceEventDate ?? null,
+          datePrecision: options.sourceDatePrecision ?? "UNKNOWN",
+        }
       );
     }
     claimSummaries.push(summary);
