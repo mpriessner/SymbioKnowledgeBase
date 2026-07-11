@@ -136,6 +136,48 @@ enum EnrichJobStatus {
   FAILED
 }
 
+// ─── W81-C1: Triage worker (staleness / dedup / contradiction / tagging) ──
+// The cheap-tier "sleeping updater" — a bounded, externally-scheduled sweep that
+// FLAGS work (never rewrites page bodies) and escalates only genuine hard cases.
+
+// Which of the four passes a keyset cursor / run belongs to. A single UUID cursor
+// is WRONG (Codex R1): the four passes traverse different domains, so each keeps
+// its own keyset watermark.
+enum TriagePass {
+  STALENESS       // (a) deterministic scoped-key collision — NO LLM
+  TAGGING         // (b) source→concept relevance — local 7B
+  DEDUP           // (c) embedding near-duplicate — deterministic vector search
+  CONTRADICTION   // (d) embedding-retrieved claim pairs — local 7B yes/no/maybe
+}
+
+// The kind of finding a pass surfaces.
+enum TriageKind {
+  STALE                    // (a) a (subject,relation) collision the page hasn't reflected
+  SOURCE_TAGGED            // (b) a new source is relevant to a concept page (hand-off list)
+  POSSIBLE_DUPLICATE       // (c) two concept pages are near-duplicates
+  CONTRADICTION_CANDIDATE  // (d) two claims may disagree (advisory, not resolved)
+}
+
+// Finding lifecycle. A global unique fingerprint would P2002-drop a recurrence
+// after DISMISS/RESOLVE, so uniqueness is a PARTIAL index over the non-terminal
+// states only (OPEN|ESCALATED|DEFERRED) — declared in the migration, not here.
+// DEFERRED = the Ollama-down state (bounded backoff + nextAttemptAt + max retries).
+enum TriageStatus {
+  OPEN
+  ESCALATED
+  DEFERRED
+  DISMISSED
+  RESOLVED
+}
+
+// A bounded triage run's terminal state.
+enum TriageRunStatus {
+  RUNNING
+  COMPLETED
+  BUDGET_EXHAUSTED
+  FAILED
+}
+
 enum Permission {
   FULL_ACCESS
   CAN_EDIT
@@ -183,6 +225,11 @@ model Tenant {
   claimEvidence          ClaimEvidence[]
   claimSupersessions     ClaimSupersession[]
   enrichJobs             EnrichJob[]
+  triageRuns             TriageRun[]
+  triageFindings         TriageFinding[]
+  triageCursors          TriageCursor[]
+  sourceRelevances       SourceRelevance[]
+  triageDigests          TriageDigest[]
 
   @@map("tenants")
 }
@@ -993,4 +1040,143 @@ model SweepSession {
   @@index([tenantId, startedAt], map: "idx_sweep_sessions_tenant_started")
 
   @@map("sweep_sessions")
+}
+
+// ─── W81-C1: Triage worker state ─────────────────────────────────────
+//
+// SKB has no durable worker process, so C1 follows the bounded-run convention
+// (`scripts/agent-sweep.ts`): each invocation is time/row-budgeted and exits.
+// State that must cross runs lives in these tables — NEVER an in-process Map.
+
+// One bounded sweep invocation. Carries the run's stats + the pinned model digest
+// so a model change is auditable. NOT a high-water mark itself — the per-pass
+// keyset watermarks live in `TriageCursor`.
+model TriageRun {
+  id          String          @id @default(uuid())
+  tenantId    String          @map("tenant_id")
+  status      TriageRunStatus @default(RUNNING)
+  budget      Int
+  // Digest of the Ollama model resolved at run start (null when Ollama was down
+  // for the whole run and only deterministic passes ran).
+  modelDigest String?         @map("model_digest")
+  // Per-pass counters (scanned / findings / deferred / escalated), Ollama status.
+  stats       Json            @default("{}")
+  startedAt   DateTime        @default(now()) @map("started_at")
+  completedAt DateTime?       @map("completed_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, startedAt], map: "idx_triage_runs_tenant_started")
+  @@map("triage_runs")
+}
+
+// Per-pass keyset watermark `(cursorAt, cursorId)` over the pass's SCANNED anchor
+// entity — for STALENESS/CONTRADICTION the claim, for TAGGING the source, for
+// DEDUP the page. Embedding passes resume by this anchor keyset, NEVER by pgvector
+// similarity order (which has no stable order — GLM R2). Advanced in the SAME
+// transaction as the batch's finding writes, so a crash re-does a bounded batch.
+model TriageCursor {
+  id        String     @id @default(uuid())
+  tenantId  String     @map("tenant_id")
+  pass      TriagePass
+  cursorAt  DateTime?  @map("cursor_at")
+  cursorId  String?    @map("cursor_id")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, pass], map: "uq_triage_cursors_tenant_pass")
+  @@map("triage_cursors")
+}
+
+// A flagged item. C1's durable output alongside SourceRelevance + the page
+// `knowledgeStatus` mark; it NEVER edits a page body. Uniqueness is a PARTIAL
+// unique index on `fingerprint WHERE status IN (OPEN,ESCALATED,DEFERRED)`
+// (declared in the migration — Prisma can't express filtered uniques), so a
+// re-scan can't recreate a live finding yet a recurrence after DISMISS/RESOLVE
+// CAN be re-flagged. Pair participants (dedup pages, contradiction claims) are
+// stored CANONICALIZED (min,max) in the primary + related columns so (A,B) and
+// (B,A) collapse. FKs are onDelete:SetNull (retain display evidence on purge);
+// tenant-consistency of every FK is enforced in-transaction (no RLS — the repo's
+// per-query isolation convention), not via composite FKs (SetNull can't null the
+// NOT NULL tenant_id half of a composite key).
+model TriageFinding {
+  id            String       @id @default(uuid())
+  tenantId      String       @map("tenant_id")
+  kind          TriageKind
+  status        TriageStatus @default(OPEN)
+  // 0..1 — escalation gate compares this to the configured threshold.
+  severity      Float        @default(0)
+  confidence    Float        @default(0)
+  // Primary + related participants (canonicalized min<max for pair kinds).
+  pageId        String?      @map("page_id")
+  relatedPageId String?      @map("related_page_id")
+  claimId       String?      @map("claim_id")
+  relatedClaimId String?     @map("related_claim_id")
+  sourceId      String?      @map("source_id")
+  // sha256(kind + canonical participants + scopedKey) — dedup identity.
+  fingerprint   String
+  // Bounded evidence blob (size-capped by the writer), never a page body.
+  evidence      Json         @default("{}")
+  // The pinned model digest that produced a model-derived finding (null for the
+  // deterministic staleness pass).
+  modelDigest   String?      @map("model_digest")
+  // ── DEFERRED (Ollama-down) bookkeeping ──
+  deferReason   String?      @map("defer_reason")
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime?    @map("next_attempt_at")
+  // ── At-most-once escalation lease (C2 claims via atomic UPDATE ... RETURNING) ──
+  escalatedAt   DateTime?    @map("escalated_at")
+  leasedAt      DateTime?    @map("leased_at")
+  leaseOwner    String?      @map("lease_owner")
+  resolvedAt    DateTime?    @map("resolved_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status], map: "idx_triage_findings_tenant_status")
+  @@index([tenantId, kind, status], map: "idx_triage_findings_tenant_kind_status")
+  @@index([tenantId, status, nextAttemptAt], map: "idx_triage_findings_tenant_defer")
+  @@index([status, escalatedAt], map: "idx_triage_findings_escalation")
+  @@map("triage_findings")
+}
+
+// (b) The source-to-concept tag: which existing concept page a NEW source is
+// relevant to, classified by the local model. Upsert-idempotent on
+// (tenantId, sourceId, pageId) — a re-run refreshes score/digest, never duplicates.
+model SourceRelevance {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  sourceId    String   @map("source_id")
+  pageId      String   @map("page_id")
+  score       Float    @default(0)
+  modelDigest String   @map("model_digest")
+  taggedAt    DateTime @default(now()) @map("tagged_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sourceId, pageId], map: "uq_source_relevance_tenant_source_page")
+  @@index([tenantId, sourceId], map: "idx_source_relevance_tenant_source")
+  @@index([tenantId, pageId], map: "idx_source_relevance_tenant_page")
+  @@map("source_relevance")
+}
+
+// Durable, idempotent weekly health-check digest (§6). Persists the period key +
+// last-success so a re-run in the same period is a no-op (never double-notifies).
+model TriageDigest {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  // Period identity, e.g. "2026-W28" (ISO week) — the idempotency key.
+  periodKey   String   @map("period_key")
+  stats       Json     @default("{}")
+  notifiedAt  DateTime @default(now()) @map("notified_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, periodKey], map: "uq_triage_digests_tenant_period")
+  @@index([tenantId, notifiedAt], map: "idx_triage_digests_tenant_notified")
+  @@map("triage_digests")
 }
