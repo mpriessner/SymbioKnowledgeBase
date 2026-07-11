@@ -83,6 +83,33 @@ describe("GET /auth/callback — OAuth exchange failure (audit S15)", () => {
 
     await GET(req("http://localhost:3000/auth/callback?code=good-code"));
 
-    expect(mockLogAuthEvent).not.toHaveBeenCalled();
+    expect(mockLogAuthEvent).not.toHaveBeenCalledWith(
+      "oauth.exchange_failed",
+      expect.anything(),
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  // SKB-02: OAuth success was previously unlogged (only the failure path had
+  // coverage). Success is fire-and-forget (not awaited) so it must never
+  // delay the redirect.
+  test("a successful code exchange logs an oauth.success event", async () => {
+    mockExchangeCodeForSession.mockResolvedValue({
+      data: { user: { id: "user-1", email: "u@example.com" } },
+      error: null,
+    });
+
+    const res = await GET(
+      req("http://localhost:3000/auth/callback?code=good-code")
+    );
+
+    expect(mockLogAuthEvent).toHaveBeenCalledWith(
+      "oauth.success",
+      "auth/callback",
+      expect.objectContaining({ userId: "user-1" })
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/home");
   });
 });

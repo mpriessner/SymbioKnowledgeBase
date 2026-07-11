@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { resolveApiKey } from "@/lib/apiAuth";
 import { ensureUserExists } from "@/lib/auth/ensureUserExists";
+import { logAuthEvent, clientIpFromHeaders } from "@/lib/agent/audit";
 import type { TenantContext } from "@/types/auth";
 
 /**
@@ -45,6 +46,10 @@ export async function getTenantContext(
     }
 
     // If Authorization header is present but invalid, reject immediately
+    await logAuthEvent("auth.reject", "tenantContext", {}, {
+      reason: "Invalid or revoked API key",
+      ip: clientIpFromHeaders(request.headers),
+    });
     throw new AuthenticationError(
       "Invalid or revoked API key",
       401,
@@ -136,6 +141,10 @@ export async function getTenantContext(
       };
     }
 
+    await logAuthEvent("auth.reject", "tenantContext", {}, {
+      reason: "Supabase is not configured",
+      ip: clientIpFromHeaders(request.headers),
+    });
     throw new AuthenticationError(
       "Authentication is not configured. Supabase environment variables are missing.",
       401,
@@ -144,6 +153,10 @@ export async function getTenantContext(
   }
 
   // 3. No valid authentication found
+  await logAuthEvent("auth.reject", "tenantContext", {}, {
+    reason: "No session cookie or API key provided",
+    ip: clientIpFromHeaders(request.headers),
+  });
   throw new AuthenticationError(
     "Authentication required. Provide a valid session cookie or API key.",
     401,
