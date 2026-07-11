@@ -69,7 +69,7 @@ export async function nearClaimsForClaim(
   );
 }
 
-const CONTRADICTION_SYSTEM =
+export const CONTRADICTION_SYSTEM =
   "You compare two factual statements. Reply with ONLY one word: yes (they " +
   "contradict), no (they agree or are unrelated), or maybe (unclear).";
 

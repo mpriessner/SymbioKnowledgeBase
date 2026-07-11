@@ -14,7 +14,8 @@
     "reset-demo": "tsx prisma/reset-demo.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "agent:sweep": "tsx scripts/agent-sweep.ts"
+    "agent:sweep": "tsx scripts/agent-sweep.ts",
+    "agent:triage": "tsx scripts/triage-sweep.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

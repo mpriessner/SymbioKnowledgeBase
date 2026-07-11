@@ -60,7 +60,7 @@ export async function candidatePagesForSource(
   );
 }
 
-const RELEVANCE_SYSTEM =
+export const RELEVANCE_SYSTEM =
   "You classify whether a new source document is relevant to an existing " +
   "knowledge-base concept page. Reply with ONLY a number from 0 to 1 (relevance).";
 
