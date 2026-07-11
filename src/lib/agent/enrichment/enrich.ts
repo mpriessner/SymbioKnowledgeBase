@@ -26,6 +26,7 @@ import {
   writeLedgerEntry,
   type LedgerEntry,
 } from "./ingestLedger";
+import { ingestSource } from "@/lib/sources/ingestService";
 import type { EnrichmentPlan } from "./schema";
 import type { ConceptAction } from "./schema";
 
@@ -47,6 +48,8 @@ export interface EnrichResult {
   dryRun: boolean;
   alreadyIngested?: boolean;
   ledgerEntry?: LedgerEntry;
+  /** Immutable Source persisted as the citation substrate (W81-A1), if any. */
+  sourceId?: string | null;
 }
 
 export class EnrichmentError extends Error {
@@ -114,6 +117,32 @@ export async function enrich(
         alreadyIngested: true,
         ledgerEntry: prior,
       };
+    }
+  }
+
+  // W81-A1 PRE-STEP: persist the raw text as an immutable Source BEFORE
+  // enrichment, so wiki claims have a citeable substrate. This is NOT a
+  // short-circuit — the ledger above stays the enrichment dedup. On a failed
+  // enrichment, a retry misses the ledger, dedups to this same Source (no
+  // duplicate), and re-runs enrichment. Best-effort: a Source-persist failure
+  // (orphan/absent Source is harmless, GC-able) must not block enrichment; the
+  // legacy-ledger-only backfill sweep reconciles any gaps. dryRun persists
+  // nothing (handled by ingestSource's dryRun / the guard here).
+  let sourceId: string | null = null;
+  const sourceWarnings: string[] = [];
+  if (!dryRun) {
+    try {
+      const ingested = await ingestSource(ctx, {
+        kind: "NOTE",
+        title: sourceName,
+        rawText,
+        correlationId: contentHash.slice(0, 12),
+      });
+      sourceId = ingested.sourceId;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[enrich] source pre-step failed (continuing):", msg);
+      sourceWarnings.push(`source persist skipped: ${msg}`);
     }
   }
 
@@ -190,7 +219,8 @@ export async function enrich(
   return {
     plan,
     applied: result.applied,
-    warnings: result.warnings,
+    warnings: [...sourceWarnings, ...result.warnings],
     dryRun: false,
+    sourceId,
   };
 }
