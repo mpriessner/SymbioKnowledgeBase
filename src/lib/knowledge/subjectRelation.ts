@@ -56,7 +56,7 @@ const HEDGE_MARKERS: RegExp[] = [
   /\b(?:not|no|never|without|unless|except)\b/i,
   /\b(?:up to|at least|at most|more than|less than|greater than|between|roughly|around|approximately|about|~|≈|±|\+\/-)\b/i,
   /\b(?:and|or|but|whereas|while|because|although|however|if|when)\b/i,
-  /[-–—]\s*\d/, // numeric range like "70-75%"
+  /\d\s*[-–—]\s*\d/, // numeric range like "70-75%" (digit on BOTH sides, so "EXP-1" is fine)
 ];
 
 /** Known unit tokens (case-insensitive), longest-first so "mmol" beats "mol". */

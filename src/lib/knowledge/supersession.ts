@@ -67,7 +67,7 @@ export interface SupersessionResult {
   contestedPageIds: string[];
 }
 
-interface ClaimRow {
+export interface ClaimRow {
   id: string;
   pageId: string;
   text: string;
@@ -113,9 +113,10 @@ async function hasTrustGate(
  * exact scoped key but asserting DIFFERENT objects, both extracted with high
  * confidence. Returns, per older claim, its single newest qualifying superseder.
  */
-function computeCollisions(
-  claims: ClaimRow[]
-): Array<{ older: ClaimRow; newer: ClaimRow }> {
+export function computeCollisions(claims: ClaimRow[]): {
+  pairs: Array<{ older: ClaimRow; newer: ClaimRow }>;
+  ambiguous: Array<{ a: ClaimRow; b: ClaimRow }>;
+} {
   const byKey = new Map<string, ClaimRow[]>();
   for (const c of claims) {
     if (c.status !== "ACTIVE" || !c.triple) continue;
@@ -127,6 +128,7 @@ function computeCollisions(
   }
 
   const pairs: Array<{ older: ClaimRow; newer: ClaimRow }> = [];
+  const ambiguous: Array<{ a: ClaimRow; b: ClaimRow }> = [];
   for (const group of byKey.values()) {
     if (group.length < 2) continue;
     for (const older of group) {
@@ -136,7 +138,13 @@ function computeCollisions(
       for (const cand of group) {
         if (cand.id === older.id) continue;
         if (cand.triple!.object === older.triple!.object) continue;
-        if (cand.tValid.getTime() <= older.tValid.getTime()) continue; // strict >
+        // Equal tValid + different object = ambiguous ordering (e.g. a historical
+        // late-arrival ingested the same instant): FLAG, never auto-supersede.
+        if (cand.tValid.getTime() === older.tValid.getTime()) {
+          if (older.id < cand.id) ambiguous.push({ a: older, b: cand }); // dedupe pair
+          continue;
+        }
+        if (cand.tValid.getTime() < older.tValid.getTime()) continue; // strict >
         if (winner === null || cand.tValid.getTime() > winner.tValid.getTime()) {
           winner = cand;
         }
@@ -144,7 +152,7 @@ function computeCollisions(
       if (winner) pairs.push({ older, newer: winner });
     }
   }
-  return pairs;
+  return { pairs, ambiguous };
 }
 
 /**
@@ -209,7 +217,8 @@ async function isContested(
   });
   if (!latest) return true; // no body to reflect it → treat as contested
   const body = normalizeText(latest.plainText).toLowerCase();
-  const needle = normalizeText(newerClaimText).toLowerCase();
+  // Strip trailing sentence punctuation so "...87%." matches "...87% after ...".
+  const needle = normalizeText(newerClaimText).toLowerCase().replace(/[.,;:]+$/g, "");
   // The new fact IS in the body ⇒ synthesis already reflects it ⇒ not contested.
   return !body.includes(needle);
 }
@@ -284,7 +293,15 @@ export async function runInlineSupersession(
     }
 
     for (const [pageId, pageClaims] of byPage) {
-      const pairs = computeCollisions(pageClaims);
+      const { pairs, ambiguous } = computeCollisions(pageClaims);
+      // Equal-time collisions can't be ordered deterministically → defer to C1.
+      for (const { a, b } of ambiguous) {
+        result.flagged.push({
+          oldClaimId: a.id,
+          newClaimId: b.id,
+          reason: "late-arrival",
+        });
+      }
       for (const { older, newer } of pairs) {
         // Temporal safety: UNKNOWN precision on EITHER side ⇒ defer to C1.
         if (older.datePrecision === "UNKNOWN" || newer.datePrecision === "UNKNOWN") {
