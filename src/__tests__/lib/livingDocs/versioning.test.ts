@@ -12,6 +12,8 @@ const mockTxDvCreate = vi.fn();
 const mockTxDvFindMany = vi.fn();
 const mockTxDvDeleteMany = vi.fn();
 const mockTxBlockUpdateMany = vi.fn();
+// W81-A2: pruneOldVersions now looks up claim-referenced versions to skip them.
+const mockTxClaimFindMany = vi.fn(() => Promise.resolve([]));
 
 const txClient = {
   documentVersion: {
@@ -22,6 +24,9 @@ const txClient = {
   },
   block: {
     updateMany: mockTxBlockUpdateMany,
+  },
+  claim: {
+    findMany: mockTxClaimFindMany,
   },
 };
 

@@ -155,7 +155,7 @@ export function extractJson(text: string): string {
 
 // ─── Default (real) LLM backend — copies knowledgeExtractor.callLLM's shape ──
 
-async function defaultBackend(
+export async function defaultBackend(
   messages: LlmMessage[],
   system: string
 ): Promise<string> {
