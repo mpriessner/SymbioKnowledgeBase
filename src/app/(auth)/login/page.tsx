@@ -57,6 +57,12 @@ function LoginForm() {
       if (error) {
         setGeneralError(error.message || "Invalid email or password");
       } else {
+        // Fire-and-forget audit event — must never block navigation on login.
+        void fetch("/api/auth/session-event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event: "login" }),
+        });
         router.push(callbackUrl);
         router.refresh();
       }

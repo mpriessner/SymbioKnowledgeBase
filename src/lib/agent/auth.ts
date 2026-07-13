@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { errorResponse } from "@/lib/apiResponse";
 import { resolveApiKey } from "@/lib/apiAuth";
+import { logAuthEvent, clientIpFromHeaders } from "./audit";
 import { checkRateLimit } from "./ratelimit";
 
 export interface AgentContext {
@@ -33,8 +34,14 @@ export function withAgentAuth(handler: AgentHandler) {
     routeContext?: RouteContext
   ): Promise<Response> => {
     const authHeader = req.headers.get("Authorization");
+    const resource = `${req.method} ${req.nextUrl.pathname}`;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      // Audit the anonymous rejection — persisted with NULL principal.
+      await logAuthEvent("auth.reject", resource, {}, {
+        reason: "Missing or invalid Authorization header",
+        ip: clientIpFromHeaders(req.headers),
+      });
       return errorResponse(
         "UNAUTHORIZED",
         "Missing or invalid Authorization header",
@@ -46,6 +53,10 @@ export function withAgentAuth(handler: AgentHandler) {
     const token = authHeader.substring(7);
 
     if (!token || token.length < 1) {
+      await logAuthEvent("auth.reject", resource, {}, {
+        reason: "Empty bearer token",
+        ip: clientIpFromHeaders(req.headers),
+      });
       return errorResponse(
         "UNAUTHORIZED",
         "Empty bearer token",
@@ -61,6 +72,10 @@ export function withAgentAuth(handler: AgentHandler) {
     try {
       const apiKeyContext = await resolveApiKey(authHeader);
       if (!apiKeyContext) {
+        await logAuthEvent("auth.reject", resource, {}, {
+          reason: "Invalid or revoked API key",
+          ip: clientIpFromHeaders(req.headers),
+        });
         return errorResponse(
           "UNAUTHORIZED",
           "Invalid or revoked API key",
@@ -77,6 +92,11 @@ export function withAgentAuth(handler: AgentHandler) {
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Authentication failed";
+      // Audit the (anonymous) rejection — persisted with NULL principal.
+      await logAuthEvent("auth.reject", resource, {}, {
+        reason: message,
+        ip: clientIpFromHeaders(req.headers),
+      });
       return errorResponse("UNAUTHORIZED", message, undefined, 401);
     }
 
@@ -105,7 +125,15 @@ export function withAgentAuth(handler: AgentHandler) {
 
     // Check scope for method
     const method = req.method;
+    const principal = {
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+      apiKeyId: ctx.apiKeyId,
+    };
     if (method === "GET" && !ctx.scopes.includes("read")) {
+      await logAuthEvent("auth.reject", resource, principal, {
+        reason: "missing read scope",
+      });
       return errorResponse(
         "FORBIDDEN",
         "Insufficient permissions (read scope required)",
@@ -117,6 +145,9 @@ export function withAgentAuth(handler: AgentHandler) {
       ["POST", "PUT", "PATCH", "DELETE"].includes(method) &&
       !ctx.scopes.includes("write")
     ) {
+      await logAuthEvent("auth.reject", resource, principal, {
+        reason: "missing write scope",
+      });
       return errorResponse(
         "FORBIDDEN",
         "Insufficient permissions (write scope required)",
@@ -124,6 +155,11 @@ export function withAgentAuth(handler: AgentHandler) {
         403
       );
     }
+
+    // Audit the successful authorization. Fire-and-forget (do NOT await) so the
+    // hot read path (kb-query) is not blocked by a per-request DB write; the
+    // logger swallows errors internally so the floating promise never rejects.
+    void logAuthEvent("auth.success", resource, principal);
 
     const rc = routeContext ?? { params: Promise.resolve({}) };
 

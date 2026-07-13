@@ -82,6 +82,13 @@ export function WorkspaceDropdown() {
 
   const handleLogout = useCallback(async () => {
     setIsOpen(false);
+    // Audit BEFORE signOut clears the session cookie, so the server can still
+    // resolve who is logging out. Fire-and-forget — must never block logout.
+    void fetch("/api/auth/session-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event: "logout" }),
+    });
     const supabase = createClient();
     if (supabase) {
       await supabase.auth.signOut();

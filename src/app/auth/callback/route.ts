@@ -197,6 +197,9 @@ export async function GET(request: NextRequest) {
         await ensureUserExists(localUser);
 
         console.log("[Callback] Cloud auth complete, redirecting to:", next);
+        void logAuthEvent("oauth.success", "auth/callback", {
+          userId: localUser.id,
+        });
         return NextResponse.redirect(`${origin}${next}`);
       } catch (err) {
         console.error("[Callback] Cloud-to-local mapping failed:", err);
@@ -249,6 +252,12 @@ export async function GET(request: NextRequest) {
 
     if (!error && data.user) {
       await ensureUserExists(data.user);
+      // Structured, queryable audit row for the OAuth success (fire-and-forget,
+      // mirroring the auth.success pattern in withAgentAuth — never adds
+      // latency to the redirect).
+      void logAuthEvent("oauth.success", "auth/callback", {
+        userId: data.user.id,
+      });
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

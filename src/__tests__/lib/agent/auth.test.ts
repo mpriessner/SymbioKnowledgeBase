@@ -216,3 +216,83 @@ describe("withAgentAuth — skb_ API key path (audit S11 scopes)", () => {
     );
   });
 });
+
+// SKB-02: withAgentAuth previously did not call logAuthEvent at all (lost in
+// merge d6896fd, not recovered by PR #4). These tests pin the restored wiring:
+// rejections are AWAITED, success is fire-and-forget (void, not awaited).
+describe("withAgentAuth — auth.reject / auth.success wiring (SKB-02)", () => {
+  test("missing Authorization header logs an awaited auth.reject with an anonymous principal", async () => {
+    const res = await call("GET");
+
+    expect(res.status).toBe(401);
+    expect(mockLogAuthEvent).toHaveBeenCalledWith(
+      "auth.reject",
+      "GET /api/agent/pages",
+      {},
+      expect.objectContaining({ reason: expect.any(String) })
+    );
+  });
+
+  test("invalid/unknown skb_ key logs an awaited auth.reject", async () => {
+    mockApiKeyFindFirst.mockResolvedValue(null);
+    mockApiKeyFindMany.mockResolvedValue([]);
+
+    const res = await call("GET", "Bearer skb_live_nope");
+
+    expect(res.status).toBe(401);
+    expect(mockLogAuthEvent).toHaveBeenCalledWith(
+      "auth.reject",
+      "GET /api/agent/pages",
+      {},
+      expect.objectContaining({ reason: expect.any(String) })
+    );
+  });
+
+  test("insufficient scope (write required) logs an awaited auth.reject with the resolved principal", async () => {
+    mockApiKeyFindFirst.mockResolvedValue(
+      apiKeyRow({
+        id: "key-ro",
+        scopes: ["read"],
+        user: { id: "u", tenantId: "t", role: "USER" },
+      })
+    );
+
+    const res = await call("POST", "Bearer skb_live_readonly");
+
+    expect(res.status).toBe(403);
+    expect(mockLogAuthEvent).toHaveBeenCalledWith(
+      "auth.reject",
+      "POST /api/agent/pages",
+      expect.objectContaining({ tenantId: "t", userId: "u" }),
+      expect.objectContaining({ reason: "missing write scope" })
+    );
+  });
+
+  test("a successful auth logs auth.success without awaiting it (fire-and-forget)", async () => {
+    mockApiKeyFindFirst.mockResolvedValue(apiKeyRow());
+    mockApiKeyUpdate.mockResolvedValue({});
+
+    // Make logAuthEvent's promise resolve only after this test's assertions —
+    // if withAgentAuth awaited it, the handler would never run in time and
+    // `res.status` would not yet be 200.
+    let releaseLog: () => void = () => {};
+    mockLogAuthEvent.mockImplementationOnce(
+      () => new Promise((resolve) => (releaseLog = () => resolve(undefined)))
+    );
+
+    const res = await call("GET", "Bearer skb_live_validkey");
+
+    expect(res.status).toBe(200);
+    expect(okHandler).toHaveBeenCalledTimes(1);
+    expect(mockLogAuthEvent).toHaveBeenCalledWith(
+      "auth.success",
+      "GET /api/agent/pages",
+      expect.objectContaining({
+        tenantId: "tenant-1",
+        userId: "user-1",
+        apiKeyId: "key-1",
+      })
+    );
+    releaseLog();
+  });
+});
