@@ -7,6 +7,7 @@ import {
   MutationCache,
 } from "@tanstack/react-query";
 import { SupabaseProvider } from "@/components/providers/SupabaseProvider";
+import { ThemeSyncBridge } from "@/components/providers/ThemeSyncBridge";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 
@@ -93,6 +94,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SupabaseProvider>
+      <ThemeSyncBridge />
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </SupabaseProvider>
   );

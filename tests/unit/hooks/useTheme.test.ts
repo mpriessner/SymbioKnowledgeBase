@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useTheme } from "@/hooks/useTheme";
+import { __resetForTests } from "@/lib/theme/themeStore";
 
 // Mock matchMedia for jsdom
 const mockMatchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -34,6 +35,10 @@ describe("useTheme", () => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }));
+    // The theme store is a module-level singleton (by design — a single
+    // shared store instead of per-hook-instance state), so it must be
+    // re-initialized from the (just-cleared) localStorage between tests.
+    __resetForTests();
   });
 
   it("should default to system theme", () => {
@@ -64,6 +69,10 @@ describe("useTheme", () => {
 
   it("should read theme from localStorage on mount", () => {
     localStorage.setItem("symbio-theme", "dark");
+    // The store snapshots localStorage once (module-level singleton, not
+    // per-render local state) — re-sync it after writing localStorage
+    // directly, the same way a fresh page load would read it.
+    __resetForTests();
     const { result } = renderHook(() => useTheme());
     expect(result.current.theme).toBe("dark");
   });
