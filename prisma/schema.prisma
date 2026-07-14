@@ -125,6 +125,13 @@ model Tenant {
   pageFavorites          PageFavorite[]
   pageShares             PageShare[]
   sweepSessions          SweepSession[]
+  aokSites               AokSite[]
+  aokSpaces              AokSpace[]
+  aokAssets              AokAsset[]
+  aokAnchors             AokAnchor[]
+  aokKnowledge           AokKnowledge[]
+  aokVisits              AokVisit[]
+  aokCountLines          AokCountLine[]
 
   @@map("tenants")
 }
@@ -654,4 +661,186 @@ model SweepSession {
   @@index([tenantId, startedAt], map: "idx_sweep_sessions_tenant_started")
 
   @@map("sweep_sessions")
+}
+
+// ─── Anchored-Object Knowledge (AOK-01) ─────────────────────────────
+//
+// Binds knowledge to a physical object via a QR "anchor" and retrieves it by
+// scanning. Deliberately generic (class + JSON attributes) so the same tables
+// serve a facility valve, an inventory reagent bottle, or a shipping parcel.
+// See docs/stories/2026-07-14-aok-01-anchored-object-backend.md.
+//
+// ID scheme: all models use Prisma's built-in @default(cuid()) EXCEPT
+// AokAnchor, whose id is service-generated with crypto.randomUUID() so the
+// derived `payload` can persist in the same single insert as the row.
+
+model AokSite {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  nameKey   String   @map("name_key")
+  type      String   @default("other") // lab | residential_block | office | warehouse | other
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  spaces AokSpace[]
+  assets AokAsset[]
+
+  // Indexes
+  @@unique([tenantId, nameKey], map: "uq_aok_sites_tenant_name_key")
+  @@index([tenantId], map: "idx_aok_sites_tenant_id")
+
+  @@map("aok_sites")
+}
+
+model AokSpace {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  siteId         String   @map("site_id")
+  parentId       String?  @map("parent_id")
+  kind           String   @default("other") // building | floor | room | zone | shelf | aisle | other
+  name           String
+  nameKey        String   @map("name_key")
+  directionsText String?  @map("directions_text")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site     AokSite    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  parent   AokSpace?  @relation("AokSpaceHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children AokSpace[] @relation("AokSpaceHierarchy")
+  assets   AokAsset[]
+
+  // Indexes — v1 spaces are flat per site (tree fields exist for future use).
+  @@unique([tenantId, siteId, nameKey], map: "uq_aok_spaces_tenant_site_name_key")
+  @@index([tenantId], map: "idx_aok_spaces_tenant_id")
+  @@index([tenantId, siteId], map: "idx_aok_spaces_tenant_site")
+  @@index([tenantId, parentId], map: "idx_aok_spaces_tenant_parent")
+
+  @@map("aok_spaces")
+}
+
+model AokAsset {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  siteId        String   @map("site_id")
+  spaceId       String?  @map("space_id")
+  class         String   @default("facility_asset") // facility_asset | inventory_item | parcel
+  name          String
+  category      String
+  criticality   String   @default("low")
+  attributes    Json     @default("{}")
+  status        String   @default("active") // active | retired | replaced | deleted
+  replacedById  String?  @map("replaced_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site           AokSite        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  space          AokSpace?      @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  replacedBy     AokAsset?      @relation("AokAssetReplacement", fields: [replacedById], references: [id], onDelete: SetNull)
+  replacementFor AokAsset[]     @relation("AokAssetReplacement")
+  knowledge      AokKnowledge[]
+  anchors        AokAnchor[]
+  counts         AokCountLine[]
+  visits         AokVisit[]
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_assets_tenant_id")
+  @@index([tenantId, siteId], map: "idx_aok_assets_tenant_site")
+  @@index([tenantId, spaceId], map: "idx_aok_assets_tenant_space")
+  @@index([tenantId, status], map: "idx_aok_assets_tenant_status")
+
+  @@map("aok_assets")
+}
+
+model AokAnchor {
+  id        String   @id // service-generated via crypto.randomUUID() — see note above
+  tenantId  String   @map("tenant_id")
+  assetId   String?  @map("asset_id") // null = unbound blank sticker (pre-printable)
+  type      String   @default("qr")
+  payload   String   @unique // scs://a/<anchorId> — derived from id, globally unique
+  status    String   @default("active") // active | retired
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  AokAsset? @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_anchors_tenant_id")
+  @@index([tenantId, assetId], map: "idx_aok_anchors_tenant_asset")
+
+  @@map("aok_anchors")
+}
+
+model AokKnowledge {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  assetId      String   @map("asset_id")
+  kind         String   @default("gotcha") // how_it_works | gotcha | safety_note | location_note | contact
+  text         String
+  reviewStatus String   @default("approved") @map("review_status") // v1 demo default; AOK-04 flips it
+  source       String   @default("voice_capture")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  AokAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_knowledge_tenant_id")
+  @@index([tenantId, assetId], map: "idx_aok_knowledge_tenant_asset")
+
+  @@map("aok_knowledge")
+}
+
+model AokVisit {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  assetId     String   @map("asset_id")
+  reason      String
+  outcome     String
+  notes       String?
+  workerLabel String?  @map("worker_label")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  AokAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_visits_tenant_id")
+  @@index([tenantId, assetId], map: "idx_aok_visits_tenant_asset")
+
+  @@map("aok_visits")
+}
+
+model AokCountLine {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  assetId     String   @map("asset_id")
+  countedQty  Float    @map("counted_qty")
+  unit        String?
+  expectedQty Float?   @map("expected_qty") // snapshot of attributes.expected_qty at count time
+  delta       Float?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  AokAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_count_lines_tenant_id")
+  @@index([tenantId, assetId], map: "idx_aok_count_lines_tenant_asset")
+
+  @@map("aok_count_lines")
 }
