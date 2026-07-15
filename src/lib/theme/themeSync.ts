@@ -41,8 +41,12 @@ function isValidTheme(value: unknown): value is Theme {
  * table exists in the generated schema this cast becomes unnecessary and can
  * be dropped in favor of `client.from("user_preferences")` directly.
  */
-function table(client: SupabaseClient) {
-  return (client as unknown as { from: (table: string) => any }).from(TABLE);
+type SupabaseTableQuery = ReturnType<SupabaseClient["from"]>;
+
+function table(client: SupabaseClient): SupabaseTableQuery {
+  return (
+    client as unknown as { from: (table: string) => SupabaseTableQuery }
+  ).from(TABLE);
 }
 
 /** Generate a per-write client UUID used for realtime echo suppression. */

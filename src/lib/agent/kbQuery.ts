@@ -711,7 +711,7 @@ async function buildContextBlocks(
         .slice(0, maxBlocks - blocks.length);
 
       // Deep mode: fetch full content for linked pages in parallel
-      let linkedContents: Map<string, PageContent> = new Map();
+      const linkedContents: Map<string, PageContent> = new Map();
       if (depth === "deep" && linkedToUse.length > 0) {
         const fetched = await Promise.all(
           linkedToUse.map(lp => getPageContent(lp.id, tenantId))
@@ -755,7 +755,7 @@ async function buildContextBlocks(
 
         // Deep mode: fetch full content for backlink pages in parallel
         const backlinksToUse = backlinks.slice(0, maxBlocks - blocks.length);
-        let backlinkContents: Map<string, PageContent> = new Map();
+        const backlinkContents: Map<string, PageContent> = new Map();
         if (depth === "deep" && backlinksToUse.length > 0) {
           const fetched = await Promise.all(
             backlinksToUse.map(bl => getPageContent(bl.id, tenantId))
@@ -803,7 +803,7 @@ async function buildContextBlocks(
     .filter(r => !addedIds.has(r.pageId))
     .slice(0, maxBlocks - blocks.length);
 
-  let searchContents: Map<string, PageContent> = new Map();
+  const searchContents: Map<string, PageContent> = new Map();
   if (depth === "deep" && searchToUse.length > 0) {
     const fetched = await Promise.all(
       searchToUse.map(r => getPageContent(r.pageId, tenantId))

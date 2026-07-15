@@ -171,7 +171,6 @@ export function ThemeSyncBridge(): null {
         unsubscribeChannel = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, user, authLoading]);
 
   // Origin-gated outbound push: only 'user'-origin store changes, and only
