@@ -79,6 +79,12 @@ export async function middleware(request: NextRequest) {
   const { user, response } = await updateSession(request);
 
   if (!user) {
+    // API routes must reach their own auth wrapper and return a JSON 401 —
+    // never a 307 HTML redirect to /login (audit-01 Codex MUST-FIX 1).
+    // Page routes redirect to /login as before.
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.next();
+    }
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);

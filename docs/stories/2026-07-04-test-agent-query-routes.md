@@ -4,8 +4,8 @@
 - **Project owner:** Martin Priessner (martin.priessner@scisymbio.ai)
 - **Created by:** Agent 68 (session 68_Agent_Test) — cross-stack test-coverage audit
 - **Created:** 2026-07-04
-- **Status:** ready — reviewed (Codex + GLM, Gemini skipped per owner pref, 2026-07-04)
-- **Assigned to / currently owned by:** unassigned (owner will implement)
+- **Status:** done — implemented 2026-07-05 (session 68_Agent_Test_implementation)
+- **Assigned to / currently owned by:** done (see Revision History for implementation notes)
 - **Related / parallel work:** Cross-stack audit report `~/windsurf_repos/diligence-reports/test-coverage-audit-2026-07-03-agent68.md`. The SKB hardening epic (memory: EPIC-53/54 KB-search, all merged) covered the search libs — the ROUTE layer is what's still dark.
 
 ## Problem / context
@@ -264,6 +264,98 @@ true end-to-end result-shape fixture is wanted, and if so it must set `plainText
 - No `ci.yml` changes and no reliance on a running Next server.
 
 ## Revision History
+
+- **2026-07-05 — Implemented (session 68_Agent_Test_implementation).** Built
+  all three in-scope files under `tests/unit/api/agent/` (mock-first, per the
+  GLM recommendation) plus normalized fixtures under
+  `tests/fixtures/agent-routes/`:
+  - `kb-query.route.test.ts` (9 tests): happy path with non-empty
+    `context_blocks` + full `query_metadata` key coverage, tenant-isolation via
+    a `resolveApiKey`-mock + `executeKbQuery` spy (the only version of that
+    assertion that can actually fail), empty-result fallback path, malformed
+    JSON 400, schema-invalid (missing/empty query) 400, missing-auth 401,
+    invalid-key 401, read-only-key-on-POST 403.
+  - `search.route.test.ts` (8 tests): depth-branch shape with no pagination
+    keys, depth-branch validation (missing `q`, invalid `depth`), legacy-branch
+    shape with non-empty formatted rows + pagination meta, legacy limit>100
+    reject, legacy missing-`q` reject, missing-auth 401, write-only-key-on-GET
+    403.
+  - `pages-write-routes.test.ts` (13 tests): one happy + one
+    validation-reject each for `promote`, `capture-learning`,
+    `refresh-aggregation`, `conflicts` (POST), `experiment-context/bulk`
+    (mocking the underlying `chemistryKb` service call per route), plus a
+    403-scope test on `promote` and a separate `extract-knowledge` block
+    tested under its real `withTenant` wrapper (mocked the same way the
+    existing `tests/unit/api/search/route.test.ts` mocks `withTenant`) —
+    included per the story's "only if tested under its real wrapper" option,
+    not dropped.
+
+  **Approach, as recommended:** mocked `resolveApiKey` (`@/lib/apiAuth`) +
+  `checkRateLimit` (`@/lib/agent/ratelimit`) for auth, and mocked the
+  domain-level call each route delegates to (`executeKbQuery`, `depthSearch`,
+  the raw `prisma.$queryRaw`/`page.findMany` pair for the legacy search
+  branch, and the five `chemistryKb` service functions). No real-DB fixture
+  route was built — the story's own analysis (finding 15) already showed a
+  real-DB tenant-isolation test for `kb-query` can't construct a catchable
+  leak, and mocking `executeKbQuery` entirely sidesteps the taxonomy/seed
+  requirements (exact category-root pages, `spaceType: "TEAM"`, `plainText`
+  for the FTS trigger) without losing coverage of route wiring, which is what
+  this story is actually about.
+
+  **Runtime pitfalls from the GLM round confirmed / handled:** explicit
+  partial `scopes: ["read"]` / `["write"]` arrays used for every 403 test
+  (an empty array normalizes to full access, both in the Prisma default and
+  in `normalizeScopes`); `NextRequest` constructed with an explicit `method`
+  on every non-GET call; `ratelimit.ts` and `resolveApiKey` mocked in every
+  file so the real singletons/Postgres are never touched; the LRU query
+  cache in `queryCache.ts` never executes because `executeKbQuery` itself is
+  mocked, so its module-singleton bleed risk is moot for this test level; all
+  happy-path assertions require non-empty content (`context_blocks.length >
+  0`, `results.length > 0`, formatted row fields present) rather than
+  `status === 200 && Array.isArray(...)`, to avoid the green-but-vacuous trap.
+  One correction found and fixed **in my own test fixtures, not production
+  code**: an early draft used placeholder UUIDs like
+  `11111111-1111-1111-1111-111111111111` for the `promote` /
+  `refresh-aggregation` / `conflicts` happy-path bodies — zod's `.uuid()`
+  requires the RFC 4122 variant nibble (4th group, first hex digit) to be
+  8/9/a/b, so that placeholder fails validation and the "happy path" test was
+  silently exercising the validation-reject branch instead (400, not 200).
+  Caught by inspecting the failure, fixed by using valid v4-shaped UUIDs
+  (`...-4111-8111-...` / `...-4222-8222-...`); noted here since it's exactly
+  the kind of green-but-wrong trap this story warns about, just self-inflicted
+  rather than found in production code.
+
+  **Gate proof (verification section):** temporarily mutated
+  `kb-query/route.ts`'s success response from `data: result` to
+  `data: { ...result, context_blocks: [] }` — the happy-path test's
+  non-empty-`context_blocks` assertion failed as expected, confirming the
+  assertion is load-bearing, not vacuous. Reverted before running the final
+  suite (working tree is clean of that mutation).
+
+  **No production code changed.** `extract-knowledge` was included (not
+  dropped) using its real `withTenant` wrapper, mocked in the same file as
+  the `withAgentAuth` routes without conflict (independent module mocks).
+  `experiment-context/route.ts` (GET, non-bulk) was excluded as directed —
+  it's a read, not a mutation.
+
+  **Verification:** baseline `npx vitest run` (before adding files): 175
+  files / 2445 tests, 18 pre-existing failures across 5 files (all in
+  `src/__tests__/lib/agent/auth.test.ts`, `apiAuthLastUsed.test.ts`,
+  `agent/audit.test.ts`, `auth/ensureUserExists.test.ts`,
+  `api/og-metadata.test.ts` — a pre-existing drift between those tests and
+  the current `auth.ts`/`audit.ts` shape, e.g. `auth.test.ts` expects a
+  Supabase-JWT + bcrypt-inline path and a `logAuthEvent` audit module that no
+  longer exist in `src/lib/agent/auth.ts`; unrelated to this story's scope,
+  not touched). After adding the 3 new files: 178 files / 2475 tests, the
+  identical 18 failures (verified via diff — only the totals line differs),
+  plus all 30 new tests green. Guard suites
+  (`apiAuthLastUsed.test.ts`, `auth/agentAuth.test.ts`, `agent/auth.test.ts`,
+  `auth/resolveApiKey.test.ts`, `auth/tenantContext.test.ts`) run standalone:
+  same 9 pre-existing failures confined to `agent/auth.test.ts` +
+  `apiAuthLastUsed.test.ts`, the other 3 files green. `npx tsc --noEmit`:
+  3 pre-existing errors, all in `audit.test.ts` / `auth/callback/route.ts`
+  (same stale-`logAuthEvent` drift as above), zero errors in any new file.
+  No `DATABASE_URL` was needed or used — every new test runs mock-only.
 
 - **2026-07-04 — Codex (round 1), FOLDED.** Codex CLI ran live (exit 0; only a
   benign `WARNING: proceeding, even though we could not create PATH aliases`).

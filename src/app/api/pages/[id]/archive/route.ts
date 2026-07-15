@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { withTenant } from "@/lib/auth/withTenant";
+import { requireDestructivePermission } from "@/lib/auth/requireDestructivePermission";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { prisma } from "@/lib/db";
 import { setupChemistryKbHierarchy } from "@/lib/chemistryKb/setupHierarchy";
@@ -15,6 +16,9 @@ export const POST = withTenant(
     context: TenantContext,
     { params }
   ) => {
+    // Block non-admin USERs from trashing shared-KB content (audit S4).
+    requireDestructivePermission(context);
+
     const { id } = await params;
     const { tenantId } = context;
 

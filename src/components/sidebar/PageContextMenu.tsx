@@ -110,6 +110,7 @@ export function PageContextMenu({
   const [confirmAction, setConfirmAction] = useState<"delete" | "purge" | "bulkDelete">("delete");
   const [menuDimensions, setMenuDimensions] = useState({ width: 180, height: 200 });
   const [isDeleting, setIsDeleting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const deletePage = useDeletePage();
   const isFavorite = useIsFavorite(pageId);
   const toggleFavorite = useToggleFavorite();
@@ -168,8 +169,28 @@ export function PageContextMenu({
     };
   }, [onClose]);
 
+  // A 403 from requireDestructivePermission must NOT be treated as success.
+  // Map a failed response to a user-facing message (permission-specific on 403).
+  const messageForFailedResponse = useCallback(
+    async (response: Response, fallback: string): Promise<string> => {
+      if (response.status === 403) {
+        return "You don't have permission to perform this action.";
+      }
+      try {
+        const body = await response.json();
+        const message = body?.error?.message;
+        if (typeof message === "string" && message.length > 0) return message;
+      } catch {
+        // body not JSON — fall through to the generic message
+      }
+      return fallback;
+    },
+    []
+  );
+
   const handleAction = useCallback(
     async (action: string) => {
+      setActionError(null);
       switch (action) {
         case "rename":
           onRename?.();
@@ -195,22 +216,34 @@ export function PageContextMenu({
 
         case "archive":
           try {
-            await fetch(`/api/pages/${pageId}/archive`, { method: "POST" });
+            const response = await fetch(`/api/pages/${pageId}/archive`, { method: "POST" });
+            if (!response.ok) {
+              setActionError(await messageForFailedResponse(response, "Failed to archive page. Please try again."));
+              return; // keep the menu open; do NOT reload on a failed action
+            }
             window.location.reload();
           } catch (error) {
             console.error("Failed to archive page:", error);
+            setActionError("Failed to archive page. Please try again.");
+            return;
           }
           onClose();
           break;
 
         case "restore":
           try {
-            await fetch(`/api/pages/${pageId}/restore`, {
+            const response = await fetch(`/api/pages/${pageId}/restore`, {
               method: "POST",
             });
+            if (!response.ok) {
+              setActionError(await messageForFailedResponse(response, "Failed to restore page. Please try again."));
+              return;
+            }
             window.location.reload();
           } catch (error) {
             console.error("Failed to restore page:", error);
+            setActionError("Failed to restore page. Please try again.");
+            return;
           }
           onClose();
           break;
@@ -250,22 +283,29 @@ export function PageContextMenu({
           break;
       }
     },
-    [pageId, onClose, onRename, onDuplicate, toggleFavorite, isFavorite, selectedIds]
+    [pageId, onClose, onRename, onDuplicate, toggleFavorite, isFavorite, selectedIds, messageForFailedResponse]
   );
 
   const handleConfirmDelete = useCallback(async () => {
+    setActionError(null);
     setIsDeleting(true);
 
     if (confirmAction === "purge") {
       // Purge permanently via API
       try {
-        await fetch(`/api/pages/${pageId}/purge`, { method: "DELETE" });
+        const response = await fetch(`/api/pages/${pageId}/purge`, { method: "DELETE" });
+        if (!response.ok) {
+          setActionError(await messageForFailedResponse(response, "Failed to purge page. Please try again."));
+          setIsDeleting(false);
+          return; // keep the confirm modal open; do NOT reload on a failed purge
+        }
         if (pathname === `/pages/${pageId}`) {
           router.push("/home");
         }
         window.location.reload();
       } catch (error) {
         console.error("Failed to purge page:", error);
+        setActionError("Failed to purge page. Please try again.");
         setIsDeleting(false);
         return;
       }
@@ -302,7 +342,7 @@ export function PageContextMenu({
     setIsDeleting(false);
     setShowDeleteConfirm(false);
     onClose();
-  }, [confirmAction, isBulk, selectedIds, deletePage, pageId, pathname, router, onClose]);
+  }, [confirmAction, isBulk, selectedIds, deletePage, pageId, pathname, router, onClose, messageForFailedResponse]);
 
   if (showDeleteConfirm) {
     const deleteCount = isBulk ? selectionCount : 1;
@@ -347,9 +387,9 @@ export function PageContextMenu({
             This cannot be undone.
           </p>
         )}
-        {deletePage.isError && (
+        {(deletePage.isError || actionError) && (
           <p className="mt-2 text-sm text-[var(--danger)]">
-            Failed to delete page. Please try again.
+            {actionError ?? "Failed to delete page. Please try again."}
           </p>
         )}
       </Modal>
@@ -367,6 +407,14 @@ export function PageContextMenu({
         top: `${menuPosition.y}px`,
       }}
     >
+      {actionError && (
+        <p
+          role="alert"
+          className="mx-2 my-1 rounded px-1 py-1 text-xs text-[var(--danger)]"
+        >
+          {actionError}
+        </p>
+      )}
       {menuItems.map((item, index) => (
         <div key={item.action}>
           {item.divider && index > 0 && (

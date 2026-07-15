@@ -1,20 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-
-/**
- * Check if Supabase is configured.
- * Returns false when env vars are missing or placeholder values.
- */
-function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  return !!(
-    url &&
-    key &&
-    !url.includes("xxxxx") &&
-    url.startsWith("http")
-  );
-}
+import { isSupabaseConfigured, isDevAuthAllowed } from "@/lib/supabase/config";
 
 /**
  * Build a custom fetch that rewrites localhost URLs to the Docker-internal URL.
@@ -39,12 +25,19 @@ function getGlobalFetchConfig() {
 }
 
 export async function updateSession(request: NextRequest) {
-  // Gracefully degrade when Supabase is not configured (local dev without Supabase)
+  // Gracefully degrade ONLY in non-production with an explicit opt-in
+  // (ALLOW_DEV_AUTH=1). Missing/placeholder Supabase config no longer grants a
+  // synthetic dev-user by default — in production this would have silently
+  // opened the whole instance (audit S2).
   if (!isSupabaseConfigured()) {
-    return {
-      user: { id: "dev-user", email: "admin@symbio.local" },
-      response: NextResponse.next({ request }),
-    };
+    if (isDevAuthAllowed()) {
+      return {
+        user: { id: "dev-user", email: "admin@symbio.local" },
+        response: NextResponse.next({ request }),
+      };
+    }
+    // Fallback OFF: treat as unauthenticated (no synthetic user).
+    return { user: null, response: NextResponse.next({ request }) };
   }
 
   let supabaseResponse = NextResponse.next({ request });

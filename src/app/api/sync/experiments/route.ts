@@ -14,6 +14,7 @@ import { processAgentWikilinks } from "@/lib/agent/wikilinks";
 import { deletePageFile } from "@/lib/sync/SyncService";
 import type { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
+import { constantTimeEqual } from "@/lib/auth/constantTimeEqual";
 
 /** Postgres unique-constraint violation surfaced by Prisma. */
 function isUniqueViolation(error: unknown): boolean {
@@ -49,7 +50,7 @@ function authenticateSync(req: NextRequest): boolean {
   if (!authHeader?.startsWith("Bearer ")) return false;
 
   const token = authHeader.substring(7);
-  return token === SYNC_SERVICE_KEY;
+  return constantTimeEqual(token, SYNC_SERVICE_KEY);
 }
 
 /**

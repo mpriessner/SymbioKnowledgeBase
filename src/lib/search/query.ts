@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import type { SearchFilters, SearchResultItem } from "@/types/search";
 
 export interface SearchResult {
@@ -43,8 +44,10 @@ export async function enhancedSearchBlocks(
   limit: number = 20,
   offset: number = 0
 ): Promise<EnhancedSearchResults> {
-  // Sanitize the query
-  const sanitizedQuery = query.replace(/[<>]/g, "").trim();
+  // Trim only. FTS query text is passed as a BOUND parameter to
+  // plainto_tsquery / ILIKE below, which is injection-safe; the old cosmetic
+  // replace(/[<>]/g,"") was not SQL sanitization and is removed (audit S12).
+  const sanitizedQuery = query.trim();
 
   if (sanitizedQuery.length === 0) {
     return { results: [], total: 0 };
@@ -60,41 +63,11 @@ export async function enhancedSearchBlocks(
     // FTS failed — fall through to keyword search
   }
 
-  // Keyword search: match page titles and block plain_text via ILIKE
-  const searchSql = `
-    SELECT DISTINCT ON (p.id)
-      p.id AS page_id,
-      p.title AS page_title,
-      p.icon AS page_icon,
-      p.updated_at,
-      b.id AS block_id,
-      CASE
-        WHEN p.title ILIKE $1 THEN 1.0
-        WHEN b.plain_text ILIKE $1 THEN 0.5
-        ELSE 0.1
-      END AS rank,
-      CASE
-        WHEN length(b.plain_text) > 0
-        THEN substring(b.plain_text, 1, 200)
-        ELSE p.title
-      END AS snippet
-    FROM pages p
-    LEFT JOIN blocks b ON b.page_id = p.id
-    WHERE p.tenant_id::text = $2
-      AND (p.title ILIKE $1 OR b.plain_text ILIKE $1)
-    ORDER BY p.id, rank DESC
-  `;
-
-  const countSql = `
-    SELECT COUNT(DISTINCT p.id) AS total
-    FROM pages p
-    LEFT JOIN blocks b ON b.page_id = p.id
-    WHERE p.tenant_id::text = $2
-      AND (p.title ILIKE $1 OR b.plain_text ILIKE $1)
-  `;
-
+  // Keyword search: match page titles and block plain_text via ILIKE. Composed
+  // with Prisma.sql tagged templates so every value is a bound parameter — no
+  // $queryRawUnsafe, no string-concatenated SQL (audit S12).
   const [results, countResult] = await Promise.all([
-    prisma.$queryRawUnsafe<
+    prisma.$queryRaw<
       Array<{
         page_id: string;
         page_title: string;
@@ -104,8 +77,36 @@ export async function enhancedSearchBlocks(
         rank: number;
         snippet: string;
       }>
-    >(searchSql, likePattern, tenantId),
-    prisma.$queryRawUnsafe<[{ total: bigint }]>(countSql, likePattern, tenantId),
+    >(Prisma.sql`
+      SELECT DISTINCT ON (p.id)
+        p.id AS page_id,
+        p.title AS page_title,
+        p.icon AS page_icon,
+        p.updated_at,
+        b.id AS block_id,
+        CASE
+          WHEN p.title ILIKE ${likePattern} THEN 1.0
+          WHEN b.plain_text ILIKE ${likePattern} THEN 0.5
+          ELSE 0.1
+        END AS rank,
+        CASE
+          WHEN length(b.plain_text) > 0
+          THEN substring(b.plain_text, 1, 200)
+          ELSE p.title
+        END AS snippet
+      FROM pages p
+      LEFT JOIN blocks b ON b.page_id = p.id
+      WHERE p.tenant_id::text = ${tenantId}
+        AND (p.title ILIKE ${likePattern} OR b.plain_text ILIKE ${likePattern})
+      ORDER BY p.id, rank DESC
+    `),
+    prisma.$queryRaw<[{ total: bigint }]>(Prisma.sql`
+      SELECT COUNT(DISTINCT p.id) AS total
+      FROM pages p
+      LEFT JOIN blocks b ON b.page_id = p.id
+      WHERE p.tenant_id::text = ${tenantId}
+        AND (p.title ILIKE ${likePattern} OR b.plain_text ILIKE ${likePattern})
+    `),
   ]);
 
   const total = Number(countResult[0]?.total || 0);
@@ -138,104 +139,57 @@ async function ftsSearch(
   limit: number,
   offset: number
 ): Promise<EnhancedSearchResults> {
-  const whereConditions: string[] = [
-    `b.search_vector @@ plainto_tsquery('english', $1)`,
-    `b.tenant_id::text = $2`,
+  // Compose the dynamic WHERE as parameterized Prisma.sql fragments joined with
+  // Prisma.join — no string concatenation, no manual $N indexing (audit S12).
+  // Every value (query text, tenantId, dates) is a bound parameter; the only
+  // literals are constant SQL keywords / enum-derived content-type predicates.
+  const whereConditions: Prisma.Sql[] = [
+    Prisma.sql`b.search_vector @@ plainto_tsquery('english', ${sanitizedQuery})`,
+    Prisma.sql`b.tenant_id::text = ${tenantId}`,
   ];
 
-  const params: (string | number)[] = [sanitizedQuery, tenantId];
-  let paramIndex = 3;
-
   if (filters.dateFrom) {
-    whereConditions.push(`p.updated_at >= $${paramIndex}::date`);
-    params.push(filters.dateFrom);
-    paramIndex++;
+    whereConditions.push(Prisma.sql`p.updated_at >= ${filters.dateFrom}::date`);
   }
 
   if (filters.dateTo) {
-    whereConditions.push(`p.updated_at <= $${paramIndex}::date + interval '1 day'`);
-    params.push(filters.dateTo);
-    paramIndex++;
+    whereConditions.push(
+      Prisma.sql`p.updated_at <= ${filters.dateTo}::date + interval '1 day'`
+    );
   }
 
   if (filters.contentType && filters.contentType.length > 0) {
-    const contentTypeConditions: string[] = [];
+    const contentTypeConditions: Prisma.Sql[] = [];
     for (const type of filters.contentType) {
       switch (type) {
         case "code":
           contentTypeConditions.push(
-            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb->>'type' = 'codeBlock')`
+            Prisma.sql`EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb->>'type' = 'codeBlock')`
           );
           break;
         case "images":
           contentTypeConditions.push(
-            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb->>'type' = 'image')`
+            Prisma.sql`EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb->>'type' = 'image')`
           );
           break;
         case "links":
           contentTypeConditions.push(
-            `EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb::text LIKE '%"type":"link"%')`
+            Prisma.sql`EXISTS (SELECT 1 FROM blocks b2 WHERE b2.page_id = p.id AND b2.tenant_id = p.tenant_id AND b2.content::jsonb::text LIKE '%"type":"link"%')`
           );
           break;
       }
     }
     if (contentTypeConditions.length > 0) {
-      whereConditions.push(`(${contentTypeConditions.join(" OR ")})`);
+      whereConditions.push(
+        Prisma.sql`(${Prisma.join(contentTypeConditions, " OR ")})`
+      );
     }
   }
 
-  const whereClause = whereConditions.join(" AND ");
-
-  const searchSql = `
-    WITH ranked_blocks AS (
-      SELECT
-        p.id AS page_id,
-        p.title AS page_title,
-        p.icon AS page_icon,
-        p.updated_at,
-        b.id AS block_id,
-        ts_rank(b.search_vector, plainto_tsquery('english', $1)) AS rank,
-        ts_headline(
-          'english',
-          b.plain_text,
-          plainto_tsquery('english', $1),
-          'MaxFragments=2, MinWords=25, MaxWords=50, HighlightAll=false, StartSel=<mark>, StopSel=</mark>'
-        ) AS snippet
-      FROM pages p
-      JOIN blocks b ON b.page_id = p.id
-      WHERE ${whereClause}
-    ),
-    best_per_page AS (
-      SELECT DISTINCT ON (page_id)
-        page_id, page_title, page_icon, updated_at, rank, snippet, block_id
-      FROM ranked_blocks
-      ORDER BY page_id, rank DESC
-    ),
-    aggregated AS (
-      SELECT
-        bp.page_id, bp.page_title, bp.page_icon, bp.updated_at, bp.rank, bp.snippet,
-        array_agg(rb.block_id) AS matched_block_ids
-      FROM best_per_page bp
-      JOIN ranked_blocks rb ON rb.page_id = bp.page_id
-      GROUP BY bp.page_id, bp.page_title, bp.page_icon, bp.updated_at, bp.rank, bp.snippet
-    )
-    SELECT * FROM aggregated
-    ORDER BY rank DESC
-    LIMIT $${paramIndex}
-    OFFSET $${paramIndex + 1}
-  `;
-
-  params.push(limit, offset);
-
-  const countSql = `
-    SELECT COUNT(DISTINCT p.id) AS total
-    FROM pages p
-    JOIN blocks b ON b.page_id = p.id
-    WHERE ${whereClause}
-  `;
+  const whereClause = Prisma.join(whereConditions, " AND ");
 
   const [results, countResult] = await Promise.all([
-    prisma.$queryRawUnsafe<
+    prisma.$queryRaw<
       Array<{
         page_id: string;
         page_title: string;
@@ -245,8 +199,50 @@ async function ftsSearch(
         snippet: string;
         matched_block_ids: string[];
       }>
-    >(searchSql, ...params),
-    prisma.$queryRawUnsafe<[{ total: bigint }]>(countSql, ...params.slice(0, -2)),
+    >(Prisma.sql`
+      WITH ranked_blocks AS (
+        SELECT
+          p.id AS page_id,
+          p.title AS page_title,
+          p.icon AS page_icon,
+          p.updated_at,
+          b.id AS block_id,
+          ts_rank(b.search_vector, plainto_tsquery('english', ${sanitizedQuery})) AS rank,
+          ts_headline(
+            'english',
+            b.plain_text,
+            plainto_tsquery('english', ${sanitizedQuery}),
+            'MaxFragments=2, MinWords=25, MaxWords=50, HighlightAll=false, StartSel=<mark>, StopSel=</mark>'
+          ) AS snippet
+        FROM pages p
+        JOIN blocks b ON b.page_id = p.id
+        WHERE ${whereClause}
+      ),
+      best_per_page AS (
+        SELECT DISTINCT ON (page_id)
+          page_id, page_title, page_icon, updated_at, rank, snippet, block_id
+        FROM ranked_blocks
+        ORDER BY page_id, rank DESC
+      ),
+      aggregated AS (
+        SELECT
+          bp.page_id, bp.page_title, bp.page_icon, bp.updated_at, bp.rank, bp.snippet,
+          array_agg(rb.block_id) AS matched_block_ids
+        FROM best_per_page bp
+        JOIN ranked_blocks rb ON rb.page_id = bp.page_id
+        GROUP BY bp.page_id, bp.page_title, bp.page_icon, bp.updated_at, bp.rank, bp.snippet
+      )
+      SELECT * FROM aggregated
+      ORDER BY rank DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `),
+    prisma.$queryRaw<[{ total: bigint }]>(Prisma.sql`
+      SELECT COUNT(DISTINCT p.id) AS total
+      FROM pages p
+      JOIN blocks b ON b.page_id = p.id
+      WHERE ${whereClause}
+    `),
   ]);
 
   const total = Number(countResult[0]?.total || 0);
@@ -286,9 +282,9 @@ export async function searchBlocks(
   limit: number = 20,
   offset: number = 0
 ): Promise<SearchResults> {
-  // Sanitize the query — plainto_tsquery handles most injection prevention,
-  // but we still strip dangerous characters
-  const sanitizedQuery = query.replace(/[<>]/g, "").trim();
+  // Trim only — the query text is a BOUND parameter to plainto_tsquery below
+  // (injection-safe). The previous replace(/[<>]/g,"") was cosmetic (audit S12).
+  const sanitizedQuery = query.trim();
 
   if (sanitizedQuery.length === 0) {
     return { results: [], total: 0 };
@@ -357,7 +353,8 @@ export async function searchPagesByTitle(
   tenantId: string,
   limit: number = 10
 ): Promise<Array<{ id: string; title: string; icon: string | null }>> {
-  const sanitizedQuery = query.replace(/[<>]/g, "").trim();
+  // Trim only — passed to Prisma's parameterized `contains` (injection-safe).
+  const sanitizedQuery = query.trim();
 
   if (sanitizedQuery.length === 0) {
     return [];

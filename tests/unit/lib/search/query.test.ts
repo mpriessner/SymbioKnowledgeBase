@@ -108,7 +108,10 @@ describe("searchBlocks", () => {
     expect(results.total).toBe(2);
   });
 
-  it("should strip angle brackets from query", async () => {
+  it("passes angle-bracket query text through as a bound param (no stripping — audit S12)", async () => {
+    // The old cosmetic replace(/[<>]/g,"") was removed: FTS text is a BOUND
+    // parameter to plainto_tsquery, which is injection-safe, so angle brackets
+    // are passed through verbatim rather than stripped.
     mockedQueryRaw.mockResolvedValue([]);
     const results = await searchBlocks("<script>alert</script>", "tenant-1");
     expect(results.total).toBe(0);

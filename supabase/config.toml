@@ -1,3 +1,16 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# ⚠️  ABANDONED — this Supabase stack is NOT used (audit S10).
+#
+#   - AUTH is delegated to ExpTube's Supabase on localhost:54341 (see
+#     docker-compose.yml NEXT_PUBLIC_SUPABASE_URL / SUPABASE_INTERNAL_URL).
+#   - DATA lives in the Prisma Postgres on :5432 (docker-compose `db` service).
+#
+# Nothing in src/ connects to the 54351-54357 ports declared below; running
+# `supabase start` here only collides with the sibling stacks (ET_ELN 54331,
+# ExpTube 54341, SciSymbioLens 54321). Kept for reference only — do NOT start it.
+# Topology recorded in docs/deployment/SECRET-ROTATION-RUNBOOK.md.
+# ═══════════════════════════════════════════════════════════════════════════
+
 # Supabase Configuration for SymbioKnowledgeBase
 # Own port range: 54351-54357 (separate from other projects)
 # ET_ELN uses 54331-54336, ExpTube uses 54341-54347, SciSymbioLens uses 54321-54327

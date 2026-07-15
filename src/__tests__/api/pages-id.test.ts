@@ -27,7 +27,9 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/auth/withTenant", () => ({
   withTenant: (handler: Function) => {
     return async (req: NextRequest, routeContext?: unknown) => {
-      const ctx = { tenantId: TENANT_ID, userId: "user-1" };
+      // role: "ADMIN" so the audit-S4 destructive-op gate (which blocks non-admin
+      // USERs from delete/archive/purge) lets these route-logic tests through.
+      const ctx = { tenantId: TENANT_ID, userId: "user-1", role: "ADMIN" };
       const rc = routeContext ?? {
         params: Promise.resolve({}),
       };

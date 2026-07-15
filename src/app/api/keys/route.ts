@@ -17,6 +17,7 @@ export const GET = withTenant(
         id: true,
         name: true,
         keyPrefix: true,
+        scopes: true,
         createdAt: true,
         lastUsedAt: true,
         revokedAt: true,
@@ -28,6 +29,7 @@ export const GET = withTenant(
       id: key.id,
       name: key.name,
       keyPrefix: key.keyPrefix,
+      scopes: key.scopes,
       createdAt: key.createdAt.toISOString(),
       lastUsedAt: key.lastUsedAt?.toISOString() || null,
       revokedAt: key.revokedAt?.toISOString() || null,
@@ -67,7 +69,7 @@ export const POST = withTenant(
       );
     }
 
-    const { name } = parsed.data;
+    const { name, scopes } = parsed.data;
     const { rawKey, keyHash } = generateApiKey();
 
     // Store last 4 characters of the raw key for display purposes
@@ -78,6 +80,7 @@ export const POST = withTenant(
         name,
         keyHash,
         keyPrefix,
+        scopes,
         userId: ctx.userId,
         tenantId: ctx.tenantId,
       },
@@ -91,6 +94,7 @@ export const POST = withTenant(
           name: apiKey.name,
           key: rawKey, // One-time display only
           keyPrefix: apiKey.keyPrefix,
+          scopes: apiKey.scopes,
           createdAt: apiKey.createdAt.toISOString(),
         },
         meta: { timestamp: new Date().toISOString() },
