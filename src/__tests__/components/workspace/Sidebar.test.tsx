@@ -180,6 +180,15 @@ describe("Sidebar", () => {
     expect(screen.getByLabelText("Create new")).toBeInTheDocument();
   });
 
+  test("opens the planned Add document dialog from the create menu", () => {
+    render(<Sidebar />, { wrapper: createWrapper() });
+    fireEvent.click(screen.getByLabelText("Create new"));
+    fireEvent.click(screen.getByRole("button", { name: "Document" }));
+
+    expect(screen.getByRole("dialog", { name: "Add document" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Google Drive" })).toBeInTheDocument();
+  });
+
   test("renders 'Collapse sidebar' button", () => {
     render(<Sidebar />, { wrapper: createWrapper() });
     expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();

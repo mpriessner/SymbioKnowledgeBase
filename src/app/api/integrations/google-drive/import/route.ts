@@ -19,6 +19,7 @@ import {
   DriveApiError,
 } from "@/lib/integrations/googleDrive/client";
 import { logDriveAction } from "@/lib/integrations/googleDrive/audit";
+import { appendDocumentAttachment } from "@/lib/documents/appendAttachment";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB — mirrors the attachments route cap
 
@@ -178,6 +179,13 @@ export const POST = withTenant(async (req: NextRequest, ctx: TenantContext) => {
     bytes,
     metadata.mimeType || "application/octet-stream"
   );
+
+  await appendDocumentAttachment(ctx.tenantId, page.id, {
+    attachmentId: attachment.attachmentId,
+    fileName: metadata.name,
+    fileSize: bytes.length,
+    mimeType: metadata.mimeType || "application/octet-stream",
+  });
 
   await logDriveAction(ctx, "google_drive.import", page.id, {
     driveFileId: fileId,

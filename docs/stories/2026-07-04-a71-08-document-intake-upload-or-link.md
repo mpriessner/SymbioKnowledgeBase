@@ -4,7 +4,7 @@
 - **Project owner:** Martin Priessner (martin.priessner@scisymbio.ai)
 - **Created by:** Agent 70
 - **Created:** 2026-07-04
-- **Status:** in-progress (backend implemented; UI dialog deferred — see implementation notes below)
+- **Status:** complete (backend and Add document UI implemented; verified 2026-07-15)
 - **Assigned to / currently owned by:** implementing agent (this session), 2026-07-05
 - **Related / parallel work:** Feeds [a71-09 QR generation + printable sheet](2026-07-04-a71-09-qr-generation-printable-sheet.md) (every intaken document becomes a QR target) and [a71-10 QR recognition on scanning surfaces](2026-07-04-a71-10-qr-recognition-scanning-surfaces.md) (the resolve-side of what this story creates). [a71-11 Private-document search & listing](2026-07-04-a71-11-private-doc-search-voice.md) depends on documents created here being indexed and scope-tagged correctly. [a71-12 Google Drive connector](2026-07-04-a71-12-google-drive-connector.md) adds a second intake source (Drive) that reuses the link-import path defined here — implement this story first. Epic A siblings (agent wiki + sync, `2026-07-04-a71-01..07-*.md`) are unrelated but share the same sprint; no file overlap expected.
 
@@ -242,3 +242,19 @@ scratch would be scope creep for a different story.
   `medium`/`deep`) returns document pages via the new `kind`-aware
   `depthSearch` branch; unscoped FTS (`GET /api/agent/search?q=...`, no
   `depth`) also finds them since `plainText` is populated at creation time.
+
+## UI completion notes (2026-07-15, Agent 8)
+
+Implemented the sidebar **Add document** dialog with Upload, Link, and Google
+Drive tabs. Upload creates a document page, stores the selected file through
+the existing quota-aware attachment route, and appends a visible download
+card to the document body. Link intake creates the same searchable document
+shape and keeps the existing guarded, best-effort snapshot behavior.
+
+Verification: focused UI/API tests, Prisma validation, TypeScript, the full
+Vitest suite (2,871 passed, 65 skipped), and the production build passed. A
+real browser session created link documents, confirmed the page-tree entry,
+snapshot text, and formatted template. The native file picker cannot be
+driven by Codex's browser automation, so the picker-to-upload sequence is
+covered by component/API tests and attachment-rendering tests rather than a
+native-picker browser submission.

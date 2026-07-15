@@ -19,6 +19,7 @@ import { useSidebarExpandState } from "@/hooks/useSidebarExpandState";
 import type { PageTreeNode } from "@/types/page";
 import { DEFAULT_COLUMNS } from "@/types/database";
 import type { DatabaseSchema } from "@/types/database";
+import { AddDocumentDialog } from "@/components/documents/AddDocumentDialog";
 
 /** Props passed through to tree nodes for multi-select behavior */
 export interface MultiSelectProps {
@@ -41,7 +42,7 @@ function collectPageTitles(nodes: PageTreeNode[], map: Map<string, string>) {
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { data, isLoading, error } = usePageTree();
+  const { data, isLoading, error, refetch: refetchPageTree } = usePageTree();
   const createPage = useCreatePage();
   const { recentPages } = useRecentPages();
   const favoritePages = useFavoritePages();
@@ -52,6 +53,7 @@ export function Sidebar() {
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [isCreatingDatabase, setIsCreatingDatabase] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [showAddDocument, setShowAddDocument] = useState(false);
   const isMac = useIsMac();
   const createMenuRef = useRef<HTMLDivElement>(null);
 
@@ -68,6 +70,7 @@ export function Sidebar() {
   );
 
   const multiSelect = useMultiSelect(flatOrder);
+  const clearMultiSelection = multiSelect.clearSelection;
 
   // Collect pageTitles map for BulkActionBar
   const pageTitles = useMemo(() => {
@@ -92,12 +95,12 @@ export function Sidebar() {
     if (multiSelect.selectionCount === 0) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        multiSelect.clearSelection();
+        clearMultiSelection();
       }
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [multiSelect.selectionCount, multiSelect.clearSelection]);
+  }, [multiSelect.selectionCount, clearMultiSelection]);
 
   // Close create menu on outside click
   useEffect(() => {
@@ -134,6 +137,20 @@ export function Sidebar() {
       }
     );
   }, [createPage, router]);
+
+  const handleAddDocument = useCallback(() => {
+    setShowCreateMenu(false);
+    setShowAddDocument(true);
+  }, []);
+
+  const handleDocumentCreated = useCallback(
+    async (pageId: string) => {
+      setShowAddDocument(false);
+      await refetchPageTree();
+      router.push(`/pages/${pageId}`);
+    },
+    [refetchPageTree, router]
+  );
 
   const handleNewDatabase = useCallback(async () => {
     if (isCreatingDatabase) return;
@@ -205,6 +222,7 @@ export function Sidebar() {
   const isActive = (path: string) => pathname === path;
 
   return (
+    <>
       <aside
         className="relative flex-shrink-0 border-r border-[var(--border-default)] bg-[var(--sidebar-bg)] flex flex-col h-full overflow-hidden"
         style={{ width: sidebarWidth }}
@@ -264,6 +282,15 @@ export function Sidebar() {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                     </svg>
                     Page
+                  </button>
+                  <button
+                    onClick={handleAddDocument}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                  >
+                    <svg className="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25M12 11.25v6m3-3H9" />
+                    </svg>
+                    Document
                   </button>
                   <button
                     onClick={handleNewDatabase}
@@ -442,5 +469,12 @@ export function Sidebar() {
 
         <TrashDialog isOpen={showTrash} onClose={() => setShowTrash(false)} />
       </aside>
+      <AddDocumentDialog
+        isOpen={showAddDocument}
+        onClose={() => setShowAddDocument(false)}
+        onCreated={(pageId) => void handleDocumentCreated(pageId)}
+        teamspaces={(teamspaces ?? []).map(({ id, name }) => ({ id, name }))}
+      />
+    </>
   );
 }

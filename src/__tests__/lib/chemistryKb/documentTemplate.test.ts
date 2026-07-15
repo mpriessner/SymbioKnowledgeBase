@@ -93,4 +93,22 @@ describe("renderDocumentTemplate (a71-08)", () => {
     expect(plainText).toContain("Reagent Handling Guide");
     expect(plainText).toContain("Store away from heat and open flame");
   });
+
+  it("converts bold template labels into TipTap marks instead of visible markdown syntax", () => {
+    const md = renderDocumentTemplate({
+      title: "Formatted document",
+      source: "url",
+      sourceDetail: "https://example.com",
+      addedBy: "user-1",
+    });
+    const tiptap = markdownToTiptap(md) as TipTapDocument & {
+      content: Array<{ content?: Array<{ text?: string; marks?: Array<{ type: string }> }> }>;
+    };
+
+    const sourceParagraph = tiptap.content.find((node) =>
+      node.content?.some((child) => child.text === "Source:")
+    );
+    expect(sourceParagraph?.content?.[0]?.marks).toEqual([{ type: "bold" }]);
+    expect(JSON.stringify(tiptap)).not.toContain("**Source:**");
+  });
 });

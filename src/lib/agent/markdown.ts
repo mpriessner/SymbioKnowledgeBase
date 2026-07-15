@@ -125,6 +125,19 @@ export function markdownToTiptap(markdown: string): unknown {
       continue;
     }
 
+    const boldPrefix = trimmed.match(/^\*\*(.+?)\*\*(.*)$/);
+    if (boldPrefix) {
+      const remainder = boldPrefix[2];
+      content.push({
+        type: "paragraph",
+        content: [
+          { type: "text", text: boldPrefix[1], marks: [{ type: "bold" }] },
+          ...(remainder ? [{ type: "text", text: remainder }] : []),
+        ],
+      });
+      continue;
+    }
+
     // Paragraphs
     content.push({
       type: "paragraph",

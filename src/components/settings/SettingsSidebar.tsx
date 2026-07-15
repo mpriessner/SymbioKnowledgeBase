@@ -11,6 +11,7 @@ import {
   Shield,
   Key,
   BrainCircuit,
+  HardDrive,
   type LucideIcon
 } from "lucide-react";
 
@@ -41,6 +42,12 @@ const settingsSections: SettingsSection[] = [
       { id: "general", label: "General", icon: Building, href: "/settings/general" },
       { id: "people", label: "People", icon: Users, href: "/settings/people" },
       { id: "ai-config", label: "AI Configuration", icon: BrainCircuit, href: "/settings/ai-config" },
+    ]
+  },
+  {
+    title: "Integrations",
+    items: [
+      { id: "google-drive", label: "Google Drive", icon: HardDrive, href: "/settings/integrations/google-drive" },
     ]
   },
   {

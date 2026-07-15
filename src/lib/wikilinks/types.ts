@@ -46,6 +46,7 @@ export interface TipTapNode {
   content?: TipTapNode[];
   text?: string;
   attrs?: Record<string, unknown>;
+  marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
 }
 
 /**

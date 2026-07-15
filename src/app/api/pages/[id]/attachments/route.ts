@@ -9,6 +9,7 @@ import {
   wouldExceedQuota,
 } from "@/lib/sync/attachments";
 import type { TenantContext } from "@/types/auth";
+import { appendDocumentAttachment } from "@/lib/documents/appendAttachment";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -126,6 +127,15 @@ export const POST = withTenant(
 
       // Account for the newly stored bytes through the single shared owner.
       await adjustStorageUsed(ctx.tenantId, BigInt(buffer.length));
+
+      if (page.kind === "DOCUMENT") {
+        await appendDocumentAttachment(ctx.tenantId, pageId, {
+          attachmentId: result.attachmentId,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType,
+        });
+      }
 
       return successResponse(
         {

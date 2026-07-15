@@ -5,10 +5,7 @@ import type { AgentContext } from "@/lib/agent/auth";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
 import { storeAttachment } from "@/lib/sync/attachments";
 import { logAgentAction } from "@/lib/agent/audit";
-import { markdownToTiptap, tiptapToMarkdown } from "@/lib/agent/markdown";
-import { extractPlainText } from "@/lib/search/indexer";
-import type { TipTapDocument } from "@/lib/wikilinks/types";
-import type { Prisma } from "@/generated/prisma/client";
+import { appendDocumentAttachment } from "@/lib/documents/appendAttachment";
 
 // Mirrors the 50MB/file cap enforced by the session-auth
 // src/app/api/pages/[id]/attachments/route.ts — same limit, reused not
@@ -109,39 +106,12 @@ export const POST = withAgentAuth(
 
       const url = `/api/attachments/${stored.attachmentId}`;
 
-      // Link the attachment into the page body — the required third step
-      // (Round 2 finding 2). Append to the existing DOCUMENT block if one
-      // exists, else create it.
-      const existingBlock = await prisma.block.findFirst({
-        where: { pageId, tenantId: ctx.tenantId, type: "DOCUMENT" },
+      await appendDocumentAttachment(ctx.tenantId, pageId, {
+        attachmentId: stored.attachmentId,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type || "application/octet-stream",
       });
-
-      const referenceMarkdown = `## Attachment\n![${file.name}](${url})`;
-
-      if (existingBlock) {
-        const existingMarkdown = tiptapToMarkdown(existingBlock.content);
-        const newMarkdown = `${existingMarkdown}\n${referenceMarkdown}`;
-        const newTiptap = markdownToTiptap(newMarkdown) as TipTapDocument;
-        await prisma.block.update({
-          where: { id: existingBlock.id },
-          data: {
-            content: newTiptap as unknown as Prisma.InputJsonValue,
-            plainText: extractPlainText(newTiptap),
-          },
-        });
-      } else {
-        const newTiptap = markdownToTiptap(referenceMarkdown) as TipTapDocument;
-        await prisma.block.create({
-          data: {
-            tenantId: ctx.tenantId,
-            pageId,
-            type: "DOCUMENT",
-            content: newTiptap as unknown as Prisma.InputJsonValue,
-            position: 0,
-            plainText: extractPlainText(newTiptap),
-          },
-        });
-      }
 
       await logAgentAction(ctx, "document.attachment.upload", "page", pageId, {
         attachmentId: stored.attachmentId,

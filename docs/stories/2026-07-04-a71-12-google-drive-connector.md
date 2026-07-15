@@ -4,7 +4,7 @@
 - **Project owner:** Martin Priessner (martin.priessner@scisymbio.ai)
 - **Created by:** Agent 70
 - **Created:** 2026-07-04
-- **Status:** in-progress (Phase 1 connect/search/import/disconnect + Phase 2 upload backend implemented + unit-tested on `feat/a71-batch`, commit pending; Phase 3 voice surface and the frontend "From Google Drive" tab / settings UI NOT built — see implementation notes appended below)
+- **Status:** in-progress (Phase 1/2 backend and frontend connect/search/import/disconnect UI implemented; real OAuth credential smoke test and Phase 3 voice surface remain)
 - **Assigned to / currently owned by:** Sonnet implementation session, 2026-07-05
 - **Related / parallel work:** Phase 1 (import) reuses the URL-link document-intake path from [a71-08 Document intake](2026-07-04-a71-08-document-intake-upload-or-link.md) — implement a71-08 first. Phase 3 (agent/voice Drive search) should reuse the private/mine-scoping conventions established in [a71-11 Private-document search & listing](2026-07-04-a71-11-private-doc-search-voice.md). No overlap with Epic A sync stories (`2026-07-04-a71-01..07-*.md`).
 
@@ -275,3 +275,18 @@ and `DRIVE_TOKEN_ENC_KEY` (64 hex chars or 32-byte base64 — e.g.
 this worktree has no write access to a shared `.env` file; add these four
 names to whatever `.env.example`/secrets-doc convention the repo uses when
 wiring real credentials.
+
+## Frontend completion notes (2026-07-15, Agent 8)
+
+Implemented the planned **From Google Drive** tab inside the Add document
+dialog plus a Google Drive settings page. The UI reports configuration and
+connection state, starts OAuth, searches connected Drive files, imports a
+selected file, and disconnects the account. It also states the locked safety
+boundary: SKB may search, download, and create new files, but cannot edit or
+delete existing Drive files.
+
+The unconfigured state was verified directly in the browser and both the
+settings page and dialog render cleanly. Connected search/import behavior is
+covered by component and backend tests. A real Google OAuth smoke test remains
+blocked on the four deployment credentials listed above; Phase 3 voice search
+also remains outside this UI completion pass.
