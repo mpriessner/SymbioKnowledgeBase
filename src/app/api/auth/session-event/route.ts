@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { logAuthEvent, clientIpFromHeaders } from "@/lib/agent/audit";
+import { resolveSupabasePublicUrl } from "@/lib/supabase/config";
 
 /**
  * Thin audit endpoint for session-lifecycle events (login/logout).
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = resolveSupabasePublicUrl();
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (supabaseUrl && supabaseKey && !supabaseUrl.includes("xxxxx") && supabaseUrl.startsWith("http")) {

@@ -39,11 +39,11 @@ async function globalSetup(config: FullConfig) {
   }
 
   // Ensure user exists in Supabase (idempotent - signup returns existing user or creates new).
-  // Source the anon key + port from the environment. The default port 54341 is the LIVE
-  // ExpTube Supabase the app actually authenticates against (NOT the dead local 54351 stack).
+  // Source the anon key + port from the environment. Local browser tests reach
+  // the shared ExpTube Supabase hub directly on Kong's host port 54381.
   // No production/demo JWT is hardcoded as a fallback — the anon key must come from env.
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const supabasePort = process.env.TEST_SUPABASE_PORT || "54341";
+  const supabasePort = process.env.TEST_SUPABASE_PORT || "54381";
 
   if (!anonKey) {
     console.warn(

@@ -6,6 +6,44 @@
  */
 
 const PLACEHOLDER_URL_MARKER = "xxxxx";
+const LIVE_LOCAL_AUTH_PORT = "54381";
+const LEGACY_LOCAL_AUTH_PORTS = new Set(["54341", "54351"]);
+
+/**
+ * Route legacy loopback auth URLs to ExpTube's live shared Supabase hub.
+ *
+ * 54351 belonged to SKB's abandoned stack. 54341 is the tailnet-facing port;
+ * local browser and host traffic reaches the same Kong service directly on
+ * 54381. Cloud and unrelated local URLs are left unchanged.
+ */
+export function normalizeSupabaseUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+
+  try {
+    const parsed = new URL(url);
+    const isLocalHost =
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "host.docker.internal";
+
+    if (isLocalHost && LEGACY_LOCAL_AUTH_PORTS.has(parsed.port)) {
+      parsed.port = LIVE_LOCAL_AUTH_PORT;
+      return parsed.toString().replace(/\/$/, "");
+    }
+  } catch {
+    return url;
+  }
+
+  return url.replace(/\/$/, "");
+}
+
+export function resolveSupabasePublicUrl(): string | undefined {
+  return normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+}
+
+export function resolveSupabaseInternalUrl(): string | undefined {
+  return normalizeSupabaseUrl(process.env.SUPABASE_INTERNAL_URL);
+}
 
 /**
  * Whether the Supabase env is present and non-placeholder.
@@ -16,7 +54,7 @@ const PLACEHOLDER_URL_MARKER = "xxxxx";
  * dev/prod branch (audit S2 / Codex nice-to-have #9).
  */
 export function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = resolveSupabasePublicUrl();
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   return (
     !!url &&

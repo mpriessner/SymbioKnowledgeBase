@@ -6,6 +6,8 @@ import { logAuthEvent, clientIpFromHeaders } from "@/lib/agent/audit";
 import {
   isDevAuthAllowed,
   isSupabaseConfigured,
+  resolveSupabaseInternalUrl,
+  resolveSupabasePublicUrl,
 } from "@/lib/supabase/config";
 import type { TenantContext } from "@/types/auth";
 
@@ -62,8 +64,8 @@ export async function getTenantContext(
   }
 
   // 2. Try Supabase session from cookies
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseInternalUrl = process.env.SUPABASE_INTERNAL_URL;
+  const supabaseUrl = resolveSupabasePublicUrl();
+  const supabaseInternalUrl = resolveSupabaseInternalUrl();
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (isSupabaseConfigured() && supabaseUrl && supabaseKey) {

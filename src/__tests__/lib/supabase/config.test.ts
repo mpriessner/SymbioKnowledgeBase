@@ -3,6 +3,8 @@ import {
   isSupabaseConfigured,
   isDevAuthAllowed,
   assertSupabaseConfiguredInProd,
+  resolveSupabaseInternalUrl,
+  resolveSupabasePublicUrl,
 } from "@/lib/supabase/config";
 
 const ORIGINAL = { ...process.env };
@@ -46,6 +48,38 @@ describe("isSupabaseConfigured", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54341";
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "xxxxx-placeholder";
     expect(isSupabaseConfigured()).toBe(false);
+  });
+});
+
+describe("Supabase URL resolution", () => {
+  test.each([
+    "http://localhost:54341",
+    "http://localhost:54351",
+    "http://127.0.0.1:54341",
+    "http://127.0.0.1:54351",
+  ])("routes legacy local auth URL %s to the live shared hub", (url) => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = url;
+
+    expect(resolveSupabasePublicUrl()).toBe(
+      url.replace(/54341|54351/, "54381")
+    );
+  });
+
+  test("does not rewrite cloud or non-legacy local URLs", () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    expect(resolveSupabasePublicUrl()).toBe("https://example.supabase.co");
+
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:6543";
+    expect(resolveSupabasePublicUrl()).toBe("http://localhost:6543");
+  });
+
+  test("routes a legacy Docker-internal URL to the live shared hub", () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54351";
+    process.env.SUPABASE_INTERNAL_URL = "http://host.docker.internal:54341";
+
+    expect(resolveSupabaseInternalUrl()).toBe(
+      "http://host.docker.internal:54381"
+    );
   });
 });
 

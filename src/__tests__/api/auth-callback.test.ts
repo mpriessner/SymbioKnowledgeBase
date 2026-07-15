@@ -15,21 +15,23 @@ vi.mock("next/headers", () => ({
 }));
 
 const mockExchangeCodeForSession = vi.fn();
+const mockCreateServerClient = vi.fn((..._args: unknown[]) => ({
+  auth: {
+    exchangeCodeForSession: (...a: unknown[]) =>
+      mockExchangeCodeForSession(...a),
+  },
+}));
 vi.mock("@supabase/ssr", () => ({
-  createServerClient: vi.fn(() => ({
-    auth: {
-      exchangeCodeForSession: (...a: unknown[]) =>
-        mockExchangeCodeForSession(...a),
-    },
-  })),
+  createServerClient: (...a: unknown[]) => mockCreateServerClient(...a),
 }));
 
 vi.mock("@supabase/supabase-js", () => ({
   createClient: vi.fn(),
 }));
 
+const mockEnsureUserExists = vi.fn();
 vi.mock("@/lib/auth/ensureUserExists", () => ({
-  ensureUserExists: vi.fn(),
+  ensureUserExists: (...a: unknown[]) => mockEnsureUserExists(...a),
 }));
 
 const mockLogAuthEvent = vi.fn(async (..._a: unknown[]) => {});
@@ -45,6 +47,11 @@ function req(url: string): NextRequest {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockEnsureUserExists.mockResolvedValue({
+    id: "user-1",
+    tenantId: "tenant-1",
+    role: "USER",
+  });
   process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54341";
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon-key-not-placeholder";
   delete process.env.NEXT_PUBLIC_SUPABASE_CLOUD_URL;
@@ -110,6 +117,51 @@ describe("GET /auth/callback — OAuth exchange failure (audit S15)", () => {
       expect.objectContaining({ userId: "user-1" })
     );
     expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/home");
+  });
+
+  test("audits OAuth success against the resolved database user", async () => {
+    mockExchangeCodeForSession.mockResolvedValue({
+      data: {
+        user: { id: "supabase-user-1", email: "existing@example.com" },
+      },
+      error: null,
+    });
+    mockEnsureUserExists.mockResolvedValue({
+      id: "database-user-1",
+      tenantId: "tenant-1",
+      role: "USER",
+    });
+
+    await GET(req("http://localhost:3000/auth/callback?code=good-code"));
+
+    expect(mockLogAuthEvent).toHaveBeenCalledWith(
+      "oauth.success",
+      "auth/callback",
+      { userId: "database-user-1", tenantId: "tenant-1" }
+    );
+  });
+
+  test("stale cloud settings cannot hijack the live local OAuth callback", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "http://127.0.0.1:54351";
+    process.env.NEXT_PUBLIC_SUPABASE_CLOUD_URL =
+      "https://deleted-project.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_CLOUD_ANON_KEY = "stale-cloud-key";
+    mockExchangeCodeForSession.mockResolvedValue({
+      data: { user: { id: "user-1", email: "u@example.com" } },
+      error: null,
+    });
+
+    const res = await GET(
+      req("http://localhost:3000/auth/callback?code=local-code")
+    );
+
+    expect(mockCreateServerClient).toHaveBeenCalledTimes(1);
+    expect(mockCreateServerClient).toHaveBeenCalledWith(
+      "http://127.0.0.1:54381",
+      "anon-key-not-placeholder",
+      expect.anything()
+    );
     expect(res.headers.get("location")).toContain("/home");
   });
 });

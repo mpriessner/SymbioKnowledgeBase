@@ -1,6 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { isSupabaseConfigured, isDevAuthAllowed } from "@/lib/supabase/config";
+import {
+  isSupabaseConfigured,
+  isDevAuthAllowed,
+  resolveSupabaseInternalUrl,
+  resolveSupabasePublicUrl,
+} from "@/lib/supabase/config";
 
 /**
  * Build a custom fetch that rewrites localhost URLs to the Docker-internal URL.
@@ -9,8 +14,8 @@ import { isSupabaseConfigured, isDevAuthAllowed } from "@/lib/supabase/config";
  * host.docker.internal.
  */
 function getGlobalFetchConfig() {
-  const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const internalUrl = process.env.SUPABASE_INTERNAL_URL;
+  const publicUrl = resolveSupabasePublicUrl();
+  const internalUrl = resolveSupabaseInternalUrl();
   if (internalUrl && publicUrl && internalUrl !== publicUrl) {
     return {
       global: {
@@ -43,7 +48,7 @@ export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    resolveSupabasePublicUrl()!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {

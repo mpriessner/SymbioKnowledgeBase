@@ -1,9 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import {
+  resolveSupabaseInternalUrl,
+  resolveSupabasePublicUrl,
+} from "./config";
 
 export async function createClient() {
-  const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const internalUrl = process.env.SUPABASE_INTERNAL_URL;
+  const publicUrl = resolveSupabasePublicUrl();
+  const internalUrl = resolveSupabaseInternalUrl();
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!publicUrl || !key || publicUrl.includes("xxxxx")) {

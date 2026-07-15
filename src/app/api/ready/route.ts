@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { resolveSupabasePublicUrl } from "@/lib/supabase/config";
 
 interface DependencyCheck {
   status: "ok" | "error" | "skipped";
@@ -43,7 +44,7 @@ async function checkDatabase(): Promise<DependencyCheck> {
  * because auth would be broken.
  */
 async function checkSupabase(): Promise<DependencyCheck> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = resolveSupabasePublicUrl();
   if (!url) {
     return { status: "skipped", latency_ms: 0 };
   }
