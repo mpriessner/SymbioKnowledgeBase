@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Application Shell Navigation", () => {
-  test("graph page renders within workspace layout with sidebar", async ({ page }) => {
+  test("graph page renders within workspace layout with sidebar", { tag: "@smoke" }, async ({ page }) => {
     await page.goto("/graph");
     const heading = page.getByRole("heading", { level: 1 });
     await expect(heading).toHaveText("Knowledge Graph");

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("Project Initialization Smoke Tests", () => {
+test.describe("Project Initialization Smoke Tests", { tag: "@smoke" }, () => {
   test("should load the landing page at localhost:3000", async ({ page }) => {
     await page.goto("http://localhost:3000");
     await expect(page).toHaveTitle(/SymbioKnowledgeBase/);
