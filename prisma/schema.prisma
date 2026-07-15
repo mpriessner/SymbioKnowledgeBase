@@ -144,18 +144,18 @@ enum EnrichJobStatus {
 // is WRONG (Codex R1): the four passes traverse different domains, so each keeps
 // its own keyset watermark.
 enum TriagePass {
-  STALENESS       // (a) deterministic scoped-key collision — NO LLM
-  TAGGING         // (b) source→concept relevance — local 7B
-  DEDUP           // (c) embedding near-duplicate — deterministic vector search
-  CONTRADICTION   // (d) embedding-retrieved claim pairs — local 7B yes/no/maybe
+  STALENESS // (a) deterministic scoped-key collision — NO LLM
+  TAGGING // (b) source→concept relevance — local 7B
+  DEDUP // (c) embedding near-duplicate — deterministic vector search
+  CONTRADICTION // (d) embedding-retrieved claim pairs — local 7B yes/no/maybe
 }
 
 // The kind of finding a pass surfaces.
 enum TriageKind {
-  STALE                    // (a) a (subject,relation) collision the page hasn't reflected
-  SOURCE_TAGGED            // (b) a new source is relevant to a concept page (hand-off list)
-  POSSIBLE_DUPLICATE       // (c) two concept pages are near-duplicates
-  CONTRADICTION_CANDIDATE  // (d) two claims may disagree (advisory, not resolved)
+  STALE // (a) a (subject,relation) collision the page hasn't reflected
+  SOURCE_TAGGED // (b) a new source is relevant to a concept page (hand-off list)
+  POSSIBLE_DUPLICATE // (c) two concept pages are near-duplicates
+  CONTRADICTION_CANDIDATE // (d) two claims may disagree (advisory, not resolved)
 }
 
 // Finding lifecycle. A global unique fingerprint would P2002-drop a recurrence
@@ -200,36 +200,43 @@ model Tenant {
   createdAt    DateTime @default(now()) @map("created_at")
 
   // Relations
-  users                  User[]
-  members                TenantMember[]
-  pages                  Page[]
-  blocks                 Block[]
-  pageLinks              PageLink[]
-  apiKeys                ApiKey[]
-  databases              Database[]
-  dbRows                 DbRow[]
-  teamspaces             Teamspace[]
-  publicShareLinks       PublicShareLink[]
-  presenceRecords        PagePresence[]
-  notifications          Notification[]
-  auditLogs              AuditLog[]
-  documentVersions       DocumentVersion[]
-  documentSubscriptions  DocumentSubscription[]
-  fileAttachments        FileAttachment[]
-  pageFavorites          PageFavorite[]
-  pageShares             PageShare[]
-  sweepSessions          SweepSession[]
-  ingestLedgerEntries    IngestLedgerEntry[]
-  sources                Source[]
-  claims                 Claim[]
-  claimEvidence          ClaimEvidence[]
-  claimSupersessions     ClaimSupersession[]
-  enrichJobs             EnrichJob[]
-  triageRuns             TriageRun[]
-  triageFindings         TriageFinding[]
-  triageCursors          TriageCursor[]
-  sourceRelevances       SourceRelevance[]
-  triageDigests          TriageDigest[]
+  users                 User[]
+  members               TenantMember[]
+  pages                 Page[]
+  blocks                Block[]
+  pageLinks             PageLink[]
+  apiKeys               ApiKey[]
+  databases             Database[]
+  dbRows                DbRow[]
+  teamspaces            Teamspace[]
+  publicShareLinks      PublicShareLink[]
+  presenceRecords       PagePresence[]
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  documentVersions      DocumentVersion[]
+  documentSubscriptions DocumentSubscription[]
+  fileAttachments       FileAttachment[]
+  pageFavorites         PageFavorite[]
+  pageShares            PageShare[]
+  sweepSessions         SweepSession[]
+  ingestLedgerEntries   IngestLedgerEntry[]
+  sources               Source[]
+  claims                Claim[]
+  claimEvidence         ClaimEvidence[]
+  claimSupersessions    ClaimSupersession[]
+  enrichJobs            EnrichJob[]
+  triageRuns            TriageRun[]
+  triageFindings        TriageFinding[]
+  triageCursors         TriageCursor[]
+  sourceRelevances      SourceRelevance[]
+  triageDigests         TriageDigest[]
+  aokSites              AokSite[]
+  aokSpaces             AokSpace[]
+  aokAssets             AokAsset[]
+  aokAnchors            AokAnchor[]
+  aokKnowledge          AokKnowledge[]
+  aokVisits             AokVisit[]
+  aokCountLines         AokCountLine[]
 
   @@map("tenants")
 }
@@ -237,13 +244,13 @@ model Tenant {
 // ─── Tenant Members (workspace memberships) ─────────────────────────
 
 model TenantMember {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")       // Supabase auth user ID
-  tenantId  String   @map("tenant_id")
-  role      String   @default("owner")     // "owner" | "admin" | "member"
-  joinedAt  DateTime @default(now()) @map("joined_at")
+  id       String   @id @default(uuid())
+  userId   String   @map("user_id") // Supabase auth user ID
+  tenantId String   @map("tenant_id")
+  role     String   @default("owner") // "owner" | "admin" | "member"
+  joinedAt DateTime @default(now()) @map("joined_at")
 
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([userId, tenantId], map: "uq_tenant_members_user_tenant")
   @@index([userId], map: "idx_tenant_members_user_id")
@@ -253,25 +260,25 @@ model TenantMember {
 // ─── Users ───────────────────────────────────────────────────────────
 
 model User {
-  id           String   @id // Supabase auth.users.id (UUID) — no @default for Supabase-managed IDs
-  tenantId     String   @map("tenant_id")
-  email        String
-  passwordHash String?  @map("password_hash") // Deprecated — managed by Supabase Auth
-  role         Role     @default(USER)
-  name         String?
-  avatarUrl    String?  @map("avatar_url")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
-  deactivatedAt  DateTime? @map("deactivated_at")
+  id            String    @id // Supabase auth.users.id (UUID) — no @default for Supabase-managed IDs
+  tenantId      String    @map("tenant_id")
+  email         String
+  passwordHash  String?   @map("password_hash") // Deprecated — managed by Supabase Auth
+  role          Role      @default(USER)
+  name          String?
+  avatarUrl     String?   @map("avatar_url")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deactivatedAt DateTime? @map("deactivated_at")
 
   // Relations
-  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   apiKeys               ApiKey[]
   teamspaceMemberships  TeamspaceMember[]
   createdShareLinks     PublicShareLink[]
   presenceRecords       PagePresence[]
-  receivedNotifications Notification[]     @relation("NotificationRecipient")
-  sentNotifications     Notification[]     @relation("NotificationSource")
+  receivedNotifications Notification[]    @relation("NotificationRecipient")
+  sentNotifications     Notification[]    @relation("NotificationSource")
   auditLogs             AuditLog[]
   fileAttachments       FileAttachment[]
 
@@ -279,23 +286,22 @@ model User {
   @@unique([tenantId, email], map: "uq_users_email_tenant_id")
   @@index([tenantId, id], map: "idx_users_tenant_id_id")
   @@index([tenantId], map: "idx_users_tenant_id")
-
   @@map("users")
 }
 
 // ─── Pages ───────────────────────────────────────────────────────────
 
 model Page {
-  id           String   @id @default(uuid())
-  tenantId     String   @map("tenant_id")
-  externalId   String?  @map("external_id")
-  parentId     String?  @map("parent_id")
-  teamspaceId  String?  @map("teamspace_id")
-  title        String   @default("Untitled")
-  icon         String?
-  coverUrl     String?   @map("cover_url")
-  position     Int       @default(0)
-  spaceType      SpaceType     @default(PRIVATE) @map("space_type")
+  id               String        @id @default(uuid())
+  tenantId         String        @map("tenant_id")
+  externalId       String?       @map("external_id")
+  parentId         String?       @map("parent_id")
+  teamspaceId      String?       @map("teamspace_id")
+  title            String        @default("Untitled")
+  icon             String?
+  coverUrl         String?       @map("cover_url")
+  position         Int           @default(0)
+  spaceType        SpaceType     @default(PRIVATE) @map("space_type")
   generalAccess    GeneralAccess @default(INVITED_ONLY) @map("general_access")
   oneLiner         String?       @map("one_liner")
   summary          String?       @map("summary")
@@ -314,13 +320,13 @@ model Page {
   deletedBy        String?       @map("deleted_by")
 
   // Relations
-  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent       Page?       @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children     Page[]      @relation("PageHierarchy")
-  teamspace             Teamspace?           @relation(fields: [teamspaceId], references: [id], onDelete: SetNull)
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent                Page?                  @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children              Page[]                 @relation("PageHierarchy")
+  teamspace             Teamspace?             @relation(fields: [teamspaceId], references: [id], onDelete: SetNull)
   blocks                Block[]
-  sourceLinks           PageLink[]           @relation("SourcePage")
-  targetLinks           PageLink[]           @relation("TargetPage")
+  sourceLinks           PageLink[]             @relation("SourcePage")
+  targetLinks           PageLink[]             @relation("TargetPage")
   databases             Database[]
   dbRows                DbRow[]
   publicShareLinks      PublicShareLink[]
@@ -341,25 +347,24 @@ model Page {
   @@index([tenantId, teamspaceId], map: "idx_pages_tenant_id_teamspace_id")
   @@index([tenantId, spaceType], map: "idx_pages_tenant_id_space_type")
   @@index([tenantId, deletedAt], map: "idx_pages_tenant_id_deleted_at")
-
   @@map("pages")
 }
 
 // ─── Blocks ──────────────────────────────────────────────────────────
 
 model Block {
-  id        String    @id @default(uuid())
-  pageId    String    @map("page_id")
-  tenantId  String    @map("tenant_id")
-  type      BlockType @default(PARAGRAPH)
-  content      Json      @default("{}")
-  position     Int       @default(0)
-  version      Int       @default(0)
-  plainText    String    @default("") @map("plain_text")
+  id           String                   @id @default(uuid())
+  pageId       String                   @map("page_id")
+  tenantId     String                   @map("tenant_id")
+  type         BlockType                @default(PARAGRAPH)
+  content      Json                     @default("{}")
+  position     Int                      @default(0)
+  version      Int                      @default(0)
+  plainText    String                   @default("") @map("plain_text")
   searchVector Unsupported("tsvector")? @map("search_vector")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+  deletedAt    DateTime?                @map("deleted_at")
 
   // Relations
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -370,7 +375,6 @@ model Block {
   @@index([tenantId], map: "idx_blocks_tenant_id")
   @@index([pageId], map: "idx_blocks_page_id")
   @@index([tenantId, pageId], map: "idx_blocks_tenant_id_page_id")
-
   @@map("blocks")
 }
 
@@ -394,7 +398,6 @@ model PageLink {
   @@index([tenantId], map: "idx_page_links_tenant_id")
   @@index([tenantId, sourcePageId], map: "idx_page_links_tenant_id_source")
   @@index([tenantId, targetPageId], map: "idx_page_links_tenant_id_target")
-
   @@map("page_links")
 }
 
@@ -421,7 +424,6 @@ model ApiKey {
   @@index([tenantId, id], map: "idx_api_keys_tenant_id_id")
   @@index([tenantId], map: "idx_api_keys_tenant_id")
   @@index([keyHash], map: "idx_api_keys_key_hash")
-
   @@map("api_keys")
 }
 
@@ -438,15 +440,14 @@ model Database {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  page   Page    @relation(fields: [pageId], references: [id], onDelete: Cascade)
   rows   DbRow[]
 
   // Indexes
   @@index([tenantId, id], map: "idx_databases_tenant_id_id")
   @@index([tenantId], map: "idx_databases_tenant_id")
   @@index([pageId], map: "idx_databases_page_id")
-
   @@map("databases")
 }
 
@@ -471,7 +472,6 @@ model DbRow {
   @@index([tenantId], map: "idx_db_rows_tenant_id")
   @@index([databaseId], map: "idx_db_rows_database_id")
   @@index([tenantId, databaseId], map: "idx_db_rows_tenant_id_database_id")
-
   @@map("db_rows")
 }
 
@@ -495,7 +495,6 @@ model Teamspace {
   @@unique([tenantId, name], map: "uq_teamspaces_tenant_name")
   @@unique([tenantId, slug], map: "uq_teamspaces_tenant_slug")
   @@index([tenantId], map: "idx_teamspaces_tenant_id")
-
   @@map("teamspaces")
 }
 
@@ -513,7 +512,6 @@ model TeamspaceMember {
   // Indexes
   @@unique([teamspaceId, userId], map: "uq_teamspace_members_teamspace_user")
   @@index([teamspaceId, role], map: "idx_teamspace_members_teamspace_role")
-
   @@map("teamspace_members")
 }
 
@@ -540,7 +538,6 @@ model PublicShareLink {
   // Indexes
   @@index([token], map: "idx_public_share_links_token")
   @@index([pageId], map: "idx_public_share_links_page_id")
-
   @@map("public_share_links")
 }
 
@@ -563,7 +560,6 @@ model PagePresence {
   @@unique([pageId, userId], map: "uq_page_presence_page_user")
   @@index([pageId], map: "idx_page_presence_page_id")
   @@index([lastHeartbeat], map: "idx_page_presence_last_heartbeat")
-
   @@map("page_presence")
 }
 
@@ -590,7 +586,6 @@ model Notification {
   // Indexes
   @@index([tenantId, userId, createdAt], map: "idx_notifications_user_created")
   @@index([tenantId, userId, read], map: "idx_notifications_user_read")
-
   @@map("notifications")
 }
 
@@ -618,7 +613,6 @@ model DocumentVersion {
   @@unique([pageId, version])
   @@index([pageId])
   @@index([tenantId, pageId])
-
   @@map("document_versions")
 }
 
@@ -645,7 +639,6 @@ model IngestLedgerEntry {
   // Indexes
   @@unique([tenantId, contentHash], map: "uq_ingest_ledger_tenant_content_hash")
   @@index([tenantId], map: "idx_ingest_ledger_tenant_id")
-
   @@map("ingest_ledger_entries")
 }
 
@@ -661,16 +654,16 @@ model IngestLedgerEntry {
 // One row per ingested raw artifact. `rawText` is stored VERBATIM (no
 // normalization) so chunk code-point offsets into it are always valid.
 model Source {
-  id             String     @id @default(uuid())
-  tenantId       String     @map("tenant_id")
+  id             String        @id @default(uuid())
+  tenantId       String        @map("tenant_id")
   kind           SourceKind
   title          String
-  contentSha256  String     @map("content_sha256")
-  chunkerVersion String     @map("chunker_version")
-  rawText        String     @map("raw_text")
-  ingestedAt     DateTime   @default(now()) @map("ingested_at")
-  ingestedBy     String?    @map("ingested_by")
-  correlationId  String?    @map("correlation_id")
+  contentSha256  String        @map("content_sha256")
+  chunkerVersion String        @map("chunker_version")
+  rawText        String        @map("raw_text")
+  ingestedAt     DateTime      @default(now()) @map("ingested_at")
+  ingestedBy     String?       @map("ingested_by")
+  correlationId  String?       @map("correlation_id")
   // W81-B1: when the artifact's content is dated in the world (parsed from the
   // filename/doc metadata), distinct from `ingestedAt` (when the system saw it).
   // `Claim.tValid` derives from this → else the claim's `txCreated`. Null +
@@ -755,18 +748,18 @@ model SourceOrigin {
 // onDelete: Restrict) so decomposition drift is a per-version snapshot and the
 // version pruner must skip claim-referenced versions.
 model Claim {
-  id                String      @id @default(uuid())
-  tenantId          String      @map("tenant_id")
-  pageId            String      @map("page_id")
-  text              String
+  id                  String        @id @default(uuid())
+  tenantId            String        @map("tenant_id")
+  pageId              String        @map("page_id")
+  text                String
   // Deterministic identity: sha256(pageId + normalize(text) + documentVersionId).
   // Retries collapse on @@unique([tenantId, claimKey]) instead of minting new ids.
-  claimKey          String      @map("claim_key")
+  claimKey            String        @map("claim_key")
   // sha256(normalize(text)); the body anchor is a TEXT re-match into
   // Block.plainText, NOT a char offset into ephemeral markdown.
-  anchorTextSha     String      @map("anchor_text_sha")
-  documentVersionId String      @map("document_version_id")
-  status            ClaimStatus @default(ACTIVE)
+  anchorTextSha       String        @map("anchor_text_sha")
+  documentVersionId   String        @map("document_version_id")
+  status              ClaimStatus   @default(ACTIVE)
   // ─── W81-B1 bitemporal timestamps ────────────────────────────────────
   // tValid   : when the asserted fact became TRUE in the world (from
   //            Source.eventDate → else txCreated). DB-defaulted to now() so
@@ -775,30 +768,30 @@ model Claim {
   //            means "effective until then" — status stays ACTIVE until it passes).
   // txCreated: when the SYSTEM recorded it (DB `now()`, not an app clock).
   // txExpired: when the system marked it superseded (null = live).
-  tValid            DateTime      @default(now()) @map("t_valid")
-  tInvalid          DateTime?     @map("t_invalid")
-  txCreated         DateTime      @default(now()) @map("tx_created")
-  txExpired         DateTime?     @map("tx_expired")
+  tValid              DateTime      @default(now()) @map("t_valid")
+  tInvalid            DateTime?     @map("t_invalid")
+  txCreated           DateTime      @default(now()) @map("tx_created")
+  txExpired           DateTime?     @map("tx_expired")
   // Precision carried from the source so the temporal rule treats UNKNOWN/APPROX
   // dates conservatively (UNKNOWN never auto-supersedes).
   datePrecision       DatePrecision @default(UNKNOWN) @map("date_precision")
   supersededByClaimId String?       @map("superseded_by_claim_id")
   supersedeReason     String?       @map("supersede_reason")
-  createdAt         DateTime    @default(now()) @map("created_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
 
   // Relations
-  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // onDelete: NoAction — a claim must never be cascade-deleted when its page is
   // purged (that would erase belief history — W81-B1 invariant). NO ACTION blocks
   // a direct page delete while claims reference it (a hard-purge must archive
   // claims first), while still letting a whole-tenant Cascade clean up (claims are
   // removed via their own tenant FK before the end-of-statement check). See story
   // "Lifecycle: duplicate / restore / purge".
-  page            Page            @relation(fields: [pageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  page               Page                @relation(fields: [pageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   // onDelete: Restrict — the per-version snapshot a claim pins must never dangle;
   // pruneOldVersions() explicitly skips versions referenced here.
-  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Restrict)
-  evidence        ClaimEvidence[]
+  documentVersion    DocumentVersion     @relation(fields: [documentVersionId], references: [id], onDelete: Restrict)
+  evidence           ClaimEvidence[]
   // Self-relation: the newer claim that superseded this one (belief chain).
   supersededBy       Claim?              @relation("ClaimSupersedes", fields: [supersededByClaimId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   supersedes         Claim[]             @relation("ClaimSupersedes")
@@ -921,7 +914,6 @@ model DocumentSubscription {
   // Indexes
   @@index([tenantId, subscriberPageId])
   @@index([sourcePageId])
-
   @@map("document_subscriptions")
 }
 
@@ -951,7 +943,6 @@ model FileAttachment {
   // Indexes
   @@index([tenantId, pageId])
   @@index([tenantId, userId])
-
   @@map("file_attachments")
 }
 
@@ -981,7 +972,6 @@ model AuditLog {
   @@index([tenantId, createdAt], map: "idx_audit_logs_tenant_created")
   @@index([userId], map: "idx_audit_logs_user_id")
   @@index([resource, resourceId], map: "idx_audit_logs_resource")
-
   @@map("audit_logs")
 }
 
@@ -1000,7 +990,6 @@ model PageFavorite {
 
   @@unique([userId, pageId], map: "uq_page_favorites_user_page")
   @@index([userId, tenantId], map: "idx_page_favorites_user_tenant")
-
   @@map("page_favorites")
 }
 
@@ -1022,7 +1011,6 @@ model PageShare {
 
   @@unique([pageId, userId], map: "uq_page_shares_page_user")
   @@index([userId, tenantId], map: "idx_page_shares_user_tenant")
-
   @@map("page_shares")
 }
 
@@ -1032,7 +1020,7 @@ model SweepSession {
   id          String    @id
   tenantId    String    @map("tenant_id")
   budget      Int
-  status      String    @default("RUNNING")  // RUNNING | COMPLETED | FAILED | CANCELLED
+  status      String    @default("RUNNING") // RUNNING | COMPLETED | FAILED | CANCELLED
   results     Json      @default("{}")
   startedAt   DateTime  @default(now()) @map("started_at")
   completedAt DateTime? @map("completed_at")
@@ -1042,7 +1030,6 @@ model SweepSession {
 
   // Indexes
   @@index([tenantId, startedAt], map: "idx_sweep_sessions_tenant_started")
-
   @@map("sweep_sessions")
 }
 
@@ -1105,37 +1092,37 @@ model TriageCursor {
 // per-query isolation convention), not via composite FKs (SetNull can't null the
 // NOT NULL tenant_id half of a composite key).
 model TriageFinding {
-  id            String       @id @default(uuid())
-  tenantId      String       @map("tenant_id")
-  kind          TriageKind
-  status        TriageStatus @default(OPEN)
+  id             String       @id @default(uuid())
+  tenantId       String       @map("tenant_id")
+  kind           TriageKind
+  status         TriageStatus @default(OPEN)
   // 0..1 — escalation gate compares this to the configured threshold.
-  severity      Float        @default(0)
-  confidence    Float        @default(0)
+  severity       Float        @default(0)
+  confidence     Float        @default(0)
   // Primary + related participants (canonicalized min<max for pair kinds).
-  pageId        String?      @map("page_id")
-  relatedPageId String?      @map("related_page_id")
-  claimId       String?      @map("claim_id")
-  relatedClaimId String?     @map("related_claim_id")
-  sourceId      String?      @map("source_id")
+  pageId         String?      @map("page_id")
+  relatedPageId  String?      @map("related_page_id")
+  claimId        String?      @map("claim_id")
+  relatedClaimId String?      @map("related_claim_id")
+  sourceId       String?      @map("source_id")
   // sha256(kind + canonical participants + scopedKey) — dedup identity.
-  fingerprint   String
+  fingerprint    String
   // Bounded evidence blob (size-capped by the writer), never a page body.
-  evidence      Json         @default("{}")
+  evidence       Json         @default("{}")
   // The pinned model digest that produced a model-derived finding (null for the
   // deterministic staleness pass).
-  modelDigest   String?      @map("model_digest")
+  modelDigest    String?      @map("model_digest")
   // ── DEFERRED (Ollama-down) bookkeeping ──
-  deferReason   String?      @map("defer_reason")
-  attempts      Int          @default(0)
-  nextAttemptAt DateTime?    @map("next_attempt_at")
+  deferReason    String?      @map("defer_reason")
+  attempts       Int          @default(0)
+  nextAttemptAt  DateTime?    @map("next_attempt_at")
   // ── At-most-once escalation lease (C2 claims via atomic UPDATE ... RETURNING) ──
-  escalatedAt   DateTime?    @map("escalated_at")
-  leasedAt      DateTime?    @map("leased_at")
-  leaseOwner    String?      @map("lease_owner")
-  resolvedAt    DateTime?    @map("resolved_at")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
+  escalatedAt    DateTime?    @map("escalated_at")
+  leasedAt       DateTime?    @map("leased_at")
+  leaseOwner     String?      @map("lease_owner")
+  resolvedAt     DateTime?    @map("resolved_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1171,16 +1158,191 @@ model SourceRelevance {
 // Durable, idempotent weekly health-check digest (§6). Persists the period key +
 // last-success so a re-run in the same period is a no-op (never double-notifies).
 model TriageDigest {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
   // Period identity, e.g. "2026-W28" (ISO week) — the idempotency key.
-  periodKey   String   @map("period_key")
-  stats       Json     @default("{}")
-  notifiedAt  DateTime @default(now()) @map("notified_at")
+  periodKey  String   @map("period_key")
+  stats      Json     @default("{}")
+  notifiedAt DateTime @default(now()) @map("notified_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, periodKey], map: "uq_triage_digests_tenant_period")
   @@index([tenantId, notifiedAt], map: "idx_triage_digests_tenant_notified")
   @@map("triage_digests")
+}
+
+// ─── Anchored-Object Knowledge (AOK-01) ─────────────────────────────
+//
+// Binds knowledge to a physical object via a QR "anchor" and retrieves it by
+// scanning. Deliberately generic (class + JSON attributes) so the same tables
+// serve a facility valve, an inventory reagent bottle, or a shipping parcel.
+// See docs/stories/2026-07-14-aok-01-anchored-object-backend.md.
+//
+// ID scheme: all models use Prisma's built-in @default(cuid()) EXCEPT
+// AokAnchor, whose id is service-generated with crypto.randomUUID() so the
+// derived `payload` can persist in the same single insert as the row.
+
+model AokSite {
+  id        String   @id @default(cuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  nameKey   String   @map("name_key")
+  type      String   @default("other") // lab | residential_block | office | warehouse | other
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  spaces AokSpace[]
+  assets AokAsset[]
+
+  // Indexes
+  @@unique([tenantId, nameKey], map: "uq_aok_sites_tenant_name_key")
+  @@index([tenantId], map: "idx_aok_sites_tenant_id")
+  @@map("aok_sites")
+}
+
+model AokSpace {
+  id             String   @id @default(cuid())
+  tenantId       String   @map("tenant_id")
+  siteId         String   @map("site_id")
+  parentId       String?  @map("parent_id")
+  kind           String   @default("other") // building | floor | room | zone | shelf | aisle | other
+  name           String
+  nameKey        String   @map("name_key")
+  directionsText String?  @map("directions_text")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site     AokSite    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  parent   AokSpace?  @relation("AokSpaceHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children AokSpace[] @relation("AokSpaceHierarchy")
+  assets   AokAsset[]
+
+  // Indexes — v1 spaces are flat per site (tree fields exist for future use).
+  @@unique([tenantId, siteId, nameKey], map: "uq_aok_spaces_tenant_site_name_key")
+  @@index([tenantId], map: "idx_aok_spaces_tenant_id")
+  @@index([tenantId, siteId], map: "idx_aok_spaces_tenant_site")
+  @@index([tenantId, parentId], map: "idx_aok_spaces_tenant_parent")
+  @@map("aok_spaces")
+}
+
+model AokAsset {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  siteId       String   @map("site_id")
+  spaceId      String?  @map("space_id")
+  class        String   @default("facility_asset") // facility_asset | inventory_item | parcel
+  name         String
+  category     String
+  criticality  String   @default("low")
+  attributes   Json     @default("{}")
+  status       String   @default("active") // active | retired | replaced | deleted
+  replacedById String?  @map("replaced_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site           AokSite        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  space          AokSpace?      @relation(fields: [spaceId], references: [id], onDelete: SetNull)
+  replacedBy     AokAsset?      @relation("AokAssetReplacement", fields: [replacedById], references: [id], onDelete: SetNull)
+  replacementFor AokAsset[]     @relation("AokAssetReplacement")
+  knowledge      AokKnowledge[]
+  anchors        AokAnchor[]
+  counts         AokCountLine[]
+  visits         AokVisit[]
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_assets_tenant_id")
+  @@index([tenantId, siteId], map: "idx_aok_assets_tenant_site")
+  @@index([tenantId, spaceId], map: "idx_aok_assets_tenant_space")
+  @@index([tenantId, status], map: "idx_aok_assets_tenant_status")
+  @@map("aok_assets")
+}
+
+model AokAnchor {
+  id        String   @id // service-generated via crypto.randomUUID() — see note above
+  tenantId  String   @map("tenant_id")
+  assetId   String?  @map("asset_id") // null = unbound blank sticker (pre-printable)
+  type      String   @default("qr")
+  payload   String   @unique // scs://a/<anchorId> — derived from id, globally unique
+  status    String   @default("active") // active | retired
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  AokAsset? @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_anchors_tenant_id")
+  @@index([tenantId, assetId], map: "idx_aok_anchors_tenant_asset")
+  @@map("aok_anchors")
+}
+
+model AokKnowledge {
+  id           String   @id @default(cuid())
+  tenantId     String   @map("tenant_id")
+  assetId      String   @map("asset_id")
+  kind         String   @default("gotcha") // how_it_works | gotcha | safety_note | location_note | contact
+  text         String
+  reviewStatus String   @default("approved") @map("review_status") // v1 demo default; AOK-04 flips it
+  source       String   @default("voice_capture")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  AokAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_knowledge_tenant_id")
+  @@index([tenantId, assetId], map: "idx_aok_knowledge_tenant_asset")
+  @@map("aok_knowledge")
+}
+
+model AokVisit {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  assetId     String   @map("asset_id")
+  reason      String
+  outcome     String
+  notes       String?
+  workerLabel String?  @map("worker_label")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  AokAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_visits_tenant_id")
+  @@index([tenantId, assetId], map: "idx_aok_visits_tenant_asset")
+  @@map("aok_visits")
+}
+
+model AokCountLine {
+  id          String   @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+  assetId     String   @map("asset_id")
+  countedQty  Float    @map("counted_qty")
+  unit        String?
+  expectedQty Float?   @map("expected_qty") // snapshot of attributes.expected_qty at count time
+  delta       Float?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  asset  AokAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Indexes
+  @@index([tenantId], map: "idx_aok_count_lines_tenant_id")
+  @@index([tenantId, assetId], map: "idx_aok_count_lines_tenant_asset")
+  @@map("aok_count_lines")
 }

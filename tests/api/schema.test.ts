@@ -23,6 +23,14 @@ describe.skipIf(!HAS_DB)("Database Schema Validation", () => {
     await expect(prisma.pageLink.count()).resolves.toBeGreaterThanOrEqual(0);
     await expect(prisma.apiKey.count()).resolves.toBeGreaterThanOrEqual(0);
     await expect(prisma.database.count()).resolves.toBeGreaterThanOrEqual(0);
+    // AOK-01 — Anchored-Object Knowledge tables.
+    await expect(prisma.aokSite.count()).resolves.toBeGreaterThanOrEqual(0);
+    await expect(prisma.aokSpace.count()).resolves.toBeGreaterThanOrEqual(0);
+    await expect(prisma.aokAsset.count()).resolves.toBeGreaterThanOrEqual(0);
+    await expect(prisma.aokAnchor.count()).resolves.toBeGreaterThanOrEqual(0);
+    await expect(prisma.aokKnowledge.count()).resolves.toBeGreaterThanOrEqual(0);
+    await expect(prisma.aokVisit.count()).resolves.toBeGreaterThanOrEqual(0);
+    await expect(prisma.aokCountLine.count()).resolves.toBeGreaterThanOrEqual(0);
     await expect(prisma.dbRow.count()).resolves.toBeGreaterThanOrEqual(0);
   });
 
