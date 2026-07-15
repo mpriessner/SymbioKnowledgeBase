@@ -41,7 +41,25 @@ async function main() {
   });
   console.log(`  Admin user: ${admin.email} (${admin.id})`);
 
-  // 3. Create Welcome page
+  // 3. Create the explicit local-dev auth identity
+  const devUser = await prisma.user.upsert({
+    where: { id: "dev-user" },
+    update: {
+      tenantId: tenant.id,
+      role: Role.ADMIN,
+      name: "Admin",
+    },
+    create: {
+      id: "dev-user",
+      tenantId: tenant.id,
+      email: "dev-user@symbio.local",
+      role: Role.ADMIN,
+      name: "Admin",
+    },
+  });
+  console.log(`  Dev auth user: ${devUser.email} (${devUser.id})`);
+
+  // 4. Create Welcome page
   const welcomePage = await prisma.page.upsert({
     where: { id: "00000000-0000-4000-a000-000000000010" },
     update: {},
@@ -55,7 +73,7 @@ async function main() {
   });
   console.log(`  Welcome page: ${welcomePage.title} (${welcomePage.id})`);
 
-  // 4. Create welcome blocks
+  // 5. Create welcome blocks
   await prisma.block.upsert({
     where: { id: "00000000-0000-4000-a000-000000000100" },
     update: {},

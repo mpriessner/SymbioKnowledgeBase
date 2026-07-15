@@ -198,16 +198,20 @@ test.describe("Advanced Block Types", () => {
       const editor = page.locator('[data-testid="block-editor"]');
       await editor.click();
 
-      // Register dialog handler BEFORE triggering it
-      page.on("dialog", async (dialog) => {
-        await dialog.accept("https://via.placeholder.com/300");
-      });
-
       await page.keyboard.type("/image");
       await page.keyboard.press("Enter");
 
+      await page.getByTestId("image-url-input").fill(
+        "http://localhost:3000/favicon.ico"
+      );
+      await page.getByRole("button", { name: "Embed" }).click();
+
       const image = editor.locator("img");
-      await expect(image).toBeVisible({ timeout: 5000 });
+      await expect(image).toHaveAttribute(
+        "src",
+        "http://localhost:3000/favicon.ico"
+      );
+      await expect(image).toBeVisible();
     });
   });
 

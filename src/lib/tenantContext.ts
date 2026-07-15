@@ -3,6 +3,10 @@ import { createServerClient } from "@supabase/ssr";
 import { resolveApiKey } from "@/lib/apiAuth";
 import { ensureUserExists } from "@/lib/auth/ensureUserExists";
 import { logAuthEvent, clientIpFromHeaders } from "@/lib/agent/audit";
+import {
+  isDevAuthAllowed,
+  isSupabaseConfigured,
+} from "@/lib/supabase/config";
 import type { TenantContext } from "@/types/auth";
 
 /**
@@ -62,7 +66,7 @@ export async function getTenantContext(
   const supabaseInternalUrl = process.env.SUPABASE_INTERNAL_URL;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (supabaseUrl && supabaseKey && !supabaseUrl.includes("xxxxx") && supabaseUrl.startsWith("http")) {
+  if (isSupabaseConfigured() && supabaseUrl && supabaseKey) {
     const supabase = createServerClient(
       supabaseUrl,
       supabaseKey,
@@ -127,10 +131,7 @@ export async function getTenantContext(
     // In production this is always an authentication failure. The convenient
     // "default dev tenant as ADMIN" fallback is allowed only in non-production
     // AND only when explicitly opted into via ALLOW_DEV_AUTH=true.
-    const isProduction = process.env.NODE_ENV === "production";
-    const devAuthAllowed = process.env.ALLOW_DEV_AUTH === "true";
-
-    if (!isProduction && devAuthAllowed) {
+    if (isDevAuthAllowed()) {
       const defaultTenantId =
         process.env.DEFAULT_TENANT_ID ||
         "00000000-0000-4000-a000-000000000001";

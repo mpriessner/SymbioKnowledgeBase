@@ -15,6 +15,29 @@ async function globalSetup(config: FullConfig) {
     fs.mkdirSync(authDir, { recursive: true });
   }
 
+  if (process.env.E2E_NO_AUTH_ONLY === "1") {
+    fs.writeFileSync(
+      AUTH_FILE,
+      JSON.stringify({ cookies: [], origins: [] }, null, 2)
+    );
+    console.log("[global-setup] No-auth suite selected; saved empty auth state");
+    return;
+  }
+
+  if (process.env.ALLOW_DEV_AUTH === "1") {
+    const browser = await chromium.launch();
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    await page.goto(`${baseURL}/home`);
+    await page.waitForURL("**/home**", { timeout: 15_000 });
+    await context.storageState({ path: AUTH_FILE });
+    await browser.close();
+
+    console.log("[global-setup] Explicit dev auth enabled; saved local auth state");
+    return;
+  }
+
   // Ensure user exists in Supabase (idempotent - signup returns existing user or creates new).
   // Source the anon key + port from the environment. The default port 54341 is the LIVE
   // ExpTube Supabase the app actually authenticates against (NOT the dead local 54351 stack).

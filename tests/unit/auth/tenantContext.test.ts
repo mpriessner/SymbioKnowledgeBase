@@ -166,7 +166,7 @@ describe("getTenantContext", () => {
     it("throws (never synthesizes ADMIN) in production", async () => {
       withSupabaseUnconfigured();
       vi.stubEnv("NODE_ENV", "production");
-      vi.stubEnv("ALLOW_DEV_AUTH", "true"); // must be ignored in production
+      vi.stubEnv("ALLOW_DEV_AUTH", "1"); // must be ignored in production
 
       const req = createMockRequest();
 
@@ -187,10 +187,10 @@ describe("getTenantContext", () => {
       await expect(getTenantContext(req)).rejects.toThrow(AuthenticationError);
     });
 
-    it("allows the dev fallback only when NODE_ENV!=production AND ALLOW_DEV_AUTH=true", async () => {
+    it("allows the dev fallback only when NODE_ENV!=production AND ALLOW_DEV_AUTH=1", async () => {
       withSupabaseUnconfigured();
       vi.stubEnv("NODE_ENV", "development");
-      vi.stubEnv("ALLOW_DEV_AUTH", "true");
+      vi.stubEnv("ALLOW_DEV_AUTH", "1");
       vi.stubEnv("DEFAULT_TENANT_ID", "00000000-0000-4000-a000-000000000001");
 
       const req = createMockRequest();
