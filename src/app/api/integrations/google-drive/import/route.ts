@@ -143,7 +143,9 @@ export const POST = withTenant(async (req: NextRequest, ctx: TenantContext) => {
       position: nextPosition,
       sourceUrl: metadata.webViewLink ?? null,
       docSource: "drive",
-      metadata: { driveFileId: fileId } as Prisma.InputJsonValue,
+      properties: {
+        document: { driveFileId: fileId },
+      } as Prisma.InputJsonValue,
     },
   });
 

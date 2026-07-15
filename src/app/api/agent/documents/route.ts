@@ -139,9 +139,9 @@ export const POST = withAgentAuth(
           position: nextPosition,
           sourceUrl: source === "url" ? url : null,
           docSource,
-          metadata:
+          properties:
             source === "url"
-              ? ({ fetchable } as Prisma.InputJsonValue)
+              ? ({ document: { fetchable } } as Prisma.InputJsonValue)
               : undefined,
         },
       });

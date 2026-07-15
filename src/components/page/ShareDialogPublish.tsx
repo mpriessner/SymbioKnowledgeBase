@@ -23,6 +23,7 @@ export function ShareDialogPublish({ pageId }: ShareDialogPublishProps) {
 
   const status = data?.data;
   const isPublished = status?.is_published ?? false;
+  const publishedUrl = status?.url;
 
   const handleTogglePublish = useCallback(() => {
     if (isPublished) {
@@ -33,12 +34,12 @@ export function ShareDialogPublish({ pageId }: ShareDialogPublishProps) {
   }, [isPublished, publishPage, unpublishPage]);
 
   const handleCopyUrl = useCallback(async () => {
-    if (status?.url) {
-      await navigator.clipboard.writeText(status.url);
+    if (publishedUrl) {
+      await navigator.clipboard.writeText(publishedUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [status?.url]);
+  }, [publishedUrl]);
 
   if (isLoading) {
     return (

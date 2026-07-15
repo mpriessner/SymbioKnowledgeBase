@@ -4,9 +4,8 @@
 --   `page_sync_section_state` — tracks the last-applied `content_update` per
 --   (page, section_key) so the sync receiver's staleness guard can reject an
 --   out-of-order/duplicate retry (e.g. from the a71-01 notebook DLQ) without
---   mutating the page. `pages.metadata` already exists (added by the a71-04
---   migration `20260705000000_add_page_metadata`) and is reused here for the
---   "unsynced structure" flag — no column change needed on `pages`.
+--   mutating the page. The existing `pages.properties` JSON column is reused
+--   for the `contentSync` structure flag; no column change is needed on pages.
 
 -- CreateTable
 CREATE TABLE "page_sync_section_state" (

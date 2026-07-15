@@ -17,6 +17,7 @@ import { setupChemistryKbHierarchy, type HierarchyResult } from "./setupHierarch
 import { markdownToTiptap } from "@/lib/markdown/deserializer";
 import { processAgentWikilinks } from "@/lib/agent/wikilinks";
 import { FIXED_SECTION_HEADINGS } from "@/lib/sync/contentMerge";
+import { regenerateExperimentsIndex } from "./indexRegeneration";
 import type { Prisma } from "@/generated/prisma/client";
 
 /** Postgres unique-constraint violation surfaced by Prisma. */
@@ -340,6 +341,21 @@ export async function runReconciliation(
         errors.push(`${exp.eln_experiment_id}: ${msg}`);
         changeSet.errors++;
         console.error(`[sync/reconcile] [${syncId}] Error processing ${exp.eln_experiment_id}: ${msg}`);
+      }
+    }
+
+    // Keep the cheap Chemistry KB orientation page aligned with the pages
+    // reconciled above. A dry run deliberately performs no secondary writes.
+    if (!options.dryRun) {
+      try {
+        await regenerateExperimentsIndex(tenantId, {
+          correlationId: syncId,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[sync/reconcile] [${syncId}] Index regeneration failed: ${msg}`
+        );
       }
     }
 
