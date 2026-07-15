@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { withTenant } from "@/lib/auth/withTenant";
 import { successResponse, errorResponse } from "@/lib/apiResponse";
+import { getRequestOrigin } from "@/lib/requestOrigin";
 import { z } from "zod";
 import type { TenantContext } from "@/types/auth";
 
@@ -37,9 +38,7 @@ export const GET = withTenant(
       });
     }
 
-    const baseUrl = req.headers.get("x-forwarded-host")
-      ? `https://${req.headers.get("x-forwarded-host")}`
-      : new URL(req.url).origin;
+    const baseUrl = getRequestOrigin(req);
 
     return successResponse({
       is_published: true,
@@ -80,9 +79,7 @@ export const POST = withTenant(
 
     if (existing) {
       // Already published — return existing link
-      const baseUrl = req.headers.get("x-forwarded-host")
-        ? `https://${req.headers.get("x-forwarded-host")}`
-        : new URL(req.url).origin;
+      const baseUrl = getRequestOrigin(req);
 
       return successResponse({
         share_token: existing.token,
@@ -109,9 +106,7 @@ export const POST = withTenant(
       },
     });
 
-    const baseUrl = req.headers.get("x-forwarded-host")
-      ? `https://${req.headers.get("x-forwarded-host")}`
-      : new URL(req.url).origin;
+    const baseUrl = getRequestOrigin(req);
 
     return successResponse(
       {
