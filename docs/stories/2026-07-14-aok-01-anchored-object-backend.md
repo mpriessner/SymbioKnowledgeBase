@@ -4,7 +4,7 @@
 - **Project owner:** Martin Priessner (martin.priessner@scisymbio.ai)
 - **Created by:** Agent 93 (session `93_New_Feature_other_usecases`)
 - **Created:** 2026-07-14
-- **Status:** Reviewed (Codex + GLM folded) — ready for implementation
+- **Status:** done (implemented, merged to main, hardware-verified 2026-07-16/17)
 - **Assigned to / currently owned by:** Agent 93 (implementation via Sonnet subagent)
 - **Related / parallel work:** Sibling story `SciSymbioLens-Android/docs/stories/2026-07-14-aok-02-lens-objects-toolset.md` (consumes this API — the contract below is shared and must not drift). Strategy: `~/windsurf_repos/NEW-PRODUCTS-ASSESSMENT-2026-07-14.md`. Deliberately builds on **main**, independent of unmerged A71/W81 epics.
 
